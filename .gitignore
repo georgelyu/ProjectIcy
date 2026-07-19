@@ -1,0 +1,46 @@
+# Local reference implementation and generated simulation output.
+reference/
+outputs/
+
+# Python caches and test/tool caches.
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Taichi and GPU/runtime caches.
+.taichi/
+taichi_cache/
+
+# Virtual environments and local environment files.
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+
+# Build and packaging artifacts.
+build/
+dist/
+*.egg-info/
+
+# Local editor and OS files.
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Large generated media/data artifacts.
+*.pdf
+*.npz
+*.npy
+*.mp4
+*.avi
+*.mov
