@@ -23,6 +23,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--show-gui", action="store_true")
     parser.add_argument("--save-npz", action="store_true")
     parser.add_argument("--water-retention", action="store_true")
+    progress_group = parser.add_mutually_exclusive_group()
+    progress_group.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        help="show frame progress even when stderr is not an interactive terminal",
+    )
+    progress_group.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="disable the frame progress bar",
+    )
+    parser.set_defaults(progress=None)
     return parser.parse_args()
 
 
@@ -42,7 +56,13 @@ def main() -> None:
         water_retention=args.water_retention,
     )
     sim = Simulator2D(cfg)
-    sim.run(frames=args.frames, steps_per_frame=args.steps_per_frame, output_dir=output_dir)
+    show_progress = sys.stderr.isatty() if args.progress is None else args.progress
+    sim.run(
+        frames=args.frames,
+        steps_per_frame=args.steps_per_frame,
+        output_dir=output_dir,
+        show_progress=show_progress,
+    )
     print(f"Wrote {args.frames} frames to {output_dir}")
 
 

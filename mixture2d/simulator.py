@@ -11,8 +11,10 @@ solid coupling.
 
 import json
 import math
+import sys
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import numpy as np
 import taichi as ti
@@ -22,6 +24,78 @@ from .config import DamBreakConfig
 
 Q = 9
 _TAICHI_INITIALIZED = False
+
+
+def _format_duration(seconds: float | None) -> str:
+    if seconds is None or not math.isfinite(seconds):
+        return "--:--"
+    total_seconds = max(0, int(seconds + 0.5))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+class _TerminalProgress:
+    """Small dependency-free frame progress bar for the command-line demo."""
+
+    def __init__(
+        self,
+        total: int,
+        *,
+        label: str,
+        enabled: bool,
+        stream: TextIO | None = None,
+        width: int = 24,
+    ) -> None:
+        self.total = max(0, int(total))
+        self.label = label
+        self.enabled = bool(enabled) and self.total > 0
+        self.stream = stream if stream is not None else sys.stderr
+        self.width = max(1, int(width))
+        self.completed = 0
+        self._started_at: float | None = None
+        self._last_line_length = 0
+        self._closed = False
+
+    def __enter__(self) -> "_TerminalProgress":
+        if self.enabled:
+            self._started_at = time.monotonic()
+            self._render(self._started_at)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def advance(self) -> None:
+        self.completed = min(self.total, self.completed + 1)
+        if self.enabled:
+            self._render(time.monotonic())
+
+    def close(self) -> None:
+        if self.enabled and not self._closed:
+            self.stream.write("\n")
+            self.stream.flush()
+        self._closed = True
+
+    def _render(self, now: float) -> None:
+        started_at = self._started_at if self._started_at is not None else now
+        elapsed = max(0.0, now - started_at)
+        fraction = self.completed / self.total
+        filled = min(self.width, int(fraction * self.width))
+        bar = "#" * filled + "-" * (self.width - filled)
+        rate = self.completed / elapsed if self.completed > 0 and elapsed > 0 else 0.0
+        eta = (self.total - self.completed) / rate if rate > 0 else None
+        line = (
+            f"Simulating {self.label} [{bar}] {fraction:6.1%} | "
+            f"{self.completed}/{self.total} frames | elapsed {_format_duration(elapsed)} | "
+            f"ETA {_format_duration(eta)}"
+        )
+        padding = " " * max(0, self._last_line_length - len(line))
+        self.stream.write(f"\r{line}{padding}")
+        self.stream.flush()
+        self._last_line_length = len(line)
 
 
 def ensure_taichi_cuda() -> None:
@@ -306,18 +380,28 @@ class Simulator2D:
                 self._coupled_step()
             self.steps += 1
 
-    def run(self, frames: int, steps_per_frame: int, output_dir: str | Path | None = None) -> None:
+    def run(
+        self,
+        frames: int,
+        steps_per_frame: int,
+        output_dir: str | Path | None = None,
+        *,
+        show_progress: bool = False,
+    ) -> None:
+        total_frames = int(frames)
         out = Path(output_dir or self.cfg.output_dir)
         out.mkdir(parents=True, exist_ok=True)
         self.write_metadata(out)
         gui = ti.GUI("Mixture2D Dam Break", res=(self.nx, self.ny), show_gui=self.cfg.show_gui)
-        for _ in range(int(frames)):
-            self.step(steps_per_frame)
-            frame_path = out / f"frame_{self.frame:05d}.png"
-            self.save_frame(frame_path, gui=gui if self.cfg.show_gui else None)
-            if self.cfg.save_npz and self.cfg.mode in ("sand", "coupled"):
-                self.save_particles_npz(out / f"particles_{self.frame:05d}.npz")
-            self.frame += 1
+        with _TerminalProgress(total_frames, label=self.cfg.mode, enabled=show_progress) as progress:
+            for _ in range(total_frames):
+                self.step(steps_per_frame)
+                frame_path = out / f"frame_{self.frame:05d}.png"
+                self.save_frame(frame_path, gui=gui if self.cfg.show_gui else None)
+                if self.cfg.save_npz and self.cfg.mode in ("sand", "coupled"):
+                    self.save_particles_npz(out / f"particles_{self.frame:05d}.npz")
+                self.frame += 1
+                progress.advance()
         self.write_metadata(out)
 
     def save_frame(self, path: str | Path, gui: Any | None = None) -> None:

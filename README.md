@@ -115,9 +115,12 @@ python examples/dam_break_2d.py --mode coupled --water-retention --resolution-x 
 python examples/dam_break_2d.py --mode coupled --output-dir outputs/my_run
 python examples/dam_break_2d.py --mode sand --save-npz
 python examples/dam_break_2d.py --mode fluid --show-gui
+python examples/dam_break_2d.py --mode fluid --no-progress
 ```
 
 By default, frames are written to `outputs/dam_break_2d/<mode>/`; the retention run uses `outputs/dam_break_2d/coupled_water_retention/` so it does not overwrite the coupled result without retention. Each run also writes `metadata.json` with the mode, configuration, Taichi version, backend, and step count.
+
+The command-line demo shows frame progress, elapsed time, and ETA automatically in an interactive terminal. Use `--no-progress` to disable it, or `--progress` to force it when stderr is redirected.
 
 ## Python API
 
