@@ -268,10 +268,47 @@ def _reconstruct_central(cxi, cyi, ux, uy, k00, k10, k01, k20, k02, k11, k21, k1
 @ti.data_oriented
 class Simulator2D:
     def __init__(self, config: DamBreakConfig):
-        ensure_taichi_cuda()
         if config.mode not in ("fluid", "sand", "coupled"):
             raise ValueError("mode must be one of: fluid, sand, coupled")
+        if config.mpm_material not in ("sand", "ice"):
+            raise ValueError("mpm_material must be one of: sand, ice")
+        if config.mpm_material == "ice" and config.water_retention:
+            raise ValueError("water_retention is only supported for sand")
+        if config.mpm_material == "ice" and bool(config.mpm_plasticity):
+            raise ValueError("ice requires mpm_plasticity=False")
+        density = float(config.sand_density)
+        youngs_modulus = float(config.sand_youngs_modulus)
+        poisson_ratio = float(config.sand_poisson_ratio)
+        mpm_dt = float(config.mpm_dt)
+        for name, value in (
+            ("sand_density", density),
+            ("sand_youngs_modulus", youngs_modulus),
+            ("sand_poisson_ratio", poisson_ratio),
+            ("mpm_dt", mpm_dt),
+        ):
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+        if density <= 0.0:
+            raise ValueError("sand_density must be positive")
+        if youngs_modulus <= 0.0:
+            raise ValueError("sand_youngs_modulus must be positive")
+        if not -1.0 < poisson_ratio < 0.5:
+            raise ValueError("sand_poisson_ratio must be between -1 and 0.5")
+        if mpm_dt <= 0.0:
+            raise ValueError("mpm_dt must be positive")
+        if not math.isfinite(float(config.rho_water)) or float(config.rho_water) <= 0.0:
+            raise ValueError("rho_water must be finite and positive")
+        if not math.isfinite(float(config.dx)) or float(config.dx) <= 0.0:
+            raise ValueError("dx must be finite and positive")
+        if int(config.reference_length_cells) <= 0:
+            raise ValueError("reference_length_cells must be positive")
+        if not all(math.isfinite(float(component)) for component in config.gravity):
+            raise ValueError("gravity components must be finite")
+        ensure_taichi_cuda()
         self.cfg = config
+        # Freeze material switches before Taichi compiles ti.static branches.
+        self._is_ice = config.mpm_material == "ice"
+        self._mpm_plasticity = bool(config.mpm_plasticity)
         self.nx = int(config.nx)
         self.ny = int(config.ny)
         self.n_particles = int(config.particle_count)
@@ -291,17 +328,25 @@ class Simulator2D:
         self._nu_air_l = float(config.viscosity_air * u_ref_lattice / (config.dx * u_ref))
         self._gravity_l = float(g_ref * config.dx * u_ref_lattice * u_ref_lattice / (u_ref * u_ref))
         self._sigma_l = float(config.sigma * u_ref_lattice * u_ref_lattice / (u_ref * u_ref) / config.dx / config.rho_water)
-        sand_mu_phy = config.sand_youngs_modulus / (2.0 * (1.0 + config.sand_poisson_ratio))
+        sand_mu_phy = youngs_modulus / (2.0 * (1.0 + poisson_ratio))
         sand_lambda_phy = (
-            config.sand_youngs_modulus
-            * config.sand_poisson_ratio
-            / ((1.0 + config.sand_poisson_ratio) * (1.0 - 2.0 * config.sand_poisson_ratio))
+            youngs_modulus * poisson_ratio / ((1.0 + poisson_ratio) * (1.0 - 2.0 * poisson_ratio))
         )
-        self._sand_density_l = float(config.sand_density / config.rho_water)
+        self._sand_density_l = float(density / config.rho_water)
         self._sand_mu_l = float(sand_mu_phy / (config.rho_water * c_u * c_u))
         self._sand_lambda_l = float(sand_lambda_phy / (config.rho_water * c_u * c_u))
         self._sand_gravity_l = float(config.gravity[1] * config.dx / (c_u * c_u))
-        self._mpm_dt_l = float(config.mpm_dt)
+        self._mpm_dt_l = mpm_dt
+        self._mpm_elastic_wave_speed_l = math.sqrt(
+            max(0.0, (self._sand_lambda_l + 2.0 * self._sand_mu_l) / self._sand_density_l)
+        )
+        self._mpm_elastic_cfl = self._mpm_dt_l * self._mpm_elastic_wave_speed_l
+        if self._is_ice and (not math.isfinite(self._mpm_elastic_cfl) or self._mpm_elastic_cfl > 0.4):
+            raise ValueError(
+                "ice MPM elastic CFL is too high "
+                f"({self._mpm_elastic_cfl:.3f} > 0.400); lower sand_youngs_modulus "
+                "or mpm_dt, or keep reference_length_cells=300 for the default ice preset"
+            )
 
         # Fluid fields. f solves the velocity/pressure LBM (paper Sec. 4.1,
         # Eqs. 8-23), while h solves the conservative phase-field LBM (paper
@@ -441,6 +486,8 @@ class Simulator2D:
         out.mkdir(parents=True, exist_ok=True)
         data = {
             "mode": self.cfg.mode,
+            "mpm_material": self.cfg.mpm_material,
+            "mpm_elastic_cfl": self._mpm_elastic_cfl,
             "taichi_version": ".".join(map(str, ti.__version__)),
             "backend": "cuda",
             "steps": self.steps,
@@ -451,14 +498,66 @@ class Simulator2D:
     def diagnostics(self) -> dict[str, bool | float]:
         phi = self.phi.to_numpy()
         u = self.u.to_numpy()
+        fluid_arrays = (
+            phi,
+            u,
+            self.rho.to_numpy(),
+            self.f.to_numpy(),
+            self.f_next.to_numpy(),
+            self.h.to_numpy(),
+            self.h_next.to_numpy(),
+            self.u_temp.to_numpy(),
+            self.fluid_force.to_numpy(),
+            self.p.to_numpy(),
+            self.p_temp.to_numpy(),
+            self.artificial_vis.to_numpy(),
+        )
         out: dict[str, bool | float] = {
-            "fluid_finite": bool(np.isfinite(phi).all() and np.isfinite(u).all()),
+            "fluid_finite": bool(all(np.isfinite(values).all() for values in fluid_arrays)),
             "phi_min": float(np.nanmin(phi)),
             "phi_max": float(np.nanmax(phi)),
+            "mpm_elastic_cfl": self._mpm_elastic_cfl,
         }
         if self.cfg.mode in ("sand", "coupled"):
             x = self.p_x.to_numpy()
-            out["particles_finite"] = bool(np.isfinite(x).all())
+            F = self.p_F.to_numpy()
+            particle_arrays = (
+                x,
+                self.p_v.to_numpy(),
+                self.p_C.to_numpy(),
+                F,
+                self.p_q.to_numpy(),
+                self.p_vcs.to_numpy(),
+                self.p_alpha.to_numpy(),
+                self.p_bound_water.to_numpy(),
+                self.p_water_content.to_numpy(),
+            )
+            grid_arrays = (
+                self.grid_v.to_numpy(),
+                self.grid_m.to_numpy(),
+                self.sand_grid_force.to_numpy(),
+                self.delta.to_numpy(),
+                self.grid_bound_water.to_numpy(),
+                self.grid_bound_water_post.to_numpy(),
+                self.grid_expand_ratio.to_numpy(),
+                self.phi_absorbed.to_numpy(),
+                self.epsinon.to_numpy(),
+                self.epsinon_src.to_numpy(),
+                self.epsinon_post.to_numpy(),
+                np.asarray(
+                    [
+                        self.sum_vol0[None],
+                        self.sum_vol[None],
+                        self.delta_vol[None],
+                        self.phase_source_ratio[None],
+                    ]
+                ),
+            )
+            determinants = np.linalg.det(F)
+            out["particles_finite"] = bool(all(np.isfinite(values).all() for values in particle_arrays))
+            out["mpm_grid_finite"] = bool(all(np.isfinite(values).all() for values in grid_arrays))
+            out["deformation_det_min"] = float(np.nanmin(determinants))
+            out["deformation_det_max"] = float(np.nanmax(determinants))
             out["particles_inside"] = bool(
                 (x[:, 0] >= 0).all() and (x[:, 0] < self.nx).all() and (x[:, 1] >= 0).all() and (x[:, 1] < self.ny).all()
             )
@@ -1226,8 +1325,10 @@ class Simulator2D:
                 ]
                 F = self.p_F[p]
                 U, sig, V = ti.svd(F)
-                s0 = sig[0, 0]
-                s1 = sig[1, 1]
+                # Keep log(sigma) and division by sigma finite if a trial
+                # deformation becomes nearly singular.
+                s0 = ti.max(sig[0, 0], 1.0e-6)
+                s1 = ti.max(sig[1, 1], 1.0e-6)
                 log0 = ti.log(s0)
                 log1 = ti.log(s1)
                 trace_log = log0 + log1
@@ -1364,11 +1465,10 @@ class Simulator2D:
     @ti.kernel
     def _g2p(self):
         # Paper Sec. 4.2 Eq. 30: gather grid velocity back to particles and
-        # advect them. The deformation gradient is projected with the
-        # saturation-dependent Drucker-Prager model (Eq. 28). Retained water is
-        # transferred back to particles during G2P. In retention mode, cohesion
-        # follows the configured piecewise curve evaluated at the free-plus-bound
-        # water fraction from Eq. 59.
+        # advect them. Sand uses the saturation-dependent Drucker-Prager model
+        # (Eq. 28); ice keeps the elastic trial deformation without plastic
+        # projection. Retained water is transferred back to sand particles
+        # during G2P, with cohesion following the curve from Eq. 59.
         dt = ti.static(self._mpm_dt_l)
         mu = ti.static(self._sand_mu_l)
         la = ti.static(self._sand_lambda_l)
@@ -1428,53 +1528,69 @@ class Simulator2D:
                     self.p_water_content[p] = epsinon_p * p_vol_dim
 
                 F = (ti.Matrix.identity(ti.f32, 2) + dt * new_C) @ self.p_F[p]
-                elastic_F = F
-                U, sig, V = ti.svd(F)
-                e0 = ti.Vector([ti.log(sig[0, 0]), ti.log(sig[1, 1])])
-                e = e0 + 0.5 * self.p_vcs[p] * ti.Vector([1.0, 1.0])
-                cohesion_strength = cohesion
-                if ti.static(self.cfg.water_retention):
-                    phi_s = ti.max(0.0, ti.min(cohesion_phi2, epsinon_src_p + r_cur))
-                    if phi_s < cohesion_phi0:
-                        cohesion_strength = cohesion_c0 + (cohesion_c1 - cohesion_c0) * phi_s / cohesion_phi0
-                    elif phi_s < cohesion_phi1:
-                        cohesion_strength = cohesion_c1 + (cohesion_c2 - cohesion_c1) * (phi_s - cohesion_phi0) / (cohesion_phi1 - cohesion_phi0)
-                    else:
-                        cohesion_strength = cohesion_c2 - cohesion_c2 * (phi_s - cohesion_phi1) / (cohesion_phi2 - cohesion_phi1)
-                else:
-                    phi_s = 1.0 - epsinon_p / (1.0 - delta_max)
-                    phi_s = ti.max(0.0, ti.min(1.0, phi_s))
-                    cohesion_strength = cohesion * phi_s
-                e += (-cohesion_strength) / (2.0 * self.p_alpha[p]) * ti.Vector([1.0, 1.0])
-                tr = e.x + e.y
-                ehat = e - 0.5 * tr * ti.Vector([1.0, 1.0])
-                norm_e = ti.sqrt(ehat.dot(ehat))
-                coeff = (2.0 * la + 2.0 * mu) / (2.0 * mu)
-                delta_gamma = norm_e + coeff * tr * self.p_alpha[p]
-                e_new = e0
-                delta_q = 0.0
                 state = 0
-                if norm_e <= 0.0 or tr > 0.0:
-                    e_new = ti.Vector([0.0, 0.0])
-                    delta_q = ti.sqrt(e.dot(e))
-                    state = 1
-                elif delta_gamma <= 0.0:
+                if ti.static(self._mpm_plasticity):
+                    elastic_F = F
+                    U, sig, V = ti.svd(F)
+                    s0 = ti.max(sig[0, 0], 1.0e-6)
+                    s1 = ti.max(sig[1, 1], 1.0e-6)
+                    e0 = ti.Vector([ti.log(s0), ti.log(s1)])
+                    e = e0 + 0.5 * self.p_vcs[p] * ti.Vector([1.0, 1.0])
+                    cohesion_strength = cohesion
+                    if ti.static(self.cfg.water_retention):
+                        phi_s = ti.max(0.0, ti.min(cohesion_phi2, epsinon_src_p + r_cur))
+                        if phi_s < cohesion_phi0:
+                            cohesion_strength = cohesion_c0 + (cohesion_c1 - cohesion_c0) * phi_s / cohesion_phi0
+                        elif phi_s < cohesion_phi1:
+                            cohesion_strength = cohesion_c1 + (cohesion_c2 - cohesion_c1) * (
+                                phi_s - cohesion_phi0
+                            ) / (cohesion_phi1 - cohesion_phi0)
+                        else:
+                            cohesion_strength = cohesion_c2 - cohesion_c2 * (phi_s - cohesion_phi1) / (
+                                cohesion_phi2 - cohesion_phi1
+                            )
+                    else:
+                        phi_s = 1.0 - epsinon_p / (1.0 - delta_max)
+                        phi_s = ti.max(0.0, ti.min(1.0, phi_s))
+                        cohesion_strength = cohesion * phi_s
+                    e += (-cohesion_strength) / (2.0 * self.p_alpha[p]) * ti.Vector([1.0, 1.0])
+                    tr = e.x + e.y
+                    ehat = e - 0.5 * tr * ti.Vector([1.0, 1.0])
+                    norm_e = ti.sqrt(ehat.dot(ehat))
+                    coeff = (2.0 * la + 2.0 * mu) / (2.0 * mu)
+                    delta_gamma = norm_e + coeff * tr * self.p_alpha[p]
                     e_new = e0
-                    state = 0
+                    delta_q = 0.0
+                    if norm_e <= 0.0 or tr > 0.0:
+                        e_new = ti.Vector([0.0, 0.0])
+                        delta_q = ti.sqrt(e.dot(e))
+                        state = 1
+                    elif delta_gamma <= 0.0:
+                        e_new = e0
+                        state = 0
+                    else:
+                        e_new = e - delta_gamma / norm_e * ehat
+                        delta_q = delta_gamma
+                        state = 2
+                    sig_new = ti.Matrix([[ti.exp(e_new.x), 0.0], [0.0, ti.exp(e_new.y)]])
+                    new_F = U @ sig_new @ V.transpose()
+                    self.p_F[p] = new_F
+                    self.p_vcs[p] += -ti.log(ti.max(new_F.determinant(), 1.0e-12)) + ti.log(
+                        ti.max(elastic_F.determinant(), 1.0e-12)
+                    )
+                    q = self.p_q[p] + delta_q
+                    self.p_q[p] = q
+                    phi_angle = 35.0 + (9.0 * q - 10.0) * ti.exp(-0.2 * q)
+                    phi_angle = phi_angle / 180.0 * math.pi
+                    sin_phi = ti.sin(phi_angle)
+                    self.p_alpha[p] = ti.sqrt(2.0 / 3.0) * (2.0 * sin_phi) / (3.0 - sin_phi)
                 else:
-                    e_new = e - delta_gamma / norm_e * ehat
-                    delta_q = delta_gamma
-                    state = 2
-                sig_new = ti.Matrix([[ti.exp(e_new.x), 0.0], [0.0, ti.exp(e_new.y)]])
-                new_F = U @ sig_new @ V.transpose()
-                self.p_F[p] = new_F
-                self.p_vcs[p] += -ti.log(new_F.determinant()) + ti.log(elastic_F.determinant())
-                q = self.p_q[p] + delta_q
-                self.p_q[p] = q
-                phi_angle = 35.0 + (9.0 * q - 10.0) * ti.exp(-0.2 * q)
-                phi_angle = phi_angle / 180.0 * math.pi
-                sin_phi = ti.sin(phi_angle)
-                self.p_alpha[p] = ti.sqrt(2.0 / 3.0) * (2.0 * sin_phi) / (3.0 - sin_phi)
+                    # Ice is a stiff elastic solid in this reduced model.  It
+                    # keeps the full trial deformation and never enters the
+                    # sand plasticity/hardening state.
+                    self.p_F[p] = F
+                    self.p_vcs[p] = 0.0
+                    self.p_q[p] = 0.0
                 self.p_x[p] = Xp
                 self.p_v[p] = new_v
                 self.p_C[p] = new_C
@@ -1489,7 +1605,10 @@ class Simulator2D:
             sand_bg = ti.Vector([0.98, 0.96, 0.90])
             col = air * (1.0 - phi) + water * phi
             if ti.static(self.cfg.mode == "sand"):
-                col = sand_bg
+                if ti.static(self._is_ice):
+                    col = ti.Vector([0.94, 0.98, 1.0])
+                else:
+                    col = sand_bg
             if self.wall[i, j] == 1:
                 col = ti.Vector([0.12, 0.13, 0.14])
             self.image[i, j] = col
@@ -1504,10 +1623,12 @@ class Simulator2D:
         for p in self.p_x:
             ix = ti.cast(self.p_x[p].x, ti.i32)
             iy = ti.cast(self.p_x[p].y, ti.i32)
-            wet = ti.max(0.0, ti.min(1.0, self.p_water_content[p] / (ratio_max * p_vol_dim)))
-            dry_col = ti.Vector([0.92, 0.64, 0.12])
-            wet_col = ti.Vector([0.05, 0.18, 0.95])
-            col = dry_col * (1.0 - wet) + wet_col * wet
+            col = ti.Vector([0.72, 0.90, 1.0])
+            if ti.static(not self._is_ice):
+                wet = ti.max(0.0, ti.min(1.0, self.p_water_content[p] / (ratio_max * p_vol_dim)))
+                dry_col = ti.Vector([0.92, 0.64, 0.12])
+                wet_col = ti.Vector([0.05, 0.18, 0.95])
+                col = dry_col * (1.0 - wet) + wet_col * wet
             for ox, oy in ti.static(ti.ndrange((-1, 2), (-1, 2))):
                 x = ix + ox
                 y = iy + oy

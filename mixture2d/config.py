@@ -1,15 +1,40 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from typing import Literal
 
 
 Mode = Literal["fluid", "sand", "coupled"]
+MPMMaterial = Literal["sand", "ice"]
+
+
+_MPM_MATERIAL_DEFAULTS = {
+    "sand": {
+        "mpm_plasticity": True,
+        "sand_density": 850.0,
+        "sand_youngs_modulus": 3.537e5,
+        "sand_poisson_ratio": 0.30,
+        "wall_friction": 0.75,
+        "coupled_fluid_start_step": 600 * 25,
+    },
+    "ice": {
+        "mpm_plasticity": False,
+        "sand_density": 917.0,
+        # Numerically softened ice.  A physical GPa-scale modulus violates the
+        # explicit MPM elastic-wave CFL condition at the default lattice step.
+        "sand_youngs_modulus": 1.0e6,
+        "sand_poisson_ratio": 0.30,
+        "wall_friction": 0.10,
+        # Ice interacts with the fluid immediately; it does not pre-settle.
+        "coupled_fluid_start_step": -1,
+    },
+}
 
 
 @dataclass(slots=True)
 class DamBreakConfig:
     mode: Mode = "fluid"
+    mpm_material: MPMMaterial = "sand"
     resolution: tuple[int, int] = (600, 300)
     dx: float = 0.01
     reference_length_cells: int = 300
@@ -40,7 +65,7 @@ class DamBreakConfig:
     # dam-break runs, the reference code lets sand settle before starting the
     # LBM fluid step; this is exposed here for reproducibility.
     phase_warmup_steps: int = 500
-    coupled_fluid_start_step: int = 600 * 25
+    coupled_fluid_start_step: int | None = None
 
     # Dam-break geometry in grid-cell coordinates.
     water_width_fraction: float = 0.25
@@ -50,12 +75,14 @@ class DamBreakConfig:
     sand_base_y_cells: float = 3.0
     boundary_cells: int = 3
 
-    # Paper Sec. 4.2 MPM and Drucker-Prager controls.
+    # Paper Sec. 4.2 MPM controls.  The legacy sand_* names are retained for
+    # API compatibility; for ice they hold the elastic ice approximation.
     particles_per_cell: int = 2
     particle_volume_fraction: float = 1.0
-    sand_density: float = 850.0
-    sand_youngs_modulus: float = 3.537e5
-    sand_poisson_ratio: float = 0.3
+    sand_density: float | None = None
+    sand_youngs_modulus: float | None = None
+    sand_poisson_ratio: float | None = None
+    mpm_plasticity: bool | None = None
     # With q=0 and h0/h1/h2/h3 = 35/9/0.2/10, the hardening law
     # gives an initial friction angle of 25 degrees and alpha=0.267765.
     sand_initial_alpha: float = 0.267765
@@ -66,12 +93,26 @@ class DamBreakConfig:
     retention_cohesion_c: tuple[float, float, float] = (3.82e-3, 8.82e-3, 1.0e-2)
     retention_cohesion_phi: tuple[float, float, float] = (0.108, 0.18752, 0.3)
     mpm_dt: float = 1.0
-    wall_friction: float = 0.75
+    wall_friction: float | None = None
 
     # Output controls.
     output_dir: str = "outputs/dam_break_2d"
     show_gui: bool = False
     save_npz: bool = False
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("fluid", "sand", "coupled"):
+            raise ValueError("mode must be one of: fluid, sand, coupled")
+        if self.mpm_material not in _MPM_MATERIAL_DEFAULTS:
+            raise ValueError("mpm_material must be one of: sand, ice")
+        if self.mode == "fluid" and self.mpm_material != "sand":
+            raise ValueError("mpm_material only applies to sand or coupled mode")
+        defaults = _MPM_MATERIAL_DEFAULTS[self.mpm_material]
+        for name, value in defaults.items():
+            if getattr(self, name) is None:
+                setattr(self, name, value)
+        if self.mpm_material == "ice" and self.water_retention:
+            raise ValueError("water_retention is only supported for sand")
 
     @property
     def nx(self) -> int:
@@ -109,11 +150,10 @@ class DamBreakConfig:
 
 
 def create_dambreak_config(**overrides) -> DamBreakConfig:
-    cfg = DamBreakConfig()
-    for key, value in overrides.items():
-        if not hasattr(cfg, key):
+    valid_names = {item.name for item in fields(DamBreakConfig)}
+    for key in overrides:
+        if key not in valid_names:
             raise TypeError(f"Unknown DamBreakConfig option: {key}")
-        setattr(cfg, key, value)
     if "resolution" in overrides and "reference_length_cells" not in overrides:
-        cfg.reference_length_cells = int(cfg.resolution[1])
-    return cfg
+        overrides["reference_length_cells"] = int(overrides["resolution"][1])
+    return DamBreakConfig(**overrides)

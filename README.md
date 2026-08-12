@@ -13,6 +13,7 @@ The repository contains a compact 2D dam-break implementation of the paper's air
 - 2D dam-break air-water-sand mixture simulation
 - Two-phase air/water LBM fluid solver
 - MPM sand solver with APIC transfer and Drucker-Prager plasticity
+- Optional numerically softened elastic ice-block material
 - Two-way LBM-MPM coupling through porosity, drag, buoyancy, pressure correction, and phase-source correction
 - Optional water-retention model for wet sand
 - Standalone `fluid`, `sand`, and `coupled` modes
@@ -103,6 +104,24 @@ python examples/dam_break_2d.py --mode sand --resolution-x 600 --resolution-y 30
 python examples/dam_break_2d.py --mode coupled --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
 ```
 
+### Coupled 2D Air-Water-Ice Block
+
+```bash
+python examples/dam_break_2d.py --mode coupled --material ice --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
+```
+
+The ice preset uses density `917 kg/m^3`, a numerically softened Young's
+modulus of `1 MPa`, Poisson ratio `0.3`, low wall friction, no water retention,
+and no Drucker-Prager plasticity. The softened modulus keeps the explicit MPM
+step below its elastic-wave CFL limit; the physical GPa-scale stiffness of ice
+must not be used without MPM substepping. This reduced coupling still treats
+MPM material as porous sediment, so the ice option is a stable stiff-elastic
+approximation rather than an impermeable rigid body or a fracture model.
+If you reduce the grid resolution for a quick ice test, pass
+`--reference-length-cells 300` to preserve the preset's lattice stiffness; an
+unsafe elastic CFL is rejected before simulation instead of being allowed to
+produce NaNs.
+
 ### Coupled Simulation with Water Retention
 
 ```bash
@@ -118,7 +137,11 @@ python examples/dam_break_2d.py --mode fluid --show-gui
 python examples/dam_break_2d.py --mode fluid --no-progress
 ```
 
-By default, frames are written to `outputs/dam_break_2d/<mode>/`; the retention run uses `outputs/dam_break_2d/coupled_water_retention/` so it does not overwrite the coupled result without retention. Each run also writes `metadata.json` with the mode, configuration, Taichi version, backend, and step count.
+By default, frames are written to `outputs/dam_break_2d/<mode>/`; ice runs
+use `<mode>_ice`, and the retention run uses `coupled_water_retention`, so the
+variants do not overwrite each other. Each run also writes `metadata.json`
+with the mode, MPM material, elastic CFL, configuration, Taichi version,
+backend, and step count.
 
 The command-line demo shows frame progress, elapsed time, and ETA automatically in an interactive terminal. Use `--no-progress` to disable it, or `--progress` to force it when stderr is redirected.
 
