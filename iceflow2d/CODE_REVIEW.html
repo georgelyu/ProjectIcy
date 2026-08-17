@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>IceFlow2D 代码人工 Review 指南</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-2: #eef3fa;
+      --ink: #18212f;
+      --muted: #5f6d7e;
+      --line: #d8e0ea;
+      --accent: #1769aa;
+      --accent-2: #0d9488;
+      --warn: #9a6700;
+      --danger: #b42318;
+      --ok: #16794b;
+      --code: #102033;
+      --shadow: 0 10px 30px rgba(20, 40, 70, .08);
+      --radius: 14px;
+      --sidebar: 286px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1420;
+        --panel: #131d2b;
+        --panel-2: #192638;
+        --ink: #e8eef7;
+        --muted: #a5b3c4;
+        --line: #2b3a4d;
+        --accent: #65b5ef;
+        --accent-2: #51d1c3;
+        --warn: #f1c75b;
+        --danger: #ff8b84;
+        --ok: #68d6a2;
+        --code: #d9e8fb;
+        --shadow: none;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.72 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    code, pre, .equation, .locator {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    code {
+      color: var(--code);
+      background: color-mix(in srgb, var(--panel-2) 82%, transparent);
+      border-radius: 5px;
+      padding: .08em .35em;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      margin: 12px 0;
+      padding: 16px 18px;
+      overflow: auto;
+      color: var(--code);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      line-height: 1.55;
+    }
+    pre code { padding: 0; background: transparent; }
+    h1, h2, h3, h4 { line-height: 1.28; scroll-margin-top: 24px; }
+    h1 { margin: 0 0 10px; font-size: clamp(2rem, 5vw, 3.55rem); letter-spacing: -.04em; }
+    h2 { margin: 0 0 18px; font-size: 1.75rem; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    h3 { margin: 28px 0 10px; font-size: 1.23rem; }
+    h4 { margin: 20px 0 7px; font-size: 1rem; }
+    p { margin: 9px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: 5px; }
+    table { width: 100%; border-collapse: collapse; margin: 13px 0 20px; font-size: .93rem; }
+    th, td { padding: 9px 11px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel-2); position: sticky; top: 0; z-index: 1; }
+    tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel-2) 38%, transparent); }
+    .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: var(--sidebar);
+      padding: 20px 16px;
+      overflow-y: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+    }
+    .brand { font-weight: 800; font-size: 1.05rem; }
+    .brand small { display: block; margin-top: 3px; color: var(--muted); font-weight: 500; }
+    .progress-box { margin: 16px 0; padding: 12px; background: var(--panel-2); border-radius: 10px; }
+    .progress-track { height: 7px; margin: 7px 0; overflow: hidden; background: var(--line); border-radius: 10px; }
+    .progress-fill { width: 0; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .sidebar nav a {
+      display: block;
+      margin: 2px 0;
+      padding: 6px 9px;
+      color: var(--muted);
+      border-radius: 7px;
+      text-decoration: none;
+      font-size: .9rem;
+    }
+    .sidebar nav a:hover, .sidebar nav a.active { color: var(--ink); background: var(--panel-2); }
+    .side-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 6px 9px;
+      color: var(--ink);
+      background: var(--panel);
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    main { grid-column: 2; width: min(1180px, calc(100vw - var(--sidebar))); padding: 38px clamp(22px, 5vw, 74px) 100px; }
+    .hero {
+      margin-bottom: 28px;
+      padding: clamp(24px, 5vw, 54px);
+      color: white;
+      background: linear-gradient(130deg, #0c4a6e, #1769aa 52%, #0f766e);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+    .hero p { max-width: 850px; color: #e7f5ff; font-size: 1.04rem; }
+    .meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; background: rgba(255,255,255,.14); font-size: .82rem; }
+    section {
+      margin: 22px 0;
+      padding: clamp(20px, 4vw, 36px);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      scroll-margin-top: 16px;
+    }
+    .lead { color: var(--muted); font-size: 1.02rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 14px 0; }
+    .card { padding: 15px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+    .card h3, .card h4 { margin-top: 0; }
+    .callout { margin: 14px 0; padding: 13px 15px; border-left: 4px solid var(--accent); background: var(--panel-2); border-radius: 0 9px 9px 0; }
+    .callout.warn { border-color: var(--warn); }
+    .callout.danger { border-color: var(--danger); }
+    .callout.ok { border-color: var(--ok); }
+    .tag { display: inline-block; margin: 1px 4px 1px 0; padding: 2px 7px; border-radius: 999px; font-size: .76rem; font-weight: 700; border: 1px solid currentColor; }
+    .fact { color: var(--accent); }
+    .derived { color: var(--accent-2); }
+    .risk { color: var(--warn); }
+    .todo { color: var(--danger); }
+    .src { white-space: nowrap; font-family: ui-monospace, monospace; font-size: .9em; }
+    .equation {
+      margin: 12px 0;
+      padding: 14px 16px;
+      overflow-x: auto;
+      text-align: center;
+      color: var(--code);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      font-size: .98rem;
+    }
+    .equation small { display: block; margin-top: 7px; color: var(--muted); font-family: system-ui, sans-serif; }
+    .checklist { padding: 0; list-style: none; }
+    .checklist li { margin: 7px 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; }
+    .checklist label { display: grid; grid-template-columns: 21px 1fr; gap: 7px; cursor: pointer; }
+    .checklist input { margin-top: .35em; accent-color: var(--accent-2); }
+    .checklist input:checked + span { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+    .flow { counter-reset: stage; display: grid; gap: 7px; margin: 16px 0; }
+    .flow .node { position: relative; padding: 11px 13px 11px 48px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
+    .flow .node::before { counter-increment: stage; content: counter(stage); position: absolute; left: 12px; top: 10px; display: grid; place-items: center; width: 24px; height: 24px; color: white; background: var(--accent); border-radius: 50%; font-weight: 800; font-size: .8rem; }
+    details { margin: 10px 0; border: 1px solid var(--line); border-radius: 9px; overflow: clip; }
+    summary { padding: 10px 13px; cursor: pointer; font-weight: 700; background: var(--panel-2); }
+    details > div { padding: 4px 14px 14px; }
+    .two-col { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(250px, .9fr); gap: 18px; }
+    .muted { color: var(--muted); }
+    .nowrap { white-space: nowrap; }
+    .footnote { font-size: .86rem; color: var(--muted); }
+    .mobile-menu { display: none; position: fixed; right: 12px; bottom: 12px; z-index: 10; box-shadow: var(--shadow); }
+    @media (max-width: 920px) {
+      .layout { display: block; }
+      .sidebar { display: none; position: fixed; z-index: 9; width: min(86vw, 330px); box-shadow: var(--shadow); }
+      .sidebar.open { display: block; }
+      main { width: 100%; padding: 18px 12px 80px; }
+      .two-col { grid-template-columns: 1fr; }
+      .mobile-menu { display: block; }
+      section { padding: 20px 15px; }
+      th { position: static; }
+    }
+    @media print {
+      body { background: white; color: #111; font-size: 10.5pt; }
+      .sidebar, .mobile-menu, .side-actions { display: none !important; }
+      main { width: 100%; padding: 0; }
+      .hero, section { box-shadow: none; break-inside: avoid-page; }
+      .hero { color: white !important; }
+      details { break-inside: avoid; }
+      details > div { display: block !important; }
+      a { color: #0645ad; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">IceFlow2D Review<small>从入口到每一个 kernel</small></div>
+      <div class="progress-box">
+        <div><strong id="progressText">0 / 0</strong> 个检查项完成</div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <small class="muted">进度保存在本浏览器 localStorage</small>
+      </div>
+      <nav id="nav">
+        <a href="#how-to-use">0. 使用方法</a>
+        <a href="#scope">1. 范围与源码地图</a>
+        <a href="#entry">2. 入口与总调用链</a>
+        <a href="#config">3. 参数、单位与校验</a>
+        <a href="#state">4. 格子与状态量</a>
+        <a href="#initialization">5. 构造与初始化</a>
+        <a href="#step-order">6. 单步执行顺序</a>
+        <a href="#fluid">7. 流体力与速度 LBM</a>
+        <a href="#phase">8. 相场 LBM</a>
+        <a href="#boundary">9. 尖锐移动边界</a>
+        <a href="#rigid">10. 浮力与刚体接触</a>
+        <a href="#geometry">11. 几何更新与 refill</a>
+        <a href="#projection">12. 水量严格投影</a>
+        <a href="#output">13. 输出与诊断</a>
+        <a href="#tests">14. 测试与验证</a>
+        <a href="#risks">15. 重点疑点</a>
+        <a href="#inventory">16. 全函数覆盖表</a>
+        <a href="#references">17. 参考文献</a>
+      </nav>
+      <div class="side-actions">
+        <button type="button" id="expandAll">展开细节</button>
+        <button type="button" id="collapseAll">收起细节</button>
+        <button type="button" id="resetProgress">清空进度</button>
+      </div>
+    </aside>
+
+    <main>
+      <header class="hero">
+        <h1>IceFlow2D 代码人工 Review 指南</h1>
+        <p>以 <code>iceflow2d/examples/dam_break_2d.py</code> 为默认入口梳理主调用链，同时纳入 <code>iceflow2d/examples/ice_fall_2d.py</code> 的水平水池与空中落冰场景；沿程序实际执行顺序覆盖配置、D2Q9 两套 LBM、水–气弥散界面、尖锐流固边界、刚体接触、移动几何 remap、守恒投影、输出和回归测试。照章节顺序逐项勾选，即可完成一次可追溯的源码 review。</p>
+        <div class="meta">
+          <span class="pill">源码快照：master @ e0c7c54（工作区未提交）</span>
+          <span class="pill">更新日期：2026-08-17</span>
+          <span class="pill">包内 Python 源码：3,545 行 / 10 文件</span>
+          <span class="pill">默认运行：500 warm-up + 12,000 full steps</span>
+        </div>
+      </header>
+
+      <section id="how-to-use">
+        <h2>0. 如何使用这份文档</h2>
+        <p class="lead">本文把“代码事实”“从代码推导出的数学形式”和“需要 reviewer 判断的风险”分开标记，避免把注释、论文和当前实现混为一谈。</p>
+        <div class="grid">
+          <div class="card"><span class="tag fact">代码事实</span><p>可直接在指定文件与行号核对的控制流、公式或状态更新。</p></div>
+          <div class="card"><span class="tag derived">代码推导</span><p>由实现等价变形得到的 PDE、约束或不变量；不是代码中的逐字注释。</p></div>
+          <div class="card"><span class="tag risk">审阅重点</span><p>需要验证依据、数值稳定性或守恒性的实现选择，不自动等同于 bug。</p></div>
+          <div class="card"><span class="tag todo">缺口</span><p>引用、测试或设计证据目前不足，应在 review 结论中明确记录。</p></div>
+        </div>
+        <ol>
+          <li>先读“范围”“入口”“状态量”，建立全局模型；不要一开始钻进 kernel。</li>
+          <li>按“初始化 → 单步顺序 → 各算法章节”阅读源码。行号链接打开相对源文件；在 IDE 中可用 <code>Ctrl+P</code> 输入例如 <code>iceflow2d/simulator.py:976</code> 精确跳转。</li>
+          <li>每个算法先核对“读什么/写什么”，再核对公式，最后执行本节 checklist。</li>
+          <li>最后用测试矩阵和“重点疑点”形成 review 结论。勾选状态只保存在浏览器，不会改源码。</li>
+        </ol>
+        <div class="callout warn"><strong>环境限制：</strong>当前工作区的 Python 3.13.9 未安装 <code>taichi</code>，且求解器强制 CUDA，因此本文能做静态控制流/公式审阅和 HTML 校验，但不能在当前环境完成 CUDA 动态回归。第 14 节给出了在目标 GPU 环境应执行的命令。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="use-legend"><span>我理解三类证据标签的区别，并会把“代码注释声称”与“实现实际保证”分别记录。</span></label></li>
+          <li><label><input type="checkbox" data-review="use-snapshot"><span>我确认 review 对象是当前未提交的 <code>iceflow2d/</code> 快照；后续代码变化需要重新核对行号。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="scope">
+        <h2>1. 范围与源码地图</h2>
+        <p class="lead">覆盖 <code>iceflow2d</code> 下全部 10 个手写 Python 文件、包内 README，并纳入根测试目录中针对落冰入口的纯配置测试；排除自动生成的 <code>__pycache__/*.pyc</code>。</p>
+        <table>
+          <thead><tr><th>文件</th><th>行数</th><th>职责</th><th>默认入口是否触发</th></tr></thead>
+          <tbody>
+            <tr><td><a class="src" href="examples/dam_break_2d.py">examples/dam_break_2d.py</a></td><td>84</td><td>CLI 参数、配置构造、仿真启动</td><td>是，主入口</td></tr>
+            <tr><td><a class="src" href="examples/ice_fall_2d.py">examples/ice_fall_2d.py</a></td><td>281</td><td>水平水池、旋转 OBB 落差推导、CLI 与启动</td><td>仅独立落冰入口</td></tr>
+            <tr><td><a class="src" href="config.py">config.py</a></td><td>330</td><td>参数数据类、派生几何、稳定性和范围校验</td><td>是</td></tr>
+            <tr><td><a class="src" href="lattice.py">lattice.py</a></td><td>208</td><td>D2Q9 常量、平衡态、混合物性、中心矩逆变换</td><td>是，被 kernels 内联</td></tr>
+            <tr><td><a class="src" href="simulator.py">simulator.py</a></td><td>2,086</td><td>全部场、初始化、时间推进、耦合、输出</td><td>是，核心</td></tr>
+            <tr><td><a class="src" href="__init__.py">__init__.py</a></td><td>28</td><td>公共 API 与兼容别名</td><td>是，import 时</td></tr>
+            <tr><td><a class="src" href="__main__.py">__main__.py</a></td><td>9</td><td><code>python -m iceflow2d</code> 兼容入口</td><td>仅模块入口</td></tr>
+            <tr><td><a class="src" href="examples/__init__.py">examples/__init__.py</a></td><td>1</td><td>示例子包标记</td><td>模块入口 import 时</td></tr>
+            <tr><td><a class="src" href="test_iceflow.py">test_iceflow.py</a></td><td>238</td><td>配置、有限性、浮力、接触/摩擦回归</td><td>否，测试时</td></tr>
+            <tr><td><a class="src" href="test_volume_projection.py">test_volume_projection.py</a></td><td>280</td><td>严格水量投影和 moving-mask 回归</td><td>否，测试时</td></tr>
+            <tr><td><a class="src" href="../tests/test_ice_fall_example.py">../tests/test_ice_fall_example.py</a></td><td>130</td><td>落冰几何、配置构造与非法布局回归</td><td>否，测试时</td></tr>
+            <tr><td><a class="src" href="README.md">README.md</a></td><td>142</td><td>设计意图、限制、运行说明</td><td>否，设计证据</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><strong>系统边界：</strong>本包只有一个二维矩形刚体；空气/水由弥散相场表示，冰是二值 active-node 外的尖锐移动边界。没有 MPM、孔隙率、温度、焓、结冰、融化、形变或碎裂。<a class="src" href="simulator.py">simulator.py:1–12</a>，<a class="src" href="README.md">README.md:48–52</a></div>
+        <div class="callout warn"><strong>不要把它叫作 VOF/free-surface LBM：</strong>空气是显式求解的低密度第二流体，水气界面由 <code>h→φ</code> 的保守 Allen–Cahn 弥散相场追踪。代码没有 GAS/INTERFACE/LIQUID 三态单元、VOF 链路质量交换、PLIC 重构或气相压力边界；<code>water_projection_mask</code> 只是全局投影的临时界面带。</div>
+        <div class="callout warn"><strong>文档冲突：</strong>根目录 <code>README.md:22</code> 仍声明仓库“不包含 rigid-body interaction / remapping”，与这个新包的实际能力冲突；项目级文档尚未整合 <code>iceflow2d</code>。</div>
+        <h3>建议的八轮 review</h3>
+        <div class="flow">
+          <div class="node"><strong>入口与配置</strong>：参数是否正确传入、默认量纲是否清楚、非法配置是否被拒绝。</div>
+          <div class="node"><strong>格子原语</strong>：D2Q9 方向/权重/反向映射、平衡态和矩变换是否自洽。</div>
+          <div class="node"><strong>初始化</strong>：场的 shape/dtype、几何坐标、warm-up 和初始不变量是否有正确先后。</div>
+          <div class="node"><strong>两相流</strong>：力项、中心矩碰撞、相场碰撞、streaming、宏观量与压力恢复。</div>
+          <div class="node"><strong>流固边界</strong>：SDF 链路交点、移动反弹、相场无通量、动量交换。</div>
+          <div class="node"><strong>刚体与接触</strong>：浮力、力滤波、半隐式推进、底板冲量、侧/顶墙约束。</div>
+          <div class="node"><strong>移动几何与守恒</strong>：binary topology、fractional ledger、fresh-node refill、水量投影。</div>
+          <div class="node"><strong>可观测性与测试</strong>：输出坐标、metadata、diagnostics、测试覆盖及缺口。</div>
+        </div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="scope-files"><span>逐一确认 <code>iceflow2d</code> 下上述 10 个 Python 文件都纳入 review，并核对包外落冰测试，没有把测试与入口别名遗漏。</span></label></li>
+          <li><label><input type="checkbox" data-review="scope-boundary"><span>确认评审目标是“非热、单刚体、二相流机械基线”，没有用尚未实现的相变/MPM 能力评判当前代码。</span></label></li>
+          <li><label><input type="checkbox" data-review="scope-not-vof"><span>后续 review 和报告统一称“显式空气–水两流体、保守相场 LBM”，不把 φ 或 projection mask 误写成 VOF fill level/classification。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="entry">
+        <h2>2. 从仿真入口开始：总调用链</h2>
+        <div class="two-col">
+          <div>
+            <h3>直接脚本入口</h3>
+            <pre><code>python iceflow2d/examples/dam_break_2d.py --progress
+
+__main__ guard                                  examples/dam_break_2d.py:83
+└─ main(argv)                                   :58–80
+   ├─ parse_args(argv)                          :15–55
+   ├─ create_iceflow_config(...)                config.py:317–327
+   │  └─ IceFlowConfig.__post_init__()          config.py:112–266
+   ├─ IceFlow2D(config)                         simulator.py:129–285
+   └─ simulation.run(...)                       simulator.py:312–332
+      ├─ write_metadata(initial)
+      ├─ [frame loop]
+      │  ├─ step(steps_per_frame)
+      │  ├─ save_frame(frame_XXXXX.png)
+      │  └─ save_state_npz(...)                 only if --save-npz
+      └─ write_metadata(final)</code></pre>
+          </div>
+          <div>
+            <h3>兼容模块入口</h3>
+            <pre><code>python -m iceflow2d
+
+iceflow2d/__main__.py:3
+└─ import examples.dam_break_2d.main
+   └─ 同一条 main → config → simulator 路径</code></pre>
+            <p><code>iceflow2d.__init__</code> 在示例第 12 行导出 <code>IceFlow2D</code> 与 <code>create_iceflow_config</code>。<code>Simulator2D</code>、<code>DamBreakConfig</code>、<code>create_dambreak_config</code> 都只是迁移兼容别名，没有额外算法。</p>
+          </div>
+        </div>
+        <h3>独立落冰入口</h3>
+        <pre><code>python iceflow2d/examples/ice_fall_2d.py --progress
+
+__main__ guard                                  examples/ice_fall_2d.py:280–281
+└─ main(argv)                                   :255–277
+   ├─ parse_args(argv)                          :129–211
+   │  └─ derive_ice_fall_geometry(args)         :18–126
+   ├─ create_ice_fall_config(...)               :214–252
+   │  └─ create_iceflow_config(...)             config.py:317–327
+   ├─ IceFlow2D(config)                         simulator.py:129–285
+   └─ simulation.run(...)                       simulator.py:312–332</code></pre>
+        <p>该入口把水柱扩展为墙内全宽水池，并按旋转矩形实际最低角点定义空气间隙：若半尺寸为 <code>(a,b)</code>、角度为 <code>θ</code>，竖直半包围盒为 <code>e<sub>y</sub>=|sinθ|a+|cosθ|b</code>，于是质心高度取 <code>y<sub>water</sub>+gap+e<sub>y</sub></code>。默认 <code>gap=60</code> cells，大于默认弥散界面带半径 10 cells。<a class="src" href="examples/ice_fall_2d.py">examples/ice_fall_2d.py:18–126</a></p>
+        <div class="callout"><strong>入口关系：</strong><code>python -m iceflow2d</code> 仍只转发 dam-break；落冰场景必须运行上面的脚本或 <code>python -m iceflow2d.examples.ice_fall_2d</code>。两者在配置完成后共用同一个 simulator，不新增求解算法。</div>
+        <h3>默认参数的真实工作量</h3>
+        <ul>
+          <li><code>frames=120</code>，<code>steps_per_frame=100</code>：共执行 <strong>12,000</strong> 个完整流固耦合步。</li>
+          <li>构造器先执行 <code>phase_warmup_steps=500</code> 次“仅相场”步；这些不更新 <code>simulation.steps</code>，也不移动刚体。</li>
+          <li>没有保存 <code>t=0</code> 图像；<code>frame_00000.png</code> 已经是第 100 个完整步之后的状态。</li>
+          <li><code>frame</code> 在保存后才递增；最终 metadata 的 <code>frame=120</code>、<code>steps=12000</code>。</li>
+        </ul>
+        <h3>CLI 校验</h3>
+        <p><a class="src" href="examples/dam_break_2d.py">examples/dam_break_2d.py:15–55</a> 只接受 <code>mode=coupled</code>、<code>material=ice</code>；拒绝负帧数、非正步数/分辨率/参考长度。<code>--progress</code> 与 <code>--no-progress</code> 互斥，未指定时由 <code>stderr.isatty()</code> 决定。</p>
+        <p><a class="src" href="examples/ice_fall_2d.py">examples/ice_fall_2d.py:18–211</a> 另外校验水位/冰尺寸至少离散为可用格点、旋转后的左右/顶部包围盒、初速度上限，以及最低冰角到水面的距离不小于弥散界面带半径。全宽水池通过选择 <code>int(nx·water_width_fraction)=nx-boundary_cells</code> 的浮点区间中点实现，并在配置构造后再次断言离散尺寸一致。</p>
+        <div class="callout warn"><strong>审阅边界：</strong><code>step(num_steps)</code> 自身用 <code>range(int(num_steps))</code>，会把浮点数截断，负数静默变成零次循环；只有 <code>run()</code> 对 <code>steps_per_frame</code> 做正数校验。直接 API 调用者与 CLI 的契约并不相同。<a class="src" href="simulator.py">simulator.py:286–317</a></div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="entry-cli"><span>逐项核对 CLI 默认值、类型、互斥选项和错误条件与目标算例一致。</span></label></li>
+          <li><label><input type="checkbox" data-review="entry-count"><span>确认接受“500 次 warm-up 不计步、首帧在第 100 步保存”的时间语义。</span></label></li>
+          <li><label><input type="checkbox" data-review="entry-api"><span>决定 <code>step()</code> 是否也应显式拒绝负数、布尔值和非整数步数。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="config">
+        <h2>3. 参数、单位换算与配置校验</h2>
+        <p class="lead"><code>IceFlowConfig</code> 既保存用户输入，也通过 property 派生格点几何；<code>__post_init__</code> 在任何 Taichi 分配之前完成主要合法性检查。</p>
+        <h3>默认几何与材料</h3>
+        <table>
+          <thead><tr><th>量</th><th>默认值</th><th>代码</th><th>解释</th></tr></thead>
+          <tbody>
+            <tr><td>网格</td><td><code>600 × 300</code></td><td><a class="src" href="config.py">config.py:40–42</a></td><td>数组按 <code>(x,y)</code> 存储，不是 NumPy 图像常用的 <code>(y,x)</code></td></tr>
+            <tr><td>容器墙厚</td><td><code>b=3</code> cells</td><td><a class="src" href="config.py">config.py:63</a></td><td>四周均为三层静态 wall</td></tr>
+            <tr><td>水柱</td><td><code>150 × 200</code> cells</td><td><a class="src" href="config.py">config.py:277–282</a></td><td><code>i&lt;150 ∧ j&lt;200</code>，墙内也先计算 indicator</td></tr>
+            <tr><td>冰块</td><td><code>90 × 90</code> cells</td><td><a class="src" href="config.py">config.py:285–298</a></td><td>中心 <code>(300,48)</code>，底边位于 <code>y=3</code></td></tr>
+            <tr><td>冰质量</td><td><code>7427.7</code></td><td><a class="src" href="config.py">config.py:300–302</a></td><td>二维单位厚度格子质量：<code>(ρice/ρwater)wh</code></td></tr>
+            <tr><td>转动惯量</td><td><code>10,027,395</code></td><td><a class="src" href="config.py">config.py:304–306</a></td><td>矩形质心惯量 <code>m(w²+h²)/12</code></td></tr>
+            <tr><td>相场</td><td><code>W=5</code>，<code>M=0.1</code></td><td><a class="src" href="config.py">config.py:53–55</a></td><td>界面宽度（cells）与 mobility（lattice units）</td></tr>
+          </tbody>
+        </table>
+
+        <h3>物理量 → 格子量</h3>
+        <p><span class="tag fact">代码事实</span> 换算集中在 <a class="src" href="simulator.py">simulator.py:140–160</a>，并与配置中的 relaxation-time 预检 <a class="src" href="config.py">config.py:250–264</a> 对应。内部取参考格子速度 <code>u<sub>ref,l</sub>=0.1</code>：</p>
+        <div class="equation">U<sub>ref</sub> = √(|g<sub>y</sub>| · L<sub>ref,cells</sub> · Δx · 4), &nbsp;&nbsp; C<sub>u</sub> = U<sub>ref</sub> / 0.1</div>
+        <div class="equation">ρ<sub>w,l</sub>=1, &nbsp; ρ<sub>a,l</sub>=ρ<sub>a</sub>/ρ<sub>w</sub>, &nbsp; ρ<sub>i,l</sub>=ρ<sub>i</sub>/ρ<sub>w</sub></div>
+        <div class="equation">ν<sub>k,l</sub> = ν<sub>k</sub> · 0.1 /(Δx · U<sub>ref</sub>), &nbsp;&nbsp; g<sub>l</sub> = g · Δx / C<sub>u</sub>²</div>
+        <div class="equation">σ<sub>l</sub> = σ · 0.1² /(U<sub>ref</sub>² · Δx · ρ<sub>w</sub>)</div>
+        <p>默认值计算为 <code>Uref≈10.84435</code>、<code>Cu≈108.4435</code>、物理时间步 <code>Δt=Δx/Cu≈9.22139e−5 s</code>、<code>ρa,l=0.00125</code>、<code>ρi,l=0.917</code>、<code>νw,l≈9.2214e−5</code>、<code>νa,l≈9.2214e−3</code>、<code>gy,l≈−8.3333e−6</code>、<code>σl≈6.12245e−7</code>。对应纯水/纯空气分子松弛时间约为 <code>τw=0.50027664</code>、<code>τa=0.52766417</code>。</p>
+        <div class="callout warn"><strong>单位必须人工确认：</strong>字段名是 <code>viscosity_water/air</code>，而换算和 <code>τ=0.5+3ν</code> 把它们当作运动黏度 <code>ν [m²/s]</code>；配置没有写单位。默认水值 <code>1e−4</code> 也应与目标实验/论文参数逐项核对，不能仅凭变量名判断。</div>
+
+        <h3>校验顺序</h3>
+        <details open><summary>基础类型、范围与几何</summary><div>
+          <ol>
+            <li>固定 <code>mode/material/boundary scheme</code> 枚举；<a class="src" href="config.py">config.py:112–118</a></li>
+            <li>分辨率、参考长度、墙厚、warm-up 必须为真整数（显式排除 bool）且满足大小关系；<a class="src" href="config.py">config.py:120–146</a></li>
+            <li>密度、黏度、<code>dx</code>、mobility、界面宽度为有限正数；表面张力和人工黏性系数非负；<a class="src" href="config.py">config.py:148–163</a></li>
+            <li>几何 fraction 在 <code>(0,1]</code>，冰底不能进入底墙，矩形至少 2×2；<a class="src" href="config.py">config.py:165–177, 231–248</a></li>
+            <li>初始 OBB 用旋转后的 AABB extent 检查四周墙；边界相切允许 <code>1e−9</code> 容差。</li>
+          </ol>
+        </div></details>
+        <details><summary>耦合、接触、投影与稳定性</summary><div>
+          <ol>
+            <li>力 scale 非负；relaxation 在 <code>(0,1]</code>；线/角 damping 在 <code>(0,1]</code>。</li>
+            <li>刚体速度 cap 分别不超过 <code>0.20</code> 和用户给定正上限，且表面最大允许速度 <code>vmax+ωmax r≤0.25</code>。</li>
+            <li>恢复系数、侧墙摩擦、底板摩擦都在 <code>[0,1]</code>。</li>
+            <li>投影 tolerance/max shift 为有限正数，cutoff 在 <code>(0,0.5)</code>，迭代次数为正整数。</li>
+            <li>两相 <code>τ=0.5+3νl</code> 必须满足 <code>0.5&lt;τ≤2</code>。注意这里只用分子黏度，不含运行时 artificial viscosity。</li>
+          </ol>
+          <p class="src"><a href="config.py">config.py:178–229, 250–266</a></p>
+        </div></details>
+        <div class="callout"><strong>factory 行为：</strong><code>create_iceflow_config</code> 先拒绝未知字段；若改 <code>resolution</code> 而没给 <code>reference_length_cells</code>，会自动把后者设为新 <code>ny</code>。直接调用 <code>IceFlowConfig(resolution=...)</code> 则不会自动同步，API 语义不同。<a class="src" href="config.py">config.py:317–327</a></div>
+        <div class="callout warn"><strong>序列化边界：</strong>多数浮点校验只做 <code>float(value)</code> 检查，并不把原字段改写为 Python <code>float</code>。因此 <code>numpy.float32</code> 等值可以通过配置校验，却仍由 <code>asdict()</code> 原样进入 metadata，随后 <code>json.dumps</code> 可能报 “not JSON serializable”。需要把配置的可接受标量类型与输出契约一起测试。<a class="src" href="config.py">config.py:15–25, 308–310</a></div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="config-units"><span>为所有物理输入补出或核实单位，尤其确认两项 viscosity 是运动黏度还是动力黏度。</span></label></li>
+          <li><label><input type="checkbox" data-review="config-scale"><span>从目标物理算例独立复算 <code>Uref</code>、格子重力、黏度、表面张力和两相 <code>τ</code>。</span></label></li>
+          <li><label><input type="checkbox" data-review="config-factory"><span>确认 factory 自动同步参考长度、而 dataclass 直接构造不自动同步，是预期 API 设计。</span></label></li>
+          <li><label><input type="checkbox" data-review="config-caps"><span>确认速度/角速度 caps 是明确接受的数值保护，并会在结果解释中标注其非物理截断作用。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="state">
+        <h2>4. D2Q9 格子、坐标与状态量</h2>
+        <h3>D2Q9 定义</h3>
+        <table>
+          <thead><tr><th>q</th><th>c<sub>q</sub></th><th>w<sub>q</sub></th><th>opp(q)</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>(0,0)</td><td>4/9</td><td>0</td></tr>
+            <tr><td>1,2,3,4</td><td>(+x,+y,−x,−y)</td><td>1/9</td><td>3,4,1,2</td></tr>
+            <tr><td>5,6,7,8</td><td>(+x+y,−x+y,−x−y,+x−y)</td><td>1/36</td><td>7,8,5,6</td></tr>
+          </tbody>
+        </table>
+        <p><a class="src" href="lattice.py">lattice.py:13–26, 29–80</a> 同时保留 Python 常量和 Taichi 分支函数。review 时要确认二者完全一致；测试只直接使用 Python 的 <code>C/W</code>。</p>
+        <div class="equation">f<sub>q</sub><sup>eq</sup>(ρ,u) = w<sub>q</sub>ρ[1 + 3(c<sub>q</sub>·u) + 4.5(c<sub>q</sub>·u)² − 1.5(u·u)]</div>
+        <div class="equation">h<sub>q</sub><sup>eq</sup>(φ,u) = w<sub>q</sub>φ[1 + 3(c<sub>q</sub>·u) + 4.5(c<sub>q</sub>·u)² − 1.5(u·u)]</div>
+        <p>两式仅把标量从 <code>ρ</code> 换成 <code>φ</code>。本求解器实际调用 <code>_feq(q,1,u)</code>，所以 <code>f</code> 是<strong>单位参考密度的速度/压力分布</strong>，物理混合密度单独存在 <code>rho</code> 场中。<a class="src" href="lattice.py">lattice.py:83–97</a></p>
+        <div class="callout warn"><strong>两种“平衡态”要分开核：</strong>初始化、refill 和部分墙面处理调用上述二阶 <code>_feq/_heq</code>；正式 collision 则直接指定中心矩，包含张量积高阶平衡矩。它们到二阶速度一致，但一般在 <code>O(u³/u⁴)</code> 不同，因此重建节点进入下一次碰撞时存在一次模型切换。建议用 moments/property test 明确可接受误差。</div>
+
+        <h3>拓扑与坐标约定</h3>
+        <ul>
+          <li>场索引是 <code>[i,j,q] = [x,y,direction]</code>；单元几何中心是 <code>(i+0.5,j+0.5)</code>。<a class="src" href="simulator.py">simulator.py:170–204, 676–678</a></li>
+          <li><code>active(i,j) ⇔ wall==0 ∧ solid==0</code>；wall 是静态容器，solid 是当前刚体中心点光栅。<a class="src" href="simulator.py">simulator.py:546–548</a></li>
+          <li><code>φ=1</code> 表示水，<code>φ=0</code> 表示空气；混合属性先 clamp 到 <code>[0,1]</code>。<a class="src" href="lattice.py">lattice.py:104–119</a></li>
+          <li>刚体几何用世界坐标（格子 cell 单位），角度为弧度；局部点通过 <code>R(−θ)(x−center)</code> 进入 box frame。</li>
+          <li><code>solid_fraction</code> 是 cell 面积占比但只用于审计账本；LBM 控制体仍由二值 <code>active</code> 决定。</li>
+        </ul>
+
+        <h3>字段清单</h3>
+        <details open><summary>流体与相场：shape=(nx,ny[,9])，主要为 f32</summary><div>
+          <table>
+            <thead><tr><th>字段</th><th>shape/dtype</th><th>含义</th><th>双缓冲角色</th></tr></thead>
+            <tbody>
+              <tr><td><code>f, f_post, f_next</code></td><td>(nx,ny,9), f32</td><td>单位密度速度/压力 populations</td><td>当前 → 碰撞后 → streaming 目标</td></tr>
+              <tr><td><code>h, h_post, h_next</code></td><td>(nx,ny,9), f32</td><td>守恒 Allen–Cahn 相场 populations</td><td>当前 → 碰撞后 → streaming 目标</td></tr>
+              <tr><td><code>rho, phi, p, p_temp</code></td><td>(nx,ny), f32</td><td>混合密度、水相、压力、滤波压力</td><td><code>p_temp</code> 是下一力装配读入值</td></tr>
+              <tr><td><code>u, u_temp</code></td><td>(nx,ny,2), f32</td><td>宏观速度、半力步速度</td><td>碰撞读取 <code>u_temp=u+F/2</code></td></tr>
+              <tr><td><code>fluid_force</code></td><td>(nx,ny,2), f32</td><td>每单位质量的总格子加速度</td><td>当前步 collision 使用</td></tr>
+              <tr><td><code>artificial_vis</code></td><td>(nx,ny), f32</td><td>基于局部 strain 的附加黏度</td><td>进入局部 <code>τ</code></td></tr>
+            </tbody>
+          </table>
+        </div></details>
+        <details><summary>几何、刚体与全局 reduction</summary><div>
+          <ul>
+            <li><code>wall/solid/solid_prev</code>：<code>(nx,ny), i32</code>；<code>sdf</code>：<code>f32</code>。</li>
+            <li><code>solid_fraction/solid_fraction_prev</code>：<code>(nx,ny), f64</code>，精确 OBB–cell 相交面积。</li>
+            <li><code>stored_phi/stored_pressure</code>：<code>f32</code>，cell 被刚体覆盖时保存诊断/回填状态；不是隐藏的 LBM reservoir。</li>
+            <li>刚体 center/velocity/angle/omega 和各类 impulse/torque 是 0D Taichi fields；主体状态 f32，体积与几何 reduction 多为 f64。</li>
+            <li>投影 candidate/mask 是 <code>(nx,ny), i32</code>；投影质量、导数、lambda 用 f64，最终 <code>phi/h</code> 仍为 f32。</li>
+            <li><code>image</code> 是 <code>(nx,ny,3), f32</code>，只在保存/显示前生成。</li>
+          </ul>
+          <p class="src"><a href="simulator.py">simulator.py:170–268</a></p>
+        </div></details>
+
+        <h3>混合物性</h3>
+        <div class="equation">p = clamp(φ,0,1), &nbsp; ρ(φ)=ρ<sub>w</sub>p+ρ<sub>a</sub>(1−p)</div>
+        <div class="equation">ν(φ)=[ρ<sub>w</sub>ν<sub>w</sub>p+ρ<sub>a</sub>ν<sub>a</sub>(1−p)] / ρ(φ)</div>
+        <div class="equation">τ(φ)=0.5+3[ν(φ)+ν<sub>art</sub>], &nbsp; c<sub>s</sub>²=1/3</div>
+        <p><span class="tag derived">代码推导</span> 黏度按动力黏度 <code>μ=ρν</code> 线性混合、再除以混合密度得到运动黏度。<a class="src" href="lattice.py">lattice.py:104–119</a></p>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="state-d2q9"><span>手工验证 9 个方向、权重和 opposite 映射，且 <code>Σw=1</code>、<code>Σw c=0</code>、<code>Σw c c=(1/3)I</code>。</span></label></li>
+          <li><label><input type="checkbox" data-review="state-layout"><span>确认所有 NumPy 后处理都意识到内部是 <code>(x,y)</code> 布局，只有 PNG 路径显式 transpose/flip。</span></label></li>
+          <li><label><input type="checkbox" data-review="state-f-unit"><span>确认后续推导始终记住 <code>f</code> 的零阶目标是 1，而不是 <code>rho</code>。</span></label></li>
+          <li><label><input type="checkbox" data-review="state-equilibria"><span>比较二阶 helper equilibrium 与中心矩 factorized equilibrium 的 0–4 阶矩，量化 initialization/refill 后的一步差异。</span></label></li>
+          <li><label><input type="checkbox" data-review="state-fraction"><span>确认不会把 <code>solid_fraction</code> 误当作已参与 LBM 通量离散。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="initialization">
+        <h2>5. <code>IceFlow2D.__init__</code> 的精确执行顺序</h2>
+        <p class="lead">构造器不只是分配内存：它执行几何光栅、500 次相场预热、一次严格水量修正和压力初始化。构造成功即代表一个可推进的完整状态。</p>
+        <div class="flow">
+          <div class="node"><code>isinstance(config, IceFlowConfig)</code>；随后 <code>ensure_taichi_cuda()</code> 初始化或验证全局 runtime。只支持 CUDA，无 CPU fallback。<a class="src" href="simulator.py">:129–139, 110–122</a></div>
+          <div class="node">计算格子缩放、刚体半尺寸/质量/惯量，以及投影界面带半径。半径由 equilibrium logistic profile 到 cutoff 的距离得到，并向上取偶数。<a class="src" href="simulator.py">:140–169</a></div>
+          <div class="node">分配所有 Taichi fields。默认 600×300 下，六套 9-population f32 场是主要显存占用。<a class="src" href="simulator.py">:170–268</a></div>
+          <div class="node"><code>_initialize_body</code>：写初始 pose/velocity，并清零 impulse/contact diagnostics。<a class="src" href="simulator.py">:696–722</a></div>
+          <div class="node"><code>_initialize_geometry</code>：建立四周 wall；在 cell center 计算 OBB SDF；生成二值 solid 与 solid_prev。<a class="src" href="simulator.py">:724–739</a></div>
+          <div class="node"><code>_update_fractional_geometry</code>：精确算每个非 wall 单元的冰面积 fraction；随后复制到 prev 并清几何账本。<a class="src" href="simulator.py">:741–786</a></div>
+          <div class="node"><code>_initialize_fluid</code>：左下矩形水柱，active 节点 <code>φ=indicator</code>；固体节点速度取刚体表面速度；<code>f/h</code> 全部设为平衡态。<a class="src" href="simulator.py">:788–816</a></div>
+          <div class="node"><code>_initialize_water_volume</code>：在任何 warm-up 之前锁定 active-node 的锐利初始水量 <code>Vtarget</code>；默认墙内水柱为 <code>(150−3)(200−3)=28,959</code> cells。<a class="src" href="simulator.py">:1755–1778</a></div>
+          <div class="node"><code>_warm_start_phase(500)</code>：重复 <code>φ←Σh → phase collision → clear h_next → phase stream → copy</code>；<strong>不演化 f、压力、刚体，也不增加 steps</strong>。<a class="src" href="simulator.py">:1389–1406</a></div>
+          <div class="node"><code>macro → strict volume projection</code>：由 populations 恢复宏观量，再把 warm-up 误差投影回最初目标水量。<a class="src" href="simulator.py">:280–282</a></div>
+          <div class="node">初始化 fractional water ledger，计算压力并做一次 D2Q9 加权平滑。<a class="src" href="simulator.py">:282–284</a></div>
+        </div>
+        <h3>初始几何公式</h3>
+        <div class="equation">q = |R(−θ)(x−x<sub>c</sub>)| − (w/2,h/2)<br>SDF(x) = ‖max(q,0)‖₂ + min(max(q<sub>x</sub>,q<sub>y</sub>),0)</div>
+        <p>cell center 的 <code>SDF≤0</code> 才标为 solid。相切 cell center 会被算作 solid；fractional geometry 则用真实单元方形与旋转矩形相交，不依赖这个二值判定。</p>
+        <div class="callout warn"><strong>全局 Taichi runtime：</strong><code>ensure_taichi_cuda</code> 不 reset 已有 runtime；如果进程已用 CPU 初始化，它会直接报错。模块级 <code>_TAICHI_INITIALIZED</code> 被赋值但不参与后续分支。多测试/多包共用进程时需要特别检查初始化顺序。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="init-order"><span>逐行核对构造顺序，尤其是 target volume 在 warm-up 之前记录、warm-up 后才做 projection。</span></label></li>
+          <li><label><input type="checkbox" data-review="init-geometry"><span>用默认 center/half-size 手算底边、顶边、左右边和二值 solid cell 数应为 90×90。</span></label></li>
+          <li><label><input type="checkbox" data-review="init-runtime"><span>确认部署/测试进程不会在构造 IceFlow2D 前用非 CUDA arch 初始化 Taichi。</span></label></li>
+          <li><label><input type="checkbox" data-review="init-warmup"><span>确认相场预热期间固定速度场、固定刚体和固定几何符合预期的初始条件准备方式。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="step-order">
+        <h2>6. 一个完整 LBM step 的执行顺序</h2>
+        <p class="lead"><a class="src" href="simulator.py">simulator.py:286–310</a> 是整份 review 的主轴。下面严格按代码顺序列出每一阶段的主要读写依赖。</p>
+        <table>
+          <thead><tr><th>#</th><th>调用</th><th>主要读取</th><th>主要写入 / 物理作用</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><code>_compute_fluid_force(steps)</code></td><td>φ,u,p_temp, geometry</td><td>force,u_temp,artificial_vis</td></tr>
+            <tr><td>2</td><td><code>_collide_velocity</code></td><td>f,u_temp,force,φ,νart</td><td>f_post（中心矩松弛）</td></tr>
+            <tr><td>3</td><td><code>_collide_phase</code></td><td>h,φ,u_temp,geometry</td><td>h_post（相场碰撞+界面压缩）</td></tr>
+            <tr><td>4</td><td><code>_clear_stream_targets</code></td><td>—</td><td>清 f_next/h_next、raw impulse/torque、cut-link count</td></tr>
+            <tr><td>5</td><td><code>_stream_velocity</code></td><td>f_post,SDF,solid,body state,φ</td><td>f_next；移动反弹；累计水动力 impulse/torque</td></tr>
+            <tr><td>6</td><td><code>_stream_phase</code></td><td>h_post,SDF,solid,body state,φ</td><td>h_next；移动/静态无通量反弹</td></tr>
+            <tr><td>7</td><td><code>_copy_lbm_next</code></td><td>f_next,h_next</td><td>f,h,φ,rho；非 active 节点重置</td></tr>
+            <tr><td>8</td><td><code>_update_fluid_macro</code></td><td>f,h,geometry</td><td>φ,rho,u</td></tr>
+            <tr><td>9</td><td><code>_update_pressure</code></td><td>f,φ,p_temp</td><td>p</td></tr>
+            <tr><td>10</td><td><code>_average_pressure</code></td><td>p,geometry</td><td>p_temp（下一步用）</td></tr>
+            <tr><td>11</td><td><code>_compute_hydrostatic_buoyancy</code></td><td>φ,solid,body pose</td><td>浮力 impulse、排水体积；torque 固定为 0</td></tr>
+            <tr><td>12</td><td><code>_advance_rigid_ice</code></td><td>raw hydro、buoyancy、gravity、旧 body state</td><td>新 pose/velocity；底板/侧顶墙 contact diagnostics</td></tr>
+            <tr><td>13</td><td><code>_measure_geometry_water_before_remap</code></td><td>旧 fraction/solid/φ/stored_phi</td><td>remap 前 fractional water ledger</td></tr>
+            <tr><td>14</td><td><code>_save_previous_geometry</code></td><td>旧 solid/fraction</td><td>solid_prev/fraction_prev</td></tr>
+            <tr><td>15</td><td><code>_rasterize_ice</code></td><td>新 pose</td><td>新 SDF/二值 solid/count</td></tr>
+            <tr><td>16</td><td><code>_update_fractional_geometry</code></td><td>新 pose/SDF</td><td>新 fraction、area/GCL ledger</td></tr>
+            <tr><td>17</td><td><code>_measure_geometry_swept_water</code></td><td>旧/新 fraction、旧 topology phase</td><td>swept-water diagnostic</td></tr>
+            <tr><td>18</td><td><code>_refill_changed_nodes</code></td><td>旧/新 solid、邻域 state</td><td>covered store、fresh equilibrium、binary remap ledger</td></tr>
+            <tr><td>19</td><td><code>_measure_geometry_water_after_remap</code></td><td>新 fraction/topology/state</td><td>remap 后 fractional water/error</td></tr>
+            <tr><td>20</td><td><code>_update_fluid_macro</code></td><td>refill 后 f/h</td><td>刷新 φ,rho,u</td></tr>
+            <tr><td>21</td><td><code>_correct_water_volume</code></td><td>φ,h,u,target,topology</td><td>clip/canonicalize + interface-only entropy projection</td></tr>
+            <tr><td>22</td><td><code>_measure_water_volume</code></td><td>投影后 φ</td><td>最终 volume ledger（与投影内部末次 measure 重复）</td></tr>
+            <tr><td>23</td><td><code>steps += 1</code></td><td>Python counter</td><td>影响下一步空气压力梯度 warm stabilization 分支</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><strong>时间耦合类型：</strong>这是显式、错位的一步耦合。流体先在旧几何/旧刚体速度上推进并产生链路 impulse；刚体再更新；随后才把几何移动到新 pose 并 refill。静水浮力使用流体更新后的 φ 但仍在旧 solid mask 上计算，然后推进刚体。</div>
+        <div class="callout warn"><strong>重复与时序：</strong>第 7 步已从 next buffers 更新 <code>φ/rho</code>，第 8 步又完整扫描恢复宏观量；投影内部已在末尾 measure，第 22 步又 measure。几何 refill 后只重新恢复宏观量，水量投影又会改变 <code>φ/rho/h</code>，但本步不再重算 <code>p/p_temp</code>；下一步力装配会先读这组 remap 前或插值得到的压力。它们可能是有意的显式滞后，也可能是重复/一致性缺口，review 时应先做时刻账本再优化。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="step-trace"><span>在源码第 286–310 行逐个勾对 23 个阶段，没有按物理直觉擅自重排。</span></label></li>
+          <li><label><input type="checkbox" data-review="step-lag"><span>明确记录各力/压力/几何量使用的是 n、n+1 还是新 pose 状态，并确认显式滞后一阶可接受。</span></label></li>
+          <li><label><input type="checkbox" data-review="step-duplicate"><span>检查两次 macro recovery 和末次 volume measure 是否必要，若优化需先保留回归不变量。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="fluid">
+        <h2>7. 流体力装配与速度/压力 LBM</h2>
+        <h3>7.1 离散梯度与 Laplacian</h3>
+        <p><a class="src" href="simulator.py">simulator.py:1000–1010</a> 混合一阶和二阶邻域梯度（<code>α=1/3</code>），Laplacian 只用一环：</p>
+        <div class="equation">∇φ ≈ Σ<sub>q</sub> w<sub>q</sub>c<sub>q</sub>{(1−α)3(φ<sub>1q</sub>−φ) + α·1.5(4φ<sub>1q</sub>−φ<sub>2q</sub>−3φ)}</div>
+        <div class="equation">∇²φ ≈ 6 Σ<sub>q</sub>w<sub>q</sub>(φ<sub>1q</sub>−φ), &nbsp; α=1/3</div>
+        <p>邻点越界或非 active 时由 <code>_phase_neighbor</code> 回退。特别是请求二环且二环不可用时，它返回中心值，而不是已找到的一环值。<a class="src" href="simulator.py">simulator.py:680–694</a></p>
+
+        <h3>7.2 力项</h3>
+        <p><code>fluid_force</code> 是格子单位的加速度型项，初值为 <code>g</code>，随后叠加相场表面力、变密度黏性修正、压力梯度和低 Re 对流稳定项。<a class="src" href="simulator.py">simulator.py:976–1075</a></p>
+        <div class="equation">β = 12σ<sub>l</sub>/W, &nbsp; κ = 1.5σ<sub>l</sub>W</div>
+        <div class="equation">μ<sub>chem</sub> = 4βφ(φ−1)(φ−1/2) − κ∇²φ</div>
+        <div class="equation">F = g + μ<sub>chem</sub>∇φ/ρ + F<sub>∇ρ,visc</sub> − ∇p/ρ + 0.5F<sub>adv-stab</sub></div>
+        <div class="equation">ν<sub>art</sub> = c<sub>d</sub>² √{2[(∂<sub>x</sub>u)²+(∂<sub>y</sub>v)²+0.5(∂<sub>y</sub>u+∂<sub>x</sub>v)²]}</div>
+        <div class="equation">F<sub>∇ρ,visc</sub> = (ν+ν<sub>art</sub>)/ρ · [2u<sub>x</sub>ρ<sub>x</sub>+(u<sub>y</sub>+v<sub>x</sub>)ρ<sub>y</sub>, (u<sub>y</sub>+v<sub>x</sub>)ρ<sub>x</sub>+2v<sub>y</sub>ρ<sub>y</sub>]</div>
+        <ul>
+          <li><code>ρx,ρy=(ρwater−ρair)∇φ</code>。</li>
+          <li>空气侧 <code>φ&lt;0.1</code> 且 <code>steps&lt;72,000</code> 时，把压力梯度乘 0.1；默认 12,000 步整个运行都在该分支内。</li>
+          <li>低 Re 稳定项逐轴比较 <code>|u|/(νk+νk)&lt;4</code>；满足时该方向差分清零，否则累积 upwind-like 项。</li>
+          <li>最后写 <code>u_temp=u+F/2</code>，供两套碰撞使用。</li>
+        </ul>
+
+        <h3>7.3 中心矩碰撞</h3>
+        <p><a class="src" href="simulator.py">simulator.py:1077–1130</a> 先从 <code>f</code> 求 raw moments，再平移到速度 <code>u_temp</code> 周围的二阶中心矩：</p>
+        <div class="equation">m<sub>pq</sub>=Σ<sub>q</sub> f<sub>q</sub>c<sub>qx</sub><sup>p</sup>c<sub>qy</sub><sup>q</sup>, &nbsp; k<sub>pq</sub>=Σ f<sub>q</sub>(c<sub>qx</sub>−u<sub>x</sub>)<sup>p</sup>(c<sub>qy</sub>−u<sub>y</sub>)<sup>q</sup></div>
+        <div class="equation">D′=(k<sub>20</sub>−k<sub>02</sub>)(1−1/τ), &nbsp; S′=k<sub>11</sub>(1−1/τ)</div>
+        <div class="equation">k′<sub>00</sub>=1; k′<sub>10</sub>=F<sub>x</sub>/2; k′<sub>01</sub>=F<sub>y</sub>/2;<br>k′<sub>20</sub>=(2/3+D′)/2; k′<sub>02</sub>=(2/3−D′)/2; k′<sub>11</sub>=S′;<br>k′<sub>21</sub>=F<sub>y</sub>/6; k′<sub>12</sub>=F<sub>x</sub>/6; k′<sub>22</sub>=1/9</div>
+        <p><code>_reconstruct_central</code> 使用张量积逆基 <code>_inv1d(c,u,k)</code> 把九个中心矩重建为九个 populations。<a class="src" href="lattice.py">lattice.py:136–181</a>。这不是通用矩阵求逆，而是针对速度集合 <code>{−1,0,1}²</code> 展开的解析逆变换。</p>
+
+        <h3>7.4 宏观量与压力</h3>
+        <div class="equation">φ=Σh<sub>q</sub>, &nbsp; u=Σc<sub>q</sub>f<sub>q</sub>, &nbsp; ρ=ρ(φ)</div>
+        <div class="equation">p<sup>new</sup> = p<sub>temp</sub> + ρc<sub>s</sub>²(Σf<sub>q</sub>−1), &nbsp; c<sub>s</sub>²=1/3</div>
+        <div class="equation">p<sub>temp</sub>(x)=Σ<sub>q</sub>w<sub>q</sub> p(x+c<sub>q</sub>) <span class="muted">（非 active 邻点退回中心 p）</span></div>
+        <p class="src"><a href="simulator.py">simulator.py:1408–1463</a></p>
+
+        <div class="callout warn"><strong>公式对应关系：</strong>这些流体方程继承自仓库主论文 Sec. 4.1 / Eqs. 8–23 的二维 D2Q9 分支，但当前代码又加入尖锐固体邻域取值和特定稳定化。review 不能只核论文公式；必须逐项核当前边界 fallback 和经验分支。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="fluid-derivatives"><span>对常数场、线性场和靠墙场手算梯度/Laplacian，验证一环/二环 fallback 的实际边界条件。</span></label></li>
+          <li><label><input type="checkbox" data-review="fluid-force"><span>逐项做量纲/符号检查：重力、chemical force、压力、变密度黏性项和 advection stabilization。</span></label></li>
+          <li><label><input type="checkbox" data-review="fluid-moments"><span>从九个 <code>k′</code> 独立验证重建后零阶矩=1、一阶矩含半力项、二阶平衡矩正确。</span></label></li>
+          <li><label><input type="checkbox" data-review="fluid-air-branch"><span>评估默认全程 <code>φ&lt;0.1</code> 空气压力梯度×0.1 对物理结果的影响，并决定是否需要参数化/测试。</span></label></li>
+          <li><label><input type="checkbox" data-review="fluid-tau-runtime"><span>检查运行时 <code>νart</code> 是否可能令 <code>τ&gt;2</code>；配置预检没有覆盖这个动态上界。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="phase">
+        <h2>8. 守恒相场 LBM</h2>
+        <p class="lead">第二套 D2Q9 populations <code>h</code> 追踪水相体积分数。代码对应保守 Allen–Cahn 型界面方程，而不是自由表面 VOF，也不是 Cahn–Hilliard 四阶方程。</p>
+        <h3>目标连续方程（由 collision/source 形式还原）</h3>
+        <div class="equation">∂<sub>t</sub>φ + ∇·(φu) = ∇·{ M[∇φ − (4φ(1−φ)/W)n] }, &nbsp; n=∇φ/(|∇φ|+10<sup>−14</sup>)</div>
+        <p><span class="tag derived">代码推导</span> <code>4φ(1−φ)/W</code> 是把界面维持在 logistic/tanh 平衡轮廓的压缩通量；<code>τφ=0.5+3M</code>，实现中使用其倒数。<a class="src" href="simulator.py">simulator.py:1131–1151</a></p>
+        <h3>碰撞实现</h3>
+        <ol>
+          <li>用与流体力相同的混合 stencil 求 <code>∇φ</code>、法向和 compression。</li>
+          <li>对当前 <code>h</code>、平衡 <code>heq(φ,u_temp)</code>、以及 <code>Fqφ=wq·compression·(cq·n)</code> 分别计算九个中心矩。</li>
+          <li>一阶矩用 BGK 型 <code>k′=k−τφ⁻¹(k−keq)+(1−0.5τφ⁻¹)kF</code>；其余矩直接设为 <code>keq+0.5kF</code>。</li>
+          <li>用相同的 <code>_reconstruct_central</code> 得到 <code>h_post</code>。非 active cell 原样复制，之后 streaming/copy 会清理。</li>
+        </ol>
+        <div class="equation">τ<sub>φ</sub><sup>−1</sup> = 1/(3M+0.5), &nbsp; F<sub>q</sub><sup>φ</sup>=w<sub>q</sub>[4φ(1−φ)/W](c<sub>q</sub>·n)</div>
+        <p class="src"><a href="simulator.py">simulator.py:1131–1245</a></p>
+        <h3>Warm-up 与正常步的差别</h3>
+        <table>
+          <thead><tr><th>阶段</th><th>相场输入速度</th><th>几何</th><th>是否与 f 同步</th><th>水量处理</th></tr></thead>
+          <tbody>
+            <tr><td>构造 warm-up</td><td>初始化的 <code>u_temp</code>（通常 0；solid 内为刚体速度）</td><td>固定</td><td>否，只推进 h</td><td>全部结束后一次 strict projection</td></tr>
+            <tr><td>完整 step</td><td>当前 <code>u+F/2</code></td><td>碰撞/stream 用旧几何</td><td>与 f 同步 stream/copy</td><td>每步 remap 后 strict projection</td></tr>
+          </tbody>
+        </table>
+        <div class="callout warn"><strong>boundedness：</strong>phase collision/stream 本身不保证 <code>0≤φ≤1</code>；每个完整步末尾的 <code>_correct_water_volume</code> 会 clip/canonicalize。warm-up 的中间 500 步不逐步投影，只在结束时处理，因此极端配置可能在 warm-up 期间先失稳。</div>
+        <div class="callout warn"><strong>自定义参数边界：</strong>配置只要求 <code>M&gt;0</code>，没有像流体 τ 那样限制 <code>τφ=0.5+3M</code> 的精度/稳定区间。若给非零初始刚体速度，warm-up 的移动壁面修正使用该速度，但 500 步内刚体 pose 又保持不动；这两种情况都没有现成回归测试。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="phase-pde"><span>从离散 source/mobility 独立恢复目标 PDE，并核对 compression 的符号是否使界面变陡而非扩散加剧。</span></label></li>
+          <li><label><input type="checkbox" data-review="phase-moments"><span>验证 <code>Σq Fqφ=0</code>，collision 的零阶矩不制造局部相质量。</span></label></li>
+          <li><label><input type="checkbox" data-review="phase-warm-bounds"><span>用目标参数检查 500-step warm-up 中的 φ bounds/有限性，而不只检查结束后的 projection。</span></label></li>
+          <li><label><input type="checkbox" data-review="phase-custom"><span>扫描 mobility/τφ，并验证非零初始刚体速度下“动壁速度、固定几何”的 warm-up 是否符合设计。</span></label></li>
+          <li><label><input type="checkbox" data-review="phase-reference"><span>对照 Geier–Fakhari–Lee 2015 与主论文二维化公式，记录当前中心矩 relaxation 与文献版本的差异。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="boundary">
+        <h2>9. 尖锐移动边界、streaming 与动量交换</h2>
+        <h3>9.1 Cut-link 交点</h3>
+        <p>从 active cell <code>x</code> 沿 <code>cq</code> 推向 solid cell 时，用两端 SDF 做线性零点插值：</p>
+        <div class="equation">η = clamp(SDF(x) / [SDF(x)−SDF(x+c<sub>q</sub>)+10<sup>−12</sup>], 0.05, 0.95)</div>
+        <div class="equation">x<sub>b</sub>=x<sub>cell-center</sub>+ηc<sub>q</sub>, &nbsp; u<sub>b</sub>=V+ω(−r<sub>y</sub>,r<sub>x</sub>)</div>
+        <p>clamp 防止退化插值，但也把非常靠近节点的真实界面强制移到链路的 5%–95%。<a class="src" href="simulator.py">simulator.py:1269–1283</a></p>
+
+        <h3>9.2 速度 population 反弹</h3>
+        <p>默认 <code>rigid_boundary_scheme="unified"</code>。若后方 cell <code>x−cq</code> active：</p>
+        <div class="equation">f<sub>bar q</sub><sup>next</sup>(x) = [ηf<sub>bar q</sub><sup>*</sup>(x)+(1−η)f<sub>q</sub><sup>*</sup>(x−c<sub>q</sub>)+ηf<sub>q</sub><sup>*</sup>(x)−6w<sub>q</sub>c<sub>q</sub>·u<sub>b</sub>]/(1+η)</div>
+        <p>若 scheme 选 <code>halfway</code>，或 unified 所需后方 cell 不 active，则：</p>
+        <div class="equation">f<sub>bar q</sub><sup>next</sup>(x)=f<sub>q</sub><sup>*</sup>(x)−6w<sub>q</sub>c<sub>q</sub>·u<sub>b</sub></div>
+        <p class="src"><a href="simulator.py">simulator.py:1260–1294</a></p>
+
+        <h3>9.3 Galilean-invariant link momentum exchange</h3>
+        <div class="equation">Δp<sub>link</sub>=ρ(φ){(c<sub>q</sub>−u<sub>b</sub>)f<sub>out</sub>−(−c<sub>q</sub>−u<sub>b</sub>)f<sub>ref</sub>−2w<sub>q</sub>c<sub>q</sub>}</div>
+        <div class="equation">J<sub>hydro,raw</sub>=ΣΔp<sub>link</sub>, &nbsp; L<sub>hydro,raw</sub>=Σ(r<sub>b</sub>×Δp<sub>link</sub>)</div>
+        <p>乘 <code>ρ(φ)</code> 发生在动量交换，而不是 moving-wall population correction；这与 <code>f</code> 的单位密度约定一致。额外的 <code>−2wq cq</code> 是代码中的静态基线扣除项，需要从采用的 GME 公式和符号约定独立推导。<a class="src" href="simulator.py">simulator.py:1296–1310</a></p>
+
+        <h3>9.4 相场无通量反弹</h3>
+        <div class="equation">h<sub>bar q</sub><sup>next</sup>(x)=h<sub>q</sub><sup>*</sup>(x)−6w<sub>q</sub>φ(x)c<sub>q</sub>·u<sub>b</sub> <span class="muted">（移动冰）</span></div>
+        <div class="equation">h<sub>bar q</sub><sup>next</sup>(x)=h<sub>q</sub><sup>*</sup>(x) <span class="muted">（静态墙）</span></div>
+        <p>代码注释的 “Liu et al. Eq. 51” 可定位到 Liu–Ye–Zhang–Zheng (2023) 的相场 LBM–MPM 耦合论文；完整书目信息见第 17 节。当前注释仍应补上完整来源，而且 reviewer 还需直接打开论文 Eq. 51，核对其方向、壁面速度和本代码 push-stream/halfway 约定，而不能只凭同形公式认定复现。<a class="src" href="simulator.py">simulator.py:1322–1350</a></p>
+        <p>代码没有接触角、壁面自由能或润湿参数；纯反弹只能按近似无通量/中性润湿边界理解，不能从当前输入指定其他静态或动态接触角。</p>
+        <div class="callout warn"><strong>两套边界几何并不相同：</strong>速度 population 在默认分支使用 SDF 交点 <code>η</code> 的 unified interpolation；相场 population 对同一移动冰面始终使用 halfway 反弹，不读取 <code>η</code>。因此动量边界和相场无通量边界代表的有效壁面位置可能不一致，需要界面贴壁/移动斜面收敛测试。</div>
+
+        <h3>9.5 静态容器墙</h3>
+        <p>速度分布采用同点反弹；当 <code>opp(q)&lt;q</code> 时才混入 10% 的静止平衡态，否则完全反弹：</p>
+        <div class="equation">f<sub>bar q</sub><sup>next</sup> = 0.9f<sub>q</sub><sup>*</sup>+0.1f<sub>bar q</sub><sup>eq</sup>(1,0) &nbsp; if bar(q)&lt;q; &nbsp; else f<sub>q</sub><sup>*</sup></div>
+        <div class="callout warn"><strong>方向依赖：</strong>阻尼是否施加取决于 q 的编号，而非几何法向或每对方向对称规则。它继承自 <code>mixture2d</code>，但可能产生方向不对称；需要通过静水/反向流/旋转网格测试判断，而不是只看注释。</div>
+
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="boundary-eta"><span>在水平、垂直、45° 和近端点 cut-link 上手算 η、交点与 unified 公式。</span></label></li>
+          <li><label><input type="checkbox" data-review="boundary-unified"><span>对照 Yu–Mei–Shyy unified interpolation 的方向命名，确认当前 <code>q/opp/back</code> 映射与公式一致。</span></label></li>
+          <li><label><input type="checkbox" data-review="boundary-gme"><span>从 Wen et al. GME 推导当前 link impulse，特别解释 <code>−2wq cq</code> 基线项及力作用方向。</span></label></li>
+          <li><label><input type="checkbox" data-review="boundary-action"><span>验证流体 population 变化与刚体 raw impulse 的 action–reaction 账本；再单独记录滤波/浮力为何破坏全系统逐步严格动量守恒。</span></label></li>
+          <li><label><input type="checkbox" data-review="boundary-static"><span>构造对称静态算例检查 <code>opp&lt;q</code> 的 0.9/0.1 阻尼是否产生净动量或旋转偏置。</span></label></li>
+          <li><label><input type="checkbox" data-review="boundary-liu"><span>打开 Liu et al. (2023) Eq. 51，把论文的方向、壁速、分布定义逐项映射到本代码，而不只核对外观。</span></label></li>
+          <li><label><input type="checkbox" data-review="boundary-phase-location"><span>量化 velocity 的 η-interpolated 壁面与 phase 的 halfway 壁面错位，覆盖移动、旋转和斜界面贴壁。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="rigid">
+        <h2>10. 静水浮力、刚体推进与墙接触</h2>
+        <h3>10.1 显式 Archimedes 浮力</h3>
+        <p>速度型归一化 LBM 没有提供绝对静水压力牵引，代码另做一个体积近似。对每个二值 solid cell，沿同一世界高度求 OBB 水平 chord 两端，在盒外最多各取 3 个 active 样本，再按 cell 在 chord 中的位置插值 φ。<a class="src" href="simulator.py">simulator.py:1468–1525</a></p>
+        <div class="equation">w<sub>cell</sub>=(w·h)/N<sub>solid</sub>, &nbsp; V<sub>disp,water</sub>=Σ<sub>solid</sub>w<sub>cell</sub>φ<sub>sample</sub></div>
+        <div class="equation">J<sub>buoy</sub>=−Σ<sub>solid</sub>w<sub>cell</sub>ρ(φ<sub>sample</sub>)g, &nbsp; L<sub>buoy</sub>≡0</div>
+        <p>把每个二值 cell 权重缩放到解析矩形面积，因此完全浸没时排水面积精确为 <code>w·h</code>。浮力只作用于质心，刻意不产生 torque；它也没有向流体施加等反向体力。<a class="src" href="simulator.py">simulator.py:1527–1554</a></p>
+
+        <h3>10.2 力滤波与自由刚体更新</h3>
+        <div class="equation">J̄<sub>h</sub><sup>n</sup>=(1−α)J̄<sub>h</sub><sup>n−1</sup>+αJ<sub>h,raw</sub><sup>n</sup>, &nbsp; α=force_relaxation</div>
+        <div class="equation">J<sub>total</sub>=s<sub>h</sub>J̄<sub>h</sub>+s<sub>b</sub>J<sub>buoy</sub>+mg, &nbsp; L<sub>total</sub>=s<sub>h</sub>L̄<sub>h</sub></div>
+        <div class="equation">V←d<sub>lin</sub>(V+J<sub>total</sub>/m), &nbsp; ω←d<sub>ang</sub>(ω+L<sub>total</sub>/I)</div>
+        <p>随后先对自由速度应用 <code>max_ice_speed</code>/<code>max_ice_angular_speed</code> cap，再进入接触求解。接触后不再 clamp ω，以免破坏刚完成的角冲量约束。<a class="src" href="simulator.py">simulator.py:1555–1590, 1682–1685</a></p>
+
+        <h3>10.3 底板四角 projected Gauss–Seidel</h3>
+        <p>底板法向 <code>n=(0,1)</code>、切向 <code>t=(1,0)</code>。四角在旧 pose 下建立 lever arm；若 gap 在 slop 内，或预测一步会穿透，就激活 contact。12 轮顺序冲量：</p>
+        <div class="equation">v<sub>n</sub>=V<sub>y</sub>+ωr<sub>x</sub>, &nbsp; K<sub>n</sub><sup>−1</sup>=m<sup>−1</sup>+r<sub>x</sub>²I<sup>−1</sup></div>
+        <div class="equation">ΔJ<sub>n</sub>=(v<sub>target</sub>−v<sub>n</sub>)/K<sub>n</sub><sup>−1</sup>, &nbsp; J<sub>n</sub>←max(0,J<sub>n</sub>+ΔJ<sub>n</sub>)</div>
+        <div class="equation">v<sub>t</sub>=V<sub>x</sub>−ωr<sub>y</sub>, &nbsp; K<sub>t</sub><sup>−1</sup>=m<sup>−1</sup>+r<sub>y</sub>²I<sup>−1</sup></div>
+        <div class="equation">J<sub>t</sub>←clamp(J<sub>t</sub>−v<sub>t</sub>/K<sub>t</sub><sup>−1</sup>, −μJ<sub>n</sub>, +μJ<sub>n</sub>)</div>
+        <p>冲量即时更新 <code>V</code> 和 <code>ω</code>，因此后续角点看到前面角点的结果。restitution 只在入射法速小于 <code>−1e−4</code> 时设目标 <code>−e vn</code>。<a class="src" href="simulator.py">simulator.py:1592–1680</a></p>
+
+        <h3>10.4 位置修正与侧/顶墙</h3>
+        <p>用接触后速度做半隐式 Euler：<code>angle+=ω</code>、<code>center+=V</code>。然后对实际四角再做 12 轮 split impulse 位置修正：80% 超出 <code>1e−5</code> slop 的穿透按相同广义逆质量同时修正 center.y 和 angle，但不改物理速度。</p>
+        <p>侧墙与顶墙不做角点 manifold，而用旋转矩形 AABB extent clamp center；对应法向速度反弹，切向速度和 ω 乘 <code>1−wall_friction</code>。底板只由角点 solver 处理。<a class="src" href="simulator.py">simulator.py:1682–1750</a></p>
+
+        <div class="callout warn"><strong>命名：</strong>所有 <code>*_impulse</code> 每个格子步直接加到动量；格子 <code>Δt=1</code> 时数值上与 force 相同，但物理解释应称 impulse。低通滤波的对象也是 impulse，启动时会把第一步水动力缩小到 <code>α</code> 倍。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="rigid-buoyancy"><span>用全浸没、水平半浸没、左右非对称三种场景复算排水面积和浮力；接受或否决 torque=0 的近似。</span></label></li>
+          <li><label><input type="checkbox" data-review="rigid-momentum"><span>区分 raw hydrodynamic、filtered hydrodynamic、explicit buoyancy 和 gravity 四个 impulse 来源，核对符号与 scale。</span></label></li>
+          <li><label><input type="checkbox" data-review="rigid-contact"><span>逐角验证法向/切向 effective mass、角冲量符号和 Coulomb bound。</span></label></li>
+          <li><label><input type="checkbox" data-review="rigid-integrator"><span>确认 cap → contact velocity solve → semi-implicit pose → split position solve → side/top clamp 的顺序符合设计。</span></label></li>
+          <li><label><input type="checkbox" data-review="rigid-walls"><span>评估底板用 OBB 角点、侧/顶墙用 AABB clamp 的不一致是否会影响大角度碰撞。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="geometry">
+        <h2>11. 新姿态几何、fractional 账本与 fresh-node refill</h2>
+        <h3>11.1 精确 OBB–unit-cell 相交</h3>
+        <p><code>_cell_solid_fraction_exact</code> 把 unit cell 四角变换到 body frame，用 Sutherland–Hodgman 依次裁剪到矩形四个半平面，最多 8 个顶点，最后用 shoelace 公式求面积并 clamp 到 [0,1]。<a class="src" href="simulator.py">simulator.py:568–668</a></p>
+        <p>性能优化：SDF 距离小于 <code>−√0.5</code> 的 cell 直接 fraction=1，大于等于 <code>√0.5</code> 直接 0；只有 O(perimeter) 界面带做多边形裁剪。<a class="src" href="simulator.py">simulator.py:741–768</a></p>
+        <div class="equation">A<sub>solid</sub>=Σα<sub>ij</sub>, &nbsp; error<sub>area</sub>=A<sub>solid</sub>−wh</div>
+        <div class="equation">R<sub>GCL</sub>=Σ(α<sub>ij</sub><sup>old</sup>−α<sub>ij</sub><sup>new</sup>)</div>
+        <p>对固定面积刚体，理论上两者都接近 0；这是几何审计，不是 LBM 的 cut-cell GCL 通量保证。</p>
+
+        <h3>11.2 Fractional water ledger</h3>
+        <p>对 binary solid cell 用 <code>stored_phi</code> 延拓相场，再用 <code>1−solid_fraction</code> 加权：</p>
+        <div class="equation">V<sub>geo,before</sub>=Σ(1−α<sup>old</sup>) clamp(φ<sub>extended</sub>,0,1)</div>
+        <div class="equation">V<sub>swept</sub>=Σ(α<sup>old</sup>−α<sup>new</sup>) clamp(φ<sub>old,extended</sub>,0,1)</div>
+        <div class="equation">V<sub>geo,after</sub>=Σ(1−α<sup>new</sup>) clamp(φ<sub>new,extended</sub>,0,1)</div>
+        <div class="equation">E<sub>geo,remap</sub>=V<sub>geo,after</sub>−V<sub>geo,before</sub></div>
+        <p class="src"><a href="simulator.py">simulator.py:824–890</a></p>
+        <div class="callout warn"><strong>名称解释：</strong><code>geometric_water_remap_error</code> 只做 after−before，没有减去 <code>geometric_swept_water_volume</code>。因此它不是常见形式 <code>after−before−swept</code> 的 GCL residual；两个量必须并列解释。</div>
+
+        <h3>11.3 二值 topology 变化</h3>
+        <table>
+          <thead><tr><th>事件</th><th>条件</th><th>处理</th><th>账本</th></tr></thead>
+          <tbody>
+            <tr><td>became solid</td><td><code>solid_prev=0, solid=1</code></td><td>保存 bounded φ 和 <code>p_temp</code>；设 φ=0/rho=air；u=body velocity；f=equilibrium(1,u)，h=0</td><td><code>binary_covered_water += old φ</code></td></tr>
+            <tr><td>became fluid</td><td><code>solid_prev=1, solid=0</code></td><td>只从 8 邻域中“旧时已是 fluid 且现在 active”的 cell 平均 φ/p/u；若无邻居则用 stored φ/p 和 body velocity；f/h 设 equilibrium</td><td><code>binary_fresh_water += new φ</code></td></tr>
+          </tbody>
+        </table>
+        <div class="equation">E<sub>binary,remap</sub>=V<sub>fresh</sub>−V<sub>covered</sub></div>
+        <p>只读旧 fluid 邻居避免同一个 GPU kernel 内 fresh cell 相互读取造成调度依赖。refill 抛弃 covered/fresh cell 的所有非平衡 populations；水量误差随后由全局界面投影承担。覆盖/释放单元时重设 <code>f/u</code> 所造成的流体动量变化没有作为反作用冲量累计给刚体，因此 cut-link GME 并不是移动 topology 的完整动量账本。<a class="src" href="simulator.py">simulator.py:903–971</a></p>
+
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="geometry-clip"><span>验证多边形裁剪的四个 half-plane、交点插值、顶点顺序和 shoelace 面积，覆盖 0/1/cut 三类 cell。</span></label></li>
+          <li><label><input type="checkbox" data-review="geometry-gcl"><span>对平移、旋转和贴墙姿态检查解析面积误差与 GCL residual 的 f64 容差。</span></label></li>
+          <li><label><input type="checkbox" data-review="geometry-ledger"><span>确认 geometric remap error 与 swept-water 的预期恒等式，避免误读 diagnostics 名称。</span></label></li>
+          <li><label><input type="checkbox" data-review="geometry-refill"><span>检查 fresh-node 邻域选择无 GPU race，并评估 equilibrium-only 重建带来的局部动量/应力损失。</span></label></li>
+          <li><label><input type="checkbox" data-review="geometry-momentum"><span>单独计算 covered/fresh type-change 前后的流体动量差，判断是否需要给刚体等反作用或记录为模型近似。</span></label></li>
+          <li><label><input type="checkbox" data-review="geometry-binary"><span>明确 binary active-node water target 与 fractional physical water volume 是两套不同账本，不能互相替代。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="projection">
+        <h2>12. 无融化水量的严格界面熵投影</h2>
+        <p class="lead">每步末尾不是按全域均摊质量误差，而是只平移与 <code>φ=0.5</code> 连通的弥散界面。精确 pure air/water 是不动点；无法在允许界面位移内恢复目标时明确报错。</p>
+        <div class="callout"><strong>来源边界：</strong>这一 logit/KL 全局投影是当前 <code>iceflow2d</code> 分支的自定义实现，不是 Xiao et al. (2026) Eq. 52 的比例相场源项控制器；仓库目前没有给它外部算法引用。review 时应把下面的变分推导作为实现设计证据，不要误引主论文来背书。</div>
+        <h3>12.1 不变量与预处理</h3>
+        <div class="equation">V<sub>target</sub>=Σ<sub>active at t=0</sub>φ<sub>sharp,0</sub>, &nbsp; E<sub>V</sub>=V<sub>target</sub>−Σ<sub>active now</sub>φ</div>
+        <p><code>_clip_water_phase_for_projection</code> 先 clamp；若 <code>φ&lt;cutoff</code> 置 0，若 <code>φ&gt;1−cutoff</code> 置 1。改变 φ 时，不直接把 h 设平衡，而做：</p>
+        <div class="equation">h<sub>q</sub><sup>new</sup>=h<sub>q</sub><sup>old</sup>+h<sub>q</sub><sup>eq</sup>(φ<sub>new</sub>,u)−h<sub>q</sub><sup>eq</sup>(φ<sub>old</sub>,u)</div>
+        <p>所以理论上 <code>h−heq</code> 的非平衡部分不变；再把 f32 零阶矩误差补到 <code>q=0</code>。<a class="src" href="simulator.py">simulator.py:1793–1827</a></p>
+
+        <h3>12.2 选择“真实界面”</h3>
+        <ol>
+          <li>candidate：active 且 <code>cutoff&lt;φ&lt;1−cutoff</code>。</li>
+          <li>seed：本 cell 等于 0.5，或 8 邻域任一 active cell 与它跨越 0.5。</li>
+          <li>在 candidate 内做确定性的 8-connected ping-pong dilation。pass 数为偶数，保证最终 mask 在 primary field。</li>
+          <li>带半径 <code>ceil[(W/4)ln((1−cutoff)/cutoff)]</code>，且至少 2、向上取偶数。默认 <code>W=5, cutoff=1e−3</code> 得到 10 passes。</li>
+        </ol>
+        <p class="src"><a href="simulator.py">simulator.py:161–169, 1828–1895</a></p>
+
+        <h3>12.3 Bernoulli relative-entropy map</h3>
+        <div class="equation">T<sub>λ</sub>(φ)= φe<sup>λ</sup> / [1−φ+φe<sup>λ</sup>] = sigmoid(logit(φ)+λ)</div>
+        <div class="equation">V(λ)=Σ<sub>outside mask</sub>φ + Σ<sub>mask</sub>T<sub>λ</sub>(φ), &nbsp; V′(λ)=Σ<sub>mask</sub>T<sub>λ</sub>(φ)[1−T<sub>λ</sub>(φ)]</div>
+        <p><span class="tag derived">代码推导</span> 这是在固定总和约束下最小化逐 cell Bernoulli KL/relative entropy 的拉格朗日解。<code>Tλ(0)=0</code>、<code>Tλ(1)=1</code>，且严格单调。代码在 reduction 前把 mapped 值舍入为 f32，使求根看到的质量与最终存储一致。<a class="src" href="simulator.py">simulator.py:1896–1950</a></p>
+
+        <h3>12.4 受限 Newton–bisection</h3>
+        <div class="equation">|λ|≤λ<sub>limit</sub>=4Δs<sub>max</sub>/W, &nbsp; reported shift=(W/4)|λ|</div>
+        <ol>
+          <li>若 clip 后误差在 <code>tol·max(1,|Vtarget|)</code> 内，直接返回。</li>
+          <li>若没有 mask cell，报 infeasible；不向 bulk 播种。</li>
+          <li>先算 <code>V(±λlimit)</code>，目标不在可达区间就报 exceeds permitted shift。</li>
+          <li>从 λ=0 开始 Newton；导数无效或 proposal 出 bracket 时改用二分。最多 64 次。</li>
+          <li>由于 f32 map 是阶梯函数，保留残差最小的 best λ；只有满足声明 tolerance 才接受。</li>
+          <li>应用同一 equilibrium lift，再 measure；ledger 不一致则报错。</li>
+        </ol>
+        <p class="src"><a href="simulator.py">simulator.py:1952–2060</a></p>
+
+        <div class="callout warn"><strong>约束对象：</strong>投影严格守恒的是“当前二值 active nodes 上的 <code>Σφ</code>”，不是 <code>Σ(1−solid_fraction)φ</code>。移动刚体导致真实 cut-cell 容积变化时，strict binary target 与 fractional geometry ledger 可能同时各自正确却数值不同。</div>
+        <div class="callout warn"><strong>容差：</strong>默认相对 tolerance <code>1e−9</code> 对大网格 target 会放宽为约 <code>O(10−5)</code> cells；测试 helper 采用另一个更宽的 <code>max(5e−5,5e−8 target)</code> 判据。文档/测试/配置三者的“strict”需要统一解释。</div>
+        <div class="callout warn"><strong>失败不是事务性的：</strong><code>_correct_water_volume</code> 在证明可行/收敛之前就会 clip/canonicalize 并修改 <code>φ/h/rho</code>；若随后因无 seed、shift 超限或存储精度而抛错，调用前状态不会自动恢复。若它由完整 <code>step</code> 调用，刚体推进、几何移动和 refill 也已经发生，但 <code>steps</code> 尚未加一。上层不能把异常理解为“这一步完全没执行”。</div>
+        <div class="callout warn"><strong>极端配置的数值风险：</strong><code>volume_projection_max_shift</code> 只要求有限正数、没有合理上界；kernel 直接计算 <code>exp(λ)</code> 而非稳定的 logit/sigmoid 分支。过大的有限配置会使 <code>4·shift/W</code> 或指数溢出，继而产生 <code>∞/∞</code>。应加上界或稳定实现，并测试大正/负 λ。</div>
+        <div class="callout"><strong>ledger 命名：</strong><code>_measure_water_volume</code> 中 <code>water_volume_raw</code> 与 <code>water_volume_current</code> 对同一 active <code>φ</code> 做完全相同的和；而 correction 在 measure 前已经 clip。因此公开的 “raw” 既不区别 current，也不是投影前原始质量。<a class="src" href="simulator.py">simulator.py:1779–1791, 1965–1970</a></div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="projection-map"><span>推导 entropy map、单调性、导数和 <code>shift=W|λ|/4</code> 与 logistic profile 的关系。</span></label></li>
+          <li><label><input type="checkbox" data-review="projection-mask"><span>可视化 candidate/seed/dilated mask，确认只选中目标自由表面，不选 disconnected numerical speckles。</span></label></li>
+          <li><label><input type="checkbox" data-review="projection-lift"><span>验证 clip 和 projection 前后 <code>h−heq</code> 在 changed cells 上保持到 f32 容差，且 <code>Σh=φ</code>。</span></label></li>
+          <li><label><input type="checkbox" data-review="projection-errors"><span>覆盖四条路径：无需修正、正常收敛、无界面 infeasible、超过 max shift/存储精度不收敛。</span></label></li>
+          <li><label><input type="checkbox" data-review="projection-transaction"><span>对每个 failure path 比较异常前后状态，决定采用 rollback、预检查，还是明确记录 partial-step 语义。</span></label></li>
+          <li><label><input type="checkbox" data-review="projection-exp"><span>对 max shift 建立物理/数值上界，并验证稳定 sigmoid 在极端 λ 下不产生 NaN/Inf。</span></label></li>
+          <li><label><input type="checkbox" data-review="projection-control-volume"><span>明确项目真正需要守恒 binary volume 还是 fractional physical volume，并据此评价当前实现。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="output">
+        <h2>13. 帧输出、metadata 与 diagnostics</h2>
+        <h3>运行与文件时序</h3>
+        <ul>
+          <li><code>run</code> 先创建目录并写一次 metadata；每帧先走 N 步，再保存 <code>frame_XXXXX.png</code>，可选 NPZ，最后递增 frame；全部结束再覆写 metadata。<a class="src" href="simulator.py">simulator.py:312–332</a></li>
+          <li><code>save_frame</code> 调 render kernel；Taichi native image 是 <code>(nx,ny,3)</code>，文件先 transpose 为 <code>(ny,nx,3)</code> 再竖直 flip。优先 imageio；任意异常都 fallback 到 matplotlib。<a class="src" href="simulator.py">simulator.py:334–353</a></li>
+          <li>NPZ 保存 φ、rho、u、p、solid、solid_fraction、sdf 和四个刚体状态；不保存 f/h populations，因此不能无损 restart。<a class="src" href="simulator.py">simulator.py:355–371</a></li>
+          <li>GUI 使用 native layout；每次 <code>gui.show()</code> 与文件保存同一帧，但代码没有处理用户关闭事件。</li>
+        </ul>
+
+        <h3>颜色映射</h3>
+        <div class="equation">color = (1−clamp φ)·air + clamp φ·water; &nbsp; solid→blue-white height tint; &nbsp; wall→dark gray</div>
+        <p class="src"><a href="simulator.py">simulator.py:2065–2082</a></p>
+
+        <h3>Metadata 与诊断</h3>
+        <p><code>metadata.json</code> 包含固定能力声明、Taichi 版本、steps/frame、格子缩放、完整 config 和一次 <code>diagnostics()</code> 快照。diagnostics 把 16 个大场全部传回 NumPy 来检查有限性，并计算 active φ min/max、最大流速、body inside、各种 impulse/volume/GCL 值。<a class="src" href="simulator.py">simulator.py:373–541</a></p>
+        <div class="callout warn"><strong>成本与错误语义：</strong>写 metadata 会把所有大场从 GPU 拷回 CPU；默认只在 run 前后发生。<code>save_frame</code> 对 imageio 的 <em>所有</em>异常都尝试 matplotlib，可能把权限/磁盘错误误判成“缺少 imageio”。</div>
+        <div class="callout warn"><strong>finite 标志并非全状态证明：</strong><code>fluid_finite</code> 的 16 个数组不含以后会参与 refill 的 <code>stored_phi/stored_pressure</code>，也不含图像等辅助场；<code>rigid_finite</code> 的 scalar 列表不含 <code>water_volume_raw</code>、projection mass/derivative 等若干公开诊断。因而两个标志都为 true 仍不能推出所有保存字段/未来读取状态有限。另有 <code>water_volume_raw==water_volume_current</code> 的重复语义。</div>
+        <div class="callout warn"><strong>可复现性：</strong>metadata 没有源码 commit、工作区 dirty 状态、GPU 型号、随机种子（当前无随机）、执行命令或依赖版本（除 Taichi）。本文的 snapshot 信息不由运行代码自动写入。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="output-orientation"><span>用非对称标记场验证 PNG 的 transpose+flip 与 GUI 坐标方向一致。</span></label></li>
+          <li><label><input type="checkbox" data-review="output-restart"><span>确认 NPZ 仅用于分析而非 checkpoint；如需 restart，列出必须补存的 populations/历史/计数器。</span></label></li>
+          <li><label><input type="checkbox" data-review="output-diagnostics"><span>检查 diagnostics 中每个量的时刻语义，尤其 raw/filtered impulse、remap ledger 和投影结果属于哪个 step。</span></label></li>
+          <li><label><input type="checkbox" data-review="output-finite-coverage"><span>向 finite 检查注入 stored/projection 非有限值，确认标志的覆盖边界；决定补齐或改名以免误解。</span></label></li>
+          <li><label><input type="checkbox" data-review="output-json-scalars"><span>用 Python float 与 NumPy scalar 分别构造配置并写 metadata，统一输入规范或做显式 JSON 归一化。</span></label></li>
+          <li><label><input type="checkbox" data-review="output-provenance"><span>决定是否把 commit/dirty 状态、命令和完整依赖/GPU 信息加入 metadata。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="tests">
+        <h2>14. 测试覆盖与建议验证顺序</h2>
+        <h3>现有测试矩阵</h3>
+        <table>
+          <thead><tr><th>测试</th><th>验证内容</th><th>未验证</th></tr></thead>
+          <tbody>
+            <tr><td><a class="src" href="test_iceflow.py">test_iceflow.py:12–31</a></td><td>默认几何/质量、未知配置、底摩擦范围</td><td>大部分 config 边界由 projection tests 部分覆盖，其余没有逐项 test</td></tr>
+            <tr><td><a class="src" href="test_iceflow.py">:35–67</a></td><td>64×32、5 warm-up、200 steps；有限性、body inside、cut link、水量误差、速度、PNG 尺寸</td><td>数值解精度、动量/能量收敛、默认 600×300 长时稳定</td></tr>
+            <tr><td><a class="src" href="test_iceflow.py">:69–118</a></td><td>全浸没/水平部分浸没排水面积；非对称 φ 有浮力但无人工 torque</td><td>非零重力下绝对浮力数值、旋转体/动态自由表面误差</td></tr>
+            <tr><td><a class="src" href="test_iceflow.py">:120–192</a></td><td>底角 contact 的平动/转动回归；位置修正不注入速度</td><td>多次撞击、侧/顶墙、大角度、restitution 能量界限</td></tr>
+            <tr><td><a class="src" href="test_iceflow.py">:194–234</a></td><td>底板 Coulomb bound、线/角动量账本</td><td>stick→slip 阈值扫描、非零角速度、多接触收敛性</td></tr>
+            <tr><td><a class="src" href="test_volume_projection.py">:46–75</a></td><td>旧 correction-rate 已删除；投影参数范围</td><td>max shift 与 W 的联合物理合理性</td></tr>
+            <tr><td><a class="src" href="test_volume_projection.py">:95–148</a></td><td>投影守恒、有界、pure bulk 不变、h non-equilibrium lift</td><td>多连通真实界面与 mask topology</td></tr>
+            <tr><td><a class="src" href="test_volume_projection.py">:150–211</a></td><td>overshoot clip、bulk tail 清理、无界面 infeasible</td><td>超过 max shift、最大迭代/阶梯函数不收敛分支</td></tr>
+            <tr><td><a class="src" href="test_volume_projection.py">:213–276</a></td><td>moving mask 的 covered/fresh、fractional area/GCL、projection 后质量与远端空气不变</td><td>长期累计 remap、真实 coupled body motion</td></tr>
+            <tr><td><a class="src" href="../tests/test_ice_fall_example.py">test_ice_fall_example.py:37–130</a></td><td>全宽水池、分辨率缩放、旋转 OBB 真实间隙、常规 config 构造、界面/顶墙/过小离散尺寸拒绝分支；不导入 Taichi 即可执行</td><td>CUDA 初始化后的水平水池相场，以及从自由落体到首次入水的动态链路</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout warn"><strong>当前工作区尚未动态执行：</strong>Python 3.13.9 环境没有安装 Taichi，而 <code>iceflow2d.__init__</code> 会立即导入 simulator，所以连“仅配置”的两个 test class 也会在收集/import 阶段被阻断。这里完成的是 AST/源码与 HTML 静态校验；数值断言必须转到 Taichi 1.7.4 + CUDA 环境。</div>
+        <div class="callout warn"><strong>项目默认测试命令仍会漏掉两份包内回归：</strong>根 <code>README.md</code> 给出的 <code>python -m unittest discover -s tests</code> 会执行新增的纯配置落冰测试，但不会执行放在 <code>iceflow2d/test_*.py</code> 的两份 CUDA 回归。CI/验收必须显式加入下面两个模块，或把测试统一迁入 test suite。</div>
+
+        <h3>目标 CUDA 环境运行命令</h3>
+        <pre><code># 先跑无需 Taichi/CUDA 的落冰入口几何与配置测试
+python -m unittest -v tests.test_ice_fall_example
+
+# 再跑不构造 simulator 的包内配置测试（注意包 import 仍需要 taichi 可导入）
+python -m unittest -v \
+  iceflow2d.test_iceflow.IceFlowConfigTests \
+  iceflow2d.test_volume_projection.IceFlowVolumeProjectionConfigTests
+
+# 再跑全部 CUDA 回归
+python -m unittest -v \
+  iceflow2d.test_iceflow \
+  iceflow2d.test_volume_projection
+
+# 最小端到端人工验收
+python iceflow2d/examples/dam_break_2d.py \
+  --frames 2 --steps-per-frame 5 \
+  --resolution-x 120 --resolution-y 60 \
+  --reference-length-cells 300 \
+  --save-npz --progress \
+  --output-dir outputs/iceflow2d/review-smoke
+
+# 新落冰场景的小网格端到端验收
+python iceflow2d/examples/ice_fall_2d.py \
+  --frames 2 --steps-per-frame 5 \
+  --resolution-x 120 --resolution-y 60 \
+  --drop-height-cells 12 --progress \
+  --output-dir outputs/iceflow2d/ice-fall-smoke</code></pre>
+
+        <h3>建议补充的高价值测试</h3>
+        <ol>
+          <li><strong>D2Q9/property test：</strong>方向、权重、opposite、平衡态 moments、中心矩 reconstruction round-trip。</li>
+          <li><strong>静止流：</strong>无重力、静态矩形、均匀 φ/u=0 应长期保持；检测静态 wall 的方向阻尼净偏置。</li>
+          <li><strong>Galilean test：</strong>流体和刚体加同一均匀速度，GME 力应近似不变。</li>
+          <li><strong>边界收敛：</strong>旋转 box Poiseuille/Couette，比较 unified/halfway 的网格收敛和质量漂移。</li>
+          <li><strong>守恒账本：</strong>逐步记录 fluid momentum change、raw link impulse、contact/gravity/buoyancy，明确哪些部分应闭合。</li>
+          <li><strong>投影 failure branches：</strong>超过 max shift、f32 storage plateau、多个 disconnected 0.5 界面。</li>
+          <li><strong>默认长跑：</strong>120×100 或缩放等价长跑，检查 cap 命中次数、volume shift 分布、finite/inside/GCL。</li>
+        </ol>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="tests-existing"><span>在 CUDA 目标环境运行两份现有测试并保存完整日志、Taichi/GPU/driver 版本。</span></label></li>
+          <li><label><input type="checkbox" data-review="tests-smoke"><span>运行最小端到端命令，检查 PNG、NPZ、metadata 的 shape/方向/字段。</span></label></li>
+          <li><label><input type="checkbox" data-review="tests-new"><span>至少补齐 D2Q9 moments、静止流方向对称性、Galilean GME 和投影 failure branches。</span></label></li>
+          <li><label><input type="checkbox" data-review="tests-long"><span>在正式接受前执行代表性长跑，记录 caps、投影 shift、volume/GCL 和最大 Mach 的时间序列。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="risks">
+        <h2>15. 人工 review 应优先回答的问题</h2>
+        <p class="lead">以下是静态审阅发现的“证据不足或设计近似”，不是未经运行验证的 bug 结论。建议把每项回答为：接受、修改、补测试、或记录为已知限制。</p>
+        <table>
+          <thead><tr><th>优先级</th><th>问题</th><th>为什么重要</th><th>定位/建议证据</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag risk">P0</span></td><td>投影失败会留下已修改的 partial step</td><td>clip、刚体/几何推进和 refill 不 rollback，异常重试可能从意外状态继续</td><td><a class="src" href="simulator.py">:286–310, 1952–2060</a>；failure-state snapshot/rollback test</td></tr>
+            <tr><td><span class="tag risk">P0</span></td><td>static wall 只对 <code>opp&lt;q</code> 的方向混 10% equilibrium</td><td>可能造成编号/方向依赖的耗散或净动量</td><td><a class="src" href="simulator.py">:1311–1320</a>；对称静止流测试</td></tr>
+            <tr><td><span class="tag risk">P0</span></td><td>GME 中 <code>−2wq cq</code> 基线项的来源</td><td>直接决定刚体水动力大小与符号</td><td><a class="src" href="simulator.py">:1296–1309</a>；文献逐式映射+Galilean test</td></tr>
+            <tr><td><span class="tag risk">P0</span></td><td>严格守恒对象是 binary <code>Σactive φ</code>，fractional volume 仅诊断</td><td>“体积守恒”物理含义可能与用户预期不同</td><td><a class="src" href="README.md">README:24–27</a>；控制体需求评审</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>浮力是显式质心修正，无反作用、无 torque</td><td>稳定但非全系统严格动量守恒；动态斜浸没可能失真</td><td><a class="src" href="simulator.py">:1527–1554</a>；与压力牵引 benchmark 对比</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>运行时 artificial viscosity 未做 τ 上界保护</td><td>配置只验证分子黏度 τ≤2，高 strain 可改变 collision stability</td><td><a class="src" href="simulator.py">:1043–1047,1088–1090</a>；记录 τmax</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>默认 12,000 步全程使用空气压力梯度×0.1</td><td>这是持续的经验模型，而不只是短暂启动</td><td><a class="src" href="simulator.py">:1052–1054</a>；参数扫描</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>viscosity 的物理单位没有声明</td><td>若把动力黏度当运动黏度，缩放和 τ 全错</td><td><a class="src" href="config.py">config.py:48–49</a>；补单位/命名</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>fresh nodes 只重建 equilibrium</td><td>丢失非平衡 stress，可能产生 moving-boundary force spikes</td><td><a class="src" href="simulator.py">:932–970</a>；与 nonequilibrium refill 对比</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>type-change 动量没有等反作用给刚体</td><td>覆盖/释放时重设 f/u，GME 无法独自闭合全系统动量</td><td><a class="src" href="simulator.py">:903–971</a>；逐步动量 ledger</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>velocity 边界用 η，phase 边界固定 halfway</td><td>同一冰面上的有效动量壁面和无通量壁面可能错位</td><td><a class="src" href="simulator.py">:1269–1294, 1334–1347</a>；贴壁界面收敛</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>remap/projection 后不重算压力</td><td>下一步 force 读取 remap 前或邻域插值压力，与新 φ/rho 可能不一致</td><td><a class="src" href="simulator.py">:286–310, 932–970</a>；时刻一致性测试</td></tr>
+            <tr><td><span class="tag risk">P1</span></td><td>entropy map 的指数没有稳定分支</td><td>允许的极大 finite max shift 可令 exp(λ) 或 λ 本身溢出</td><td><a class="src" href="simulator.py">:1896–1950, 1986–1998</a>；稳定 sigmoid + 上界</td></tr>
+            <tr><td><span class="tag risk">P2</span></td><td>底板 OBB contact 与侧/顶墙 AABB clamp 不一致</td><td>大角度侧碰撞的接触点/torque 不真实</td><td><a class="src" href="simulator.py">:1687–1745</a>；旋转撞墙测试</td></tr>
+            <tr><td><span class="tag risk">P2</span></td><td>contact 后不再保证 angular-speed cap</td><td>接触冲量可把 ω 推过配置上限；这是有意保持冲量约束但改变 cap 契约</td><td><a class="src" href="simulator.py">:1582–1590, 1682–1685</a>；记录 post-contact max</td></tr>
+            <tr><td><span class="tag risk">P2</span></td><td><code>geometric_water_remap_error</code> 没包含 swept term</td><td>diagnostics 名称容易被当成 GCL residual</td><td><a class="src" href="simulator.py">:841–873</a>；重命名或补组合量</td></tr>
+            <tr><td><span class="tag risk">P2</span></td><td>force low-pass、speed caps、damping 的物理解释</td><td>会改变动量/能量和瞬态响应</td><td><a class="src" href="config.py">config.py:71–90</a>；报告命中与敏感性</td></tr>
+            <tr><td><span class="tag risk">P2</span></td><td>缺少 restart 与充分 provenance</td><td>长跑失败难恢复，结果难完全复现</td><td><a class="src" href="simulator.py">:355–401</a></td></tr>
+            <tr><td><span class="tag risk">P2</span></td><td>finite/metadata API 有覆盖与标量类型缺口</td><td>诊断可能假阴性，NumPy scalar 配置可能在 JSON 输出时才失败</td><td><a class="src" href="simulator.py">:373–541</a>，<a class="src" href="config.py">config.py:15–25, 308–310</a></td></tr>
+          </tbody>
+        </table>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="risk-p0"><span>所有 P0 项都有书面结论和对应测试/推导，不以“来自旧代码”作为充分依据。</span></label></li>
+          <li><label><input type="checkbox" data-review="risk-p1"><span>所有 P1 数值近似都做过目标参数敏感性分析。</span></label></li>
+          <li><label><input type="checkbox" data-review="risk-limit"><span>README/论文/结果报告明确区分：binary active-node 守恒、fractional geometry audit、全系统动量不严格守恒。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="inventory">
+        <h2>16. 全函数覆盖表</h2>
+        <p class="lead">用本表做最终“没有漏读”审计。默认路径未触发的函数仍需看，因为它们属于公共 API、输出分支或测试证据。</p>
+        <details open><summary>入口、配置与 lattice.py</summary><div>
+          <table>
+            <thead><tr><th>定位</th><th>符号</th><th>职责 / 触发条件</th></tr></thead>
+            <tbody>
+              <tr><td><a class="src" href="examples/dam_break_2d.py">example:15–55</a></td><td><code>parse_args</code></td><td>CLI 解析/校验；默认入口</td></tr>
+              <tr><td><a class="src" href="examples/dam_break_2d.py">example:58–84</a></td><td><code>main</code> + guard</td><td>构造 config/simulator 并 run</td></tr>
+              <tr><td><a class="src" href="examples/ice_fall_2d.py">ice_fall example:18–126</a></td><td><code>derive_ice_fall_geometry</code></td><td>水平水池、旋转 OBB 间隙及场景边界检查</td></tr>
+              <tr><td><a class="src" href="examples/ice_fall_2d.py">ice_fall example:129–211</a></td><td><code>parse_args</code></td><td>落冰 CLI 解析与场景校验</td></tr>
+              <tr><td><a class="src" href="examples/ice_fall_2d.py">ice_fall example:214–252</a></td><td><code>create_ice_fall_config</code></td><td>把派生几何映射到公共 IceFlowConfig</td></tr>
+              <tr><td><a class="src" href="examples/ice_fall_2d.py">ice_fall example:255–281</a></td><td><code>main</code> + guard</td><td>构造 simulator 并运行独立落冰场景</td></tr>
+              <tr><td><a class="src" href="__init__.py">__init__:1–28</a></td><td>exports/aliases</td><td>公共 API；import 时</td></tr>
+              <tr><td><a class="src" href="__main__.py">__main__:1–9</a></td><td>module entry</td><td><code>python -m iceflow2d</code> 时</td></tr>
+              <tr><td><a class="src" href="config.py">config:15–26</a></td><td><code>_finite/_positive</code></td><td>标量验证 helper</td></tr>
+              <tr><td><a class="src" href="config.py">config:29–266</a></td><td><code>IceFlowConfig/__post_init__</code></td><td>全部参数及合法性/稳定性检查</td></tr>
+              <tr><td><a class="src" href="config.py">config:268–306</a></td><td><code>nx,ny,water_*,ice_*,mass,inertia</code></td><td>派生 property</td></tr>
+              <tr><td><a class="src" href="config.py">config:308–327</a></td><td><code>to_dict/create_iceflow_config</code></td><td>metadata 与 factory</td></tr>
+              <tr><td><a class="src" href="config.py">config:312–330</a></td><td>兼容 aliases</td><td>旧命名迁移</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:13–26</a></td><td><code>Q,C,W,OPPOSITE</code></td><td>Python 侧 D2Q9 常量</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:29–80</a></td><td><code>_c/_w/_opp</code></td><td>Taichi 内联方向/权重/反向</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:83–101</a></td><td><code>_feq/_heq/_inside</code></td><td>两套平衡态与边界检查</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:104–119</a></td><td><code>_rho_mix/_viscosity_mix/_tau_mix</code></td><td>相场混合物性</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:122–160</a></td><td><code>_axis_c/_inv1d</code></td><td>轴向稳定项与 1D 矩逆基</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:163–186</a></td><td><code>_reconstruct_central/_cross2</code></td><td>中心矩重建、二维叉积</td></tr>
+              <tr><td><a class="src" href="lattice.py">lattice:189–208</a></td><td><code>__all__</code></td><td>显式导出清单</td></tr>
+            </tbody>
+          </table>
+        </div></details>
+
+        <details open><summary>simulator.py：宿主控制、几何与初始化</summary><div>
+          <table>
+            <thead><tr><th>定位</th><th>符号</th><th>职责 / 触发条件</th></tr></thead>
+            <tbody>
+              <tr><td><a class="src" href="simulator.py">:46–54</a></td><td><code>_format_duration</code></td><td>进度 ETA</td></tr>
+              <tr><td><a class="src" href="simulator.py">:57–107</a></td><td><code>_TerminalProgress</code> 全部方法</td><td>可选 stderr progress；label 参数未用于显示文本</td></tr>
+              <tr><td><a class="src" href="simulator.py">:110–122</a></td><td><code>ensure_taichi_cuda</code></td><td>全局 runtime 初始化/arch 检查</td></tr>
+              <tr><td><a class="src" href="simulator.py">:125–285</a></td><td><code>IceFlow2D.__init__</code></td><td>缩放、分配、完整初始化</td></tr>
+              <tr><td><a class="src" href="simulator.py">:286–310</a></td><td><code>step</code></td><td>完整耦合时间步主调度</td></tr>
+              <tr><td><a class="src" href="simulator.py">:312–332</a></td><td><code>run</code></td><td>帧循环、输出、metadata</td></tr>
+              <tr><td><a class="src" href="simulator.py">:334–401</a></td><td><code>save_frame/save_state_npz/write_metadata</code></td><td>PNG/NPZ/JSON 输出；NPZ/GUI 条件分支</td></tr>
+              <tr><td><a class="src" href="simulator.py">:403–541</a></td><td><code>diagnostics</code></td><td>GPU→CPU 有限性/状态账本</td></tr>
+              <tr><td><a class="src" href="simulator.py">:546–566</a></td><td><code>_active/_box_sdf</code></td><td>拓扑谓词与 OBB SDF</td></tr>
+              <tr><td><a class="src" href="simulator.py">:568–668</a></td><td><code>_cell_solid_fraction_exact</code></td><td>凸多边形裁剪求 cell 占比</td></tr>
+              <tr><td><a class="src" href="simulator.py">:670–694</a></td><td><code>_body_velocity_at/_cell_point/_phase_neighbor</code></td><td>刚体点速度、cell center、相场 ghost fallback</td></tr>
+              <tr><td><a class="src" href="simulator.py">:696–739</a></td><td><code>_initialize_body/_initialize_geometry</code></td><td>刚体和二值几何初始化</td></tr>
+              <tr><td><a class="src" href="simulator.py">:741–786</a></td><td><code>_compute/_update/_initialize_fractional_geometry*</code></td><td>fractional 占比与历史账本</td></tr>
+              <tr><td><a class="src" href="simulator.py">:788–816</a></td><td><code>_initialize_fluid</code></td><td>锐利水柱与 equilibrium populations</td></tr>
+              <tr><td><a class="src" href="simulator.py">:818–890</a></td><td><code>_save_previous_geometry</code> + 4 个 geometry-water kernels</td><td>旧/新 fractional 水账本</td></tr>
+              <tr><td><a class="src" href="simulator.py">:892–971</a></td><td><code>_rasterize_ice/_refill_changed_nodes</code></td><td>新 topology 与 covered/fresh remap</td></tr>
+            </tbody>
+          </table>
+        </div></details>
+
+        <details open><summary>simulator.py：流体、边界、刚体、投影与渲染</summary><div>
+          <table>
+            <thead><tr><th>定位</th><th>符号</th><th>职责 / 触发条件</th></tr></thead>
+            <tbody>
+              <tr><td><a class="src" href="simulator.py">:976–1075</a></td><td><code>_compute_fluid_force</code></td><td>全部格子加速度/稳定化</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1077–1130</a></td><td><code>_collide_velocity</code></td><td>速度中心矩 collision</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1131–1245</a></td><td><code>_collide_phase</code></td><td>相场中心矩 collision/source</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1246–1258</a></td><td><code>_clear_stream_targets/_clear_h_next</code></td><td>完整步清双 buffer；warm-up 只清 h</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1260–1321</a></td><td><code>_stream_velocity</code></td><td>push stream、墙/冰反弹、GME</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1322–1351</a></td><td><code>_stream_phase</code></td><td>push stream、相场无通量</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1352–1398</a></td><td><code>_copy_lbm_next/_copy_h_next/_update_phi_from_h</code></td><td>完整步 copy；warm-up 专用 helpers</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1400–1406</a></td><td><code>_warm_start_phase</code></td><td>构造时条件触发</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1408–1463</a></td><td><code>_update_fluid_macro/_update_pressure/_average_pressure</code></td><td>宏观恢复与压力滤波</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1468–1525</a></td><td><code>_sample_phase_outside_box</code></td><td>水平 chord 外部相场延拓</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1527–1554</a></td><td><code>_compute_hydrostatic_buoyancy</code></td><td>显式排水浮力</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1555–1750</a></td><td><code>_advance_rigid_ice</code></td><td>力滤波、速度/pose、底/侧/顶 contact</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1755–1791</a></td><td><code>_initialize/_measure_water_volume</code></td><td>binary active-node 水量不变量</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1793–1827</a></td><td><code>_clip_water_phase_for_projection</code></td><td>bounds、bulk canonicalization、h lift</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1828–1895</a></td><td><code>_seed/_dilate/_count_water_projection_interface</code></td><td>0.5-connected interface mask</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1896–1950</a></td><td><code>_evaluate/_apply_water_projection</code></td><td>f64 entropy map reduction 与应用</td></tr>
+              <tr><td><a class="src" href="simulator.py">:1952–2060</a></td><td><code>_correct_water_volume</code></td><td>宿主端 bracketed Newton/bisection 与 failure paths</td></tr>
+              <tr><td><a class="src" href="simulator.py">:2065–2082</a></td><td><code>_render</code></td><td>保存/GUI 前条件触发</td></tr>
+              <tr><td><a class="src" href="simulator.py">:2085–2086</a></td><td><code>Simulator2D</code></td><td>兼容 alias</td></tr>
+            </tbody>
+          </table>
+        </div></details>
+
+        <details><summary>测试 helper 与全部测试方法</summary><div>
+          <p><strong>test_iceflow.py：</strong><a class="src" href="test_iceflow.py">:12–31</a> 三个配置测试；<a class="src" href="test_iceflow.py">:35–67</a> 端到端有限性/PNG；<a class="src" href="test_iceflow.py">:69–118</a> 三个浮力测试；<a class="src" href="test_iceflow.py">:120–192</a> 两个接触/位置测试；<a class="src" href="test_iceflow.py">:194–234</a> Coulomb 摩擦测试；<a class="src" href="test_iceflow.py">:237–238</a> unittest guard。</p>
+          <p><strong>test_volume_projection.py：</strong><a class="src" href="test_volume_projection.py">:21–31</a> NumPy <code>_phase_equilibrium</code>；<a class="src" href="test_volume_projection.py">:34–43</a> strict mass helper；<a class="src" href="test_volume_projection.py">:46–75</a> 两个配置测试；<a class="src" href="test_volume_projection.py">:78–93</a> 小网格 factory；<a class="src" href="test_volume_projection.py">:95–148</a> conservation/bulk/nonequilibrium；<a class="src" href="test_volume_projection.py">:150–211</a> clip/no-seed/infeasible；<a class="src" href="test_volume_projection.py">:213–276</a> moving-mask；<a class="src" href="test_volume_projection.py">:279–280</a> unittest guard。</p>
+          <p><strong>../tests/test_ice_fall_example.py：</strong><a class="src" href="../tests/test_ice_fall_example.py">:14–34</a> 绕开包级 Taichi import 的入口/config loader；<a class="src" href="../tests/test_ice_fall_example.py">:37–86</a> 默认/缩放几何和常规 config 构造；<a class="src" href="../tests/test_ice_fall_example.py">:88–126</a> 旋转角点间隙与非法界面/顶墙/离散尺寸分支；<a class="src" href="../tests/test_ice_fall_example.py">:129–130</a> unittest guard。</p>
+        </div></details>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="inventory-entry"><span>入口、配置和 lattice 表中的每个符号都已阅读并留下结论/无问题标记。</span></label></li>
+          <li><label><input type="checkbox" data-review="inventory-host"><span>simulator 宿主控制、几何和初始化表中的每个符号都已阅读。</span></label></li>
+          <li><label><input type="checkbox" data-review="inventory-kernels"><span>simulator 流体、边界、刚体、投影与渲染表中的每个符号都已阅读。</span></label></li>
+          <li><label><input type="checkbox" data-review="inventory-tests"><span>全部 test helper/test case 都已阅读，并将每个断言映射回生产代码。</span></label></li>
+        </ul>
+      </section>
+
+      <section id="references">
+        <h2>17. 参考文献与代码对应</h2>
+        <p class="lead">优先列原论文/出版社页面。标注“直接对应”表示代码或仓库明确继承；“背景/核对”表示适合 review 对照，但不能据此认定当前实现完全复现该文献。</p>
+        <ol>
+          <li id="ref-xiao"><strong>Xiao, Wang, Yang, Desbrun, Li (2026).</strong> “Volume-Preserving LBM-MPM Coupling for Air-Water-Sand Mixtures,” <em>ACM Transactions on Graphics</em> 45(4), Article 77. DOI: <a href="https://doi.org/10.1145/3811302">10.1145/3811302</a>；<a href="https://geometry.caltech.edu/pubs/XWYDL26.pdf">作者版 PDF</a>。<span class="tag fact">直接对应</span> 物理缩放、velocity-based LBM、相场和压力/力装配来自该仓库的 pure-fluid 2D 分支；本 iceflow 删掉 MPM/porosity 并另加尖锐刚体。</li>
+          <li><strong>Qian, d’Humières, Lallemand (1992).</strong> “Lattice BGK Models for Navier–Stokes Equation,” <em>Europhysics Letters</em> 17(6), 479–484. DOI: <a href="https://doi.org/10.1209/0295-5075/17/6/001">10.1209/0295-5075/17/6/001</a>。<span class="tag derived">背景/核对</span> D2Q9 权重、二阶平衡态、<code>ν=c_s²(τ−1/2)</code>。</li>
+          <li><strong>Geier, Fakhari, Lee (2015).</strong> “Conservative phase-field lattice Boltzmann model for interface tracking equation,” <em>Physical Review E</em> 91, 063309. <a href="https://journals.aps.org/pre/abstract/10.1103/PhysRevE.91.063309">DOI 10.1103/PhysRevE.91.063309</a>。<span class="tag fact">直接对应</span> 保守相场 LBM、中心矩和界面压缩的主要核对来源。</li>
+          <li><strong>Begmohammadi, Haghani-Hassan-Abadi, Fakhari, Bolster (2020).</strong> “Study of phase-field lattice Boltzmann models based on the conservative Allen-Cahn equation,” <em>Physical Review E</em> 102, 023305. <a href="https://journals.aps.org/pre/abstract/10.1103/PhysRevE.102.023305">DOI 10.1103/PhysRevE.102.023305</a>。<span class="tag derived">背景/核对</span> CPF-LBM 效率、精度和模型变体。</li>
+          <li><strong>Li, Ma, Liu, Desbrun (2022).</strong> “Efficient Kinetic Simulation of Two-Phase Flows,” <em>ACM Transactions on Graphics</em> 41(4), Article 114. <a href="https://doi.org/10.1145/3528223.3530132">DOI 10.1145/3528223.3530132</a>；<a href="https://www.geometry.caltech.edu/pubs/LMLD22.pdf">作者版 PDF</a>。<span class="tag derived">背景/核对</span> velocity-based kinetic two-phase formulation、压力恢复和高密度比框架。</li>
+          <li><strong>Li, Desbrun (2023).</strong> “Fluid-Solid Coupling in Kinetic Two-Phase Flow Simulation,” <em>ACM Transactions on Graphics</em> 42(4), Article 123. <a href="https://doi.org/10.1145/3592138">DOI 10.1145/3592138</a>；<a href="https://www.geometry.caltech.edu/pubs/LD23.pdf">作者版 PDF</a>。<span class="tag derived">背景/核对</span> kinetic two-phase 流固耦合；适合与本代码的 sharp rigid extension 比较，但不代表算法逐式相同。</li>
+          <li><strong>Yu, Mei, Shyy (2003).</strong> “A Unified Boundary Treatment in Lattice Boltzmann Method,” 41st AIAA Aerospace Sciences Meeting, AIAA 2003-953. <a href="https://doi.org/10.2514/6.2003-953">DOI 10.2514/6.2003-953</a>。<span class="tag fact">直接对应</span> 默认 unified interpolation bounce-back；需要逐方向核当前线性公式。</li>
+          <li><strong>Bouzidi, Firdaouss, Lallemand (2001).</strong> “Momentum transfer of a Boltzmann-lattice fluid with boundaries,” <em>Physics of Fluids</em> 13, 3452–3459. <a href="https://doi.org/10.1063/1.1399290">DOI 10.1063/1.1399290</a>。<span class="tag derived">背景/核对</span> 曲面 interpolated bounce-back 与 η/q 位置依赖。</li>
+          <li><strong>Wen, Zhang, Tu, Wang, Fang (2014).</strong> “Galilean invariant fluid–solid interfacial dynamics in lattice Boltzmann simulations,” <em>Journal of Computational Physics</em> 266, 161–170. <a href="https://www.sciencedirect.com/science/article/pii/S0021999114001387">DOI 10.1016/j.jcp.2014.02.018</a>；<a href="https://arxiv.org/abs/1303.0625">preprint</a>。<span class="tag fact">直接对应</span> 相对速度形式的 momentum exchange。</li>
+          <li><strong>Liu, Ye, Zhang, Zheng (2023).</strong> “Coupling phase-field LB and MPM for multiphase fluid-deformable solid interaction problems involving large density and viscosity contrasts,” <em>International Journal of Applied Mechanics</em> 15(06), 2350050. <a href="https://doi.org/10.1142/S1758825123500503">DOI 10.1142/S1758825123500503</a>。<span class="tag fact">代码所引 Eq. 51 的来源</span> 移动固壁相场边界；仍须逐符号映射确认当前实现。</li>
+          <li><strong>Sutherland, Hodgman (1974).</strong> “Reentrant Polygon Clipping,” <em>Communications of the ACM</em> 17(1), 32–42. <a href="https://doi.org/10.1145/360767.360802">DOI 10.1145/360767.360802</a>。<span class="tag fact">直接对应</span> OBB–unit-cell convex polygon clipping。</li>
+          <li><strong>Baraff (1994).</strong> “Fast Contact Force Computation for Nonpenetrating Rigid Bodies,” <em>SIGGRAPH ’94</em>. <a href="https://doi.org/10.1145/192161.192168">DOI 10.1145/192161.192168</a>。<span class="tag derived">背景/核对</span> 刚体接触、互补约束与 Coulomb friction；当前代码是四角 sequential impulse/PGS 的简化实现。</li>
+          <li><strong>Bernoulli entropy projection。</strong>当前仓库没有给外部来源。<code>sigmoid(logit φ+λ)</code> 可由最小化 <code>Σ[φ′ln(φ′/φ)+(1−φ′)ln((1−φ′)/(1−φ))]</code> 且约束 <code>Σφ′=Vtarget</code> 直接推导。<span class="tag todo">实现自定义/需补设计引用</span></li>
+        </ol>
+        <div class="callout"><strong>引用原则：</strong>主论文的 3D/生产算法、<code>mixture2d</code> 的 D2Q9 精简版和本包的尖锐刚体扩展是三层不同对象。review 报告应写“本实现对应/改写了哪些式”，不要笼统写成“完全实现论文”。</div>
+        <ul class="checklist">
+          <li><label><input type="checkbox" data-review="refs-primary"><span>已阅读主论文中与 velocity LBM、相场、force/pressure 对应的章节和公式。</span></label></li>
+          <li><label><input type="checkbox" data-review="refs-boundary"><span>已把 Yu unified bounce-back 与 Wen GME 的符号逐一映射到当前 push-stream 约定。</span></label></li>
+          <li><label><input type="checkbox" data-review="refs-missing"><span>已直接阅读 Liu et al. (2023) Eq. 51 并确认或否定映射；已为自定义 entropy projection 保存推导或设计说明。</span></label></li>
+          <li><label><input type="checkbox" data-review="review-complete"><span><strong>最终检查：</strong>所有章节 checklist、全函数覆盖表、测试记录和 P0/P1 结论都完成；可以签署 code review。</span></label></li>
+        </ul>
+        <p class="footnote">文档为静态源码审阅指南，不替代论文、数值验证或 CUDA profiling。外部参考链接需要联网；正文、公式、导航和勾选功能可离线使用。</p>
+      </section>
+    </main>
+  </div>
+
+  <button class="mobile-menu" id="mobileMenu" type="button" aria-controls="sidebar" aria-expanded="false">目录</button>
+  <script>
+    (() => {
+      const storageKey = 'iceflow2d-code-review-v1';
+      const boxes = [...document.querySelectorAll('input[data-review]')];
+      const progressText = document.getElementById('progressText');
+      const progressFill = document.getElementById('progressFill');
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch (_) { saved = {}; }
+      const renderProgress = () => {
+        const done = boxes.filter(box => box.checked).length;
+        progressText.textContent = `${done} / ${boxes.length}`;
+        progressFill.style.width = boxes.length ? `${100 * done / boxes.length}%` : '0%';
+      };
+      boxes.forEach(box => {
+        box.checked = Boolean(saved[box.dataset.review]);
+        box.addEventListener('change', () => {
+          saved[box.dataset.review] = box.checked;
+          try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch (_) { /* file:// storage may be disabled */ }
+          renderProgress();
+        });
+      });
+      renderProgress();
+
+      document.getElementById('resetProgress').addEventListener('click', () => {
+        if (!confirm('清空本浏览器中这份 review 的全部勾选进度？')) return;
+        boxes.forEach(box => { box.checked = false; });
+        saved = {};
+        try { localStorage.removeItem(storageKey); } catch (_) { /* keep in-memory progress only */ }
+        renderProgress();
+      });
+      document.getElementById('expandAll').addEventListener('click', () => {
+        document.querySelectorAll('details').forEach(item => { item.open = true; });
+      });
+      document.getElementById('collapseAll').addEventListener('click', () => {
+        document.querySelectorAll('details').forEach(item => { item.open = false; });
+      });
+
+      const sidebar = document.getElementById('sidebar');
+      const mobileMenu = document.getElementById('mobileMenu');
+      mobileMenu.addEventListener('click', () => {
+        const open = sidebar.classList.toggle('open');
+        mobileMenu.setAttribute('aria-expanded', String(open));
+      });
+      document.querySelectorAll('#nav a').forEach(link => link.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+        mobileMenu.setAttribute('aria-expanded', 'false');
+      }));
+
+      const links = new Map([...document.querySelectorAll('#nav a')].map(a => [a.getAttribute('href').slice(1), a]));
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        links.forEach(link => link.classList.remove('active'));
+        links.get(visible.target.id)?.classList.add('active');
+      }, { rootMargin: '-12% 0px -72% 0px', threshold: [0, .1, .4] });
+      document.querySelectorAll('main section[id]').forEach(section => observer.observe(section));
+    })();
+  </script>
+</body>
+</html>

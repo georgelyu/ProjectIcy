@@ -89,25 +89,25 @@ pip install -r requirements.txt
 ### Pure 2D LBM Dam Break
 
 ```bash
-python examples/dam_break_2d.py --mode fluid --resolution-x 600 --resolution-y 300 --frames 150 --steps-per-frame 1000
+python mixture2d/examples/dam_break_2d.py --mode fluid --resolution-x 600 --resolution-y 300 --frames 150 --steps-per-frame 1000
 ```
 
 ### Standalone 2D Sand MPM
 
 ```bash
-python examples/dam_break_2d.py --mode sand --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
+python mixture2d/examples/dam_break_2d.py --mode sand --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
 ```
 
 ### Coupled 2D Air-Water-Sand Dam Break
 
 ```bash
-python examples/dam_break_2d.py --mode coupled --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
+python mixture2d/examples/dam_break_2d.py --mode coupled --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
 ```
 
 ### Coupled 2D Air-Water-Ice Block
 
 ```bash
-python examples/dam_break_2d.py --mode coupled --material ice --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
+python mixture2d/examples/dam_break_2d.py --mode coupled --material ice --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
 ```
 
 The ice preset uses density `917 kg/m^3`, a numerically softened Young's
@@ -125,16 +125,16 @@ produce NaNs.
 ### Coupled Simulation with Water Retention
 
 ```bash
-python examples/dam_break_2d.py --mode coupled --water-retention --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
+python mixture2d/examples/dam_break_2d.py --mode coupled --water-retention --resolution-x 600 --resolution-y 300 --frames 400 --steps-per-frame 1000
 ```
 
 ### Useful Output Options
 
 ```bash
-python examples/dam_break_2d.py --mode coupled --output-dir outputs/my_run
-python examples/dam_break_2d.py --mode sand --save-npz
-python examples/dam_break_2d.py --mode fluid --show-gui
-python examples/dam_break_2d.py --mode fluid --no-progress
+python mixture2d/examples/dam_break_2d.py --mode coupled --output-dir outputs/my_run
+python mixture2d/examples/dam_break_2d.py --mode sand --save-npz
+python mixture2d/examples/dam_break_2d.py --mode fluid --show-gui
+python mixture2d/examples/dam_break_2d.py --mode fluid --no-progress
 ```
 
 By default, frames are written to `outputs/dam_break_2d/<mode>/`; ice runs
