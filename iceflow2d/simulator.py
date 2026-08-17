@@ -4,8 +4,7 @@ The two distribution functions and their central-moment collision operators
 are a deliberately small fork of the pure-fluid path in ``mixture2d``.  The
 porous LBM--MPM terms are not used.  Instead, an oriented-box signed-distance
 field excludes ice nodes from the fluid domain and cut lattice links enforce
-an impermeable moving boundary.  Pressure-mode-corrected link momentum
-exchange and pressure traction on the exact oriented box drive the freely
+an impermeable moving boundary.  Link momentum exchange drives the freely
 translating and rotating ice body.
 
 This module intentionally contains no temperature, enthalpy, melting, or
@@ -159,16 +158,6 @@ class IceFlow2D:
         self._body_half_height = 0.5 * float(config.ice_height)
         self._body_mass = float(config.ice_mass_lattice)
         self._body_inertia = float(config.ice_inertia_lattice)
-        # One midpoint quadrature sample per lattice cell on every exact OBB
-        # face.  The fixed rectangular allocation keeps the Taichi kernels
-        # simple while allowing the horizontal and vertical faces to use
-        # different sample counts.
-        self._pressure_horizontal_samples = max(1, int(math.ceil(float(config.ice_width))))
-        self._pressure_vertical_samples = max(1, int(math.ceil(float(config.ice_height))))
-        self._pressure_max_face_samples = max(
-            self._pressure_horizontal_samples,
-            self._pressure_vertical_samples,
-        )
         cutoff = float(config.volume_projection_interface_cutoff)
         profile_radius = 0.25 * float(config.interface_width) * math.log((1.0 - cutoff) / cutoff)
         # Ping-pong dilation finishes in the primary mask after an even
@@ -220,27 +209,8 @@ class IceFlow2D:
         self.body_angular_velocity = ti.field(ti.f32, shape=())
         self.raw_hydrodynamic_impulse = ti.Vector.field(2, ti.f32, shape=())
         self.raw_hydrodynamic_torque = ti.field(ti.f32, shape=())
-        self.pressure_mode_hydrodynamic_impulse = ti.Vector.field(2, ti.f32, shape=())
-        self.pressure_mode_hydrodynamic_torque = ti.field(ti.f32, shape=())
-        self.residual_hydrodynamic_impulse = ti.Vector.field(2, ti.f32, shape=())
-        self.residual_hydrodynamic_torque = ti.field(ti.f32, shape=())
         self.filtered_hydrodynamic_impulse = ti.Vector.field(2, ti.f32, shape=())
         self.filtered_hydrodynamic_torque = ti.field(ti.f32, shape=())
-        self.pressure_traction_impulse = ti.Vector.field(2, ti.f32, shape=())
-        self.pressure_traction_torque = ti.field(ti.f32, shape=())
-        self.pressure_sample_failures = ti.field(ti.i32, shape=())
-        self.pressure_boundary_length = ti.field(ti.f64, shape=())
-        self.pressure_boundary_p_sum = ti.field(ti.f64, shape=())
-        self.pressure_boundary_p_temp_sum = ti.field(ti.f64, shape=())
-        self.pressure_boundary_p_reference = ti.field(ti.f32, shape=())
-        self.pressure_boundary_p_temp_reference = ti.field(ti.f32, shape=())
-        pressure_sample_shape = (4, self._pressure_max_face_samples)
-        self.pressure_sample_point = ti.Vector.field(2, ti.f32, shape=pressure_sample_shape)
-        self.pressure_sample_normal = ti.Vector.field(2, ti.f32, shape=pressure_sample_shape)
-        self.pressure_sample_weight = ti.field(ti.f32, shape=pressure_sample_shape)
-        self.pressure_sample_p = ti.field(ti.f32, shape=pressure_sample_shape)
-        self.pressure_sample_p_temp = ti.field(ti.f32, shape=pressure_sample_shape)
-        self.pressure_sample_valid = ti.field(ti.i32, shape=pressure_sample_shape)
         self.buoyancy_impulse = ti.Vector.field(2, ti.f32, shape=())
         self.buoyancy_torque = ti.field(ti.f32, shape=())
         self.total_body_impulse = ti.Vector.field(2, ti.f32, shape=())
@@ -325,11 +295,7 @@ class IceFlow2D:
             self._update_fluid_macro()
             self._update_pressure()
             self._average_pressure()
-            # The legacy horizontal-chord calculation below is retained as a
-            # displaced-volume diagnostic only.  Rigid forcing uses pressure
-            # integrated on all four exact OBB faces.
             self._compute_hydrostatic_buoyancy()
-            self._compute_pressure_traction()
             self._advance_rigid_ice()
             self._measure_geometry_water_before_remap()
             self._save_previous_geometry()
@@ -411,10 +377,7 @@ class IceFlow2D:
             "mode": "coupled",
             "material": "ice",
             "mechanics": "variable-pose rigid body (no MPM)",
-            "coupling": (
-                "sharp SDF cut-link moving bounce-back with pressure-mode-corrected "
-                "momentum exchange and exact-OBB pressure traction"
-            ),
+            "coupling": "sharp SDF cut-link moving bounce-back with momentum exchange",
             "geometry_accounting": "exact OBB--unit-cell fractional occupancy with a GCL/remap ledger",
             "phase_control_volume": "binary active-node LBM (fractional occupancy is diagnostic only)",
             "thermal_model": None,
@@ -470,16 +433,8 @@ class IceFlow2D:
                 omega,
                 *np.asarray(self.raw_hydrodynamic_impulse[None]),
                 float(self.raw_hydrodynamic_torque[None]),
-                *np.asarray(self.pressure_mode_hydrodynamic_impulse[None]),
-                float(self.pressure_mode_hydrodynamic_torque[None]),
-                *np.asarray(self.residual_hydrodynamic_impulse[None]),
-                float(self.residual_hydrodynamic_torque[None]),
                 *np.asarray(self.filtered_hydrodynamic_impulse[None]),
                 float(self.filtered_hydrodynamic_torque[None]),
-                *np.asarray(self.pressure_traction_impulse[None]),
-                float(self.pressure_traction_torque[None]),
-                float(self.pressure_boundary_p_reference[None]),
-                float(self.pressure_boundary_p_temp_reference[None]),
                 *np.asarray(self.buoyancy_impulse[None]),
                 float(self.buoyancy_torque[None]),
                 *np.asarray(self.total_body_impulse[None]),
@@ -548,48 +503,10 @@ class IceFlow2D:
             "hydrodynamic_impulse_x": float(self.raw_hydrodynamic_impulse[None].x),
             "hydrodynamic_impulse_y": float(self.raw_hydrodynamic_impulse[None].y),
             "hydrodynamic_torque": float(self.raw_hydrodynamic_torque[None]),
-            "raw_hydrodynamic_impulse_x": float(self.raw_hydrodynamic_impulse[None].x),
-            "raw_hydrodynamic_impulse_y": float(self.raw_hydrodynamic_impulse[None].y),
-            "raw_hydrodynamic_torque": float(self.raw_hydrodynamic_torque[None]),
-            "pressure_mode_hydrodynamic_impulse_x": float(
-                self.pressure_mode_hydrodynamic_impulse[None].x
-            ),
-            "pressure_mode_hydrodynamic_impulse_y": float(
-                self.pressure_mode_hydrodynamic_impulse[None].y
-            ),
-            "pressure_mode_hydrodynamic_torque": float(
-                self.pressure_mode_hydrodynamic_torque[None]
-            ),
-            "residual_hydrodynamic_impulse_x": float(
-                self.residual_hydrodynamic_impulse[None].x
-            ),
-            "residual_hydrodynamic_impulse_y": float(
-                self.residual_hydrodynamic_impulse[None].y
-            ),
-            "residual_hydrodynamic_torque": float(self.residual_hydrodynamic_torque[None]),
-            "filtered_hydrodynamic_impulse_x": float(
-                self.filtered_hydrodynamic_impulse[None].x
-            ),
-            "filtered_hydrodynamic_impulse_y": float(
-                self.filtered_hydrodynamic_impulse[None].y
-            ),
             "filtered_hydrodynamic_torque": float(self.filtered_hydrodynamic_torque[None]),
-            "pressure_traction_impulse_x": float(self.pressure_traction_impulse[None].x),
-            "pressure_traction_impulse_y": float(self.pressure_traction_impulse[None].y),
-            "pressure_traction_torque": float(self.pressure_traction_torque[None]),
-            "pressure_sample_failures": int(self.pressure_sample_failures[None]),
-            "pressure_traction_sampling_failures": int(self.pressure_sample_failures[None]),
-            "pressure_boundary_valid_length": float(self.pressure_boundary_length[None]),
-            "pressure_boundary_p_reference": float(self.pressure_boundary_p_reference[None]),
-            "pressure_boundary_p_temp_reference": float(
-                self.pressure_boundary_p_temp_reference[None]
-            ),
             "buoyancy_impulse_x": float(self.buoyancy_impulse[None].x),
             "buoyancy_impulse_y": float(self.buoyancy_impulse[None].y),
             "buoyancy_torque": float(self.buoyancy_torque[None]),
-            "legacy_chord_buoyancy_impulse_x": float(self.buoyancy_impulse[None].x),
-            "legacy_chord_buoyancy_impulse_y": float(self.buoyancy_impulse[None].y),
-            "legacy_chord_buoyancy_torque": float(self.buoyancy_torque[None]),
             "total_body_impulse_x": float(self.total_body_impulse[None].x),
             "total_body_impulse_y": float(self.total_body_impulse[None].y),
             "total_body_torque": float(self.total_body_torque[None]),
@@ -776,21 +693,6 @@ class IceFlow2D:
                     value = self.phi[i, j]
         return value
 
-    @ti.func
-    def _post_pressure_density_mode(self, i, j):
-        """Unit-density scalar mode carried by the post-collision f field.
-
-        The pressure split used here is
-        ``p = p_temp + rho / 3 * (sum(f) - 1)``.  Consequently only
-        ``sum(f_post) - 1`` may already be present in link momentum exchange;
-        the independently stored total pressure must not be subtracted from
-        GME a second time.
-        """
-        density_mode = 0.0
-        for q in range(Q):
-            density_mode += self.f_post[i, j, q]
-        return density_mode
-
     @ti.kernel
     def _initialize_body(self):
         center_x = ti.static(float(self.cfg.ice_initial_center[0]))
@@ -805,20 +707,8 @@ class IceFlow2D:
         self.body_angular_velocity[None] = initial_omega
         self.raw_hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
         self.raw_hydrodynamic_torque[None] = 0.0
-        self.pressure_mode_hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
-        self.pressure_mode_hydrodynamic_torque[None] = 0.0
-        self.residual_hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
-        self.residual_hydrodynamic_torque[None] = 0.0
         self.filtered_hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
         self.filtered_hydrodynamic_torque[None] = 0.0
-        self.pressure_traction_impulse[None] = ti.Vector([0.0, 0.0])
-        self.pressure_traction_torque[None] = 0.0
-        self.pressure_sample_failures[None] = 0
-        self.pressure_boundary_length[None] = 0.0
-        self.pressure_boundary_p_sum[None] = 0.0
-        self.pressure_boundary_p_temp_sum[None] = 0.0
-        self.pressure_boundary_p_reference[None] = 0.0
-        self.pressure_boundary_p_temp_reference[None] = 0.0
         self.buoyancy_impulse[None] = ti.Vector([0.0, 0.0])
         self.buoyancy_torque[None] = 0.0
         self.total_body_impulse[None] = ti.Vector([0.0, 0.0])
@@ -1357,8 +1247,6 @@ class IceFlow2D:
     def _clear_stream_targets(self):
         self.raw_hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
         self.raw_hydrodynamic_torque[None] = 0.0
-        self.pressure_mode_hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
-        self.pressure_mode_hydrodynamic_torque[None] = 0.0
         self.cut_link_count[None] = 0
         for i, j, q in self.f_next:
             self.f_next[i, j, q] = 0.0
@@ -1415,61 +1303,20 @@ class IceFlow2D:
                             - (opposite_direction - boundary_velocity) * reflected
                             - 2.0 * _w(q) * direction_f
                         )
-                        # Remove only the scalar pressure mode that is
-                        # actually encoded in f_post.  The solver's total
-                        # pressure is split between p_temp and
-                        # rho/3*(sum(f)-1); subtracting p_temp here would erase
-                        # hydrostatic traction that GME never received.
-                        pressure_density_mode = self._post_pressure_density_mode(i, j)
-                        pressure_outgoing = _w(q) * pressure_density_mode
-                        pressure_reflected = pressure_outgoing
-                        if ti.static(self._use_unified_boundary):
-                            pressure_back_i = i - direction.x
-                            pressure_back_j = j - direction.y
-                            if (
-                                _inside(pressure_back_i, pressure_back_j, nx, ny)
-                                and self._active(pressure_back_i, pressure_back_j)
-                            ):
-                                pressure_back_mode = self._post_pressure_density_mode(
-                                    pressure_back_i,
-                                    pressure_back_j,
-                                )
-                                pressure_reflected = (
-                                    eta * _w(_opp(q)) * pressure_density_mode
-                                    + (1.0 - eta) * _w(q) * pressure_back_mode
-                                    + eta * pressure_outgoing
-                                ) / (1.0 + eta)
-                        pressure_mode_impulse = rho_link * (
-                            direction_f * pressure_outgoing
-                            - opposite_direction * pressure_reflected
-                            - 2.0 * _w(q) * direction_f
-                        )
                         relative = boundary_point - self.body_center[None]
                         ti.atomic_add(self.raw_hydrodynamic_impulse[None].x, impulse.x)
                         ti.atomic_add(self.raw_hydrodynamic_impulse[None].y, impulse.y)
                         ti.atomic_add(self.raw_hydrodynamic_torque[None], _cross2(relative, impulse))
-                        ti.atomic_add(
-                            self.pressure_mode_hydrodynamic_impulse[None].x,
-                            pressure_mode_impulse.x,
-                        )
-                        ti.atomic_add(
-                            self.pressure_mode_hydrodynamic_impulse[None].y,
-                            pressure_mode_impulse.y,
-                        )
-                        ti.atomic_add(
-                            self.pressure_mode_hydrodynamic_torque[None],
-                            _cross2(relative, pressure_mode_impulse),
-                        )
                         ti.atomic_add(self.cut_link_count[None], 1)
                     else:
                         # Static container wall, retaining the small damping
                         # used in mixture2d for the lower-index directions.
                         opposite = _opp(q)
                         reflected = outgoing
-                        if opposite < q:
-                            reflected = 0.9 * outgoing + 0.1 * _feq(
-                                opposite, 1.0, ti.Vector([0.0, 0.0])
-                            )
+                        # if opposite < q:
+                        #     reflected = 0.9 * outgoing + 0.1 * _feq(
+                        #         opposite, 1.0, ti.Vector([0.0, 0.0])
+                        #     )
                         self.f_next[i, j, opposite] = reflected
 
     @ti.kernel
@@ -1619,209 +1466,6 @@ class IceFlow2D:
     # Rigid-body forcing and integration
 
     @ti.func
-    def _sample_active_pressure_pair(self, point):
-        """Fluid-only bilinear sample of raw and smoothed pressure.
-
-        Lattice fields live at cell centres ``(i + 1/2, j + 1/2)``.  Solid
-        and container-wall nodes are excluded and the remaining bilinear
-        weights are renormalized, preventing stale pressure stored under the
-        moving ice from entering the surface traction.
-        """
-        base_i = ti.cast(ti.floor(point.x - 0.5), ti.i32)
-        base_j = ti.cast(ti.floor(point.y - 0.5), ti.i32)
-        fraction_x = point.x - (ti.cast(base_i, ti.f32) + 0.5)
-        fraction_y = point.y - (ti.cast(base_j, ti.f32) + 0.5)
-        pressure_sum = 0.0
-        pressure_temp_sum = 0.0
-        weight_sum = 0.0
-        for di, dj in ti.static(ti.ndrange(2, 2)):
-            ni = base_i + di
-            nj = base_j + dj
-            weight_x = fraction_x
-            weight_y = fraction_y
-            if ti.static(di == 0):
-                weight_x = 1.0 - fraction_x
-            if ti.static(dj == 0):
-                weight_y = 1.0 - fraction_y
-            weight = weight_x * weight_y
-            if (
-                _inside(ni, nj, ti.static(self.nx), ti.static(self.ny))
-                and self._active(ni, nj)
-            ):
-                pressure_sum += weight * self.p[ni, nj]
-                pressure_temp_sum += weight * self.p_temp[ni, nj]
-                weight_sum += weight
-        sample = ti.Vector([0.0, 0.0, 0.0])
-        if weight_sum > 1.0e-8:
-            sample = ti.Vector([
-                pressure_sum / weight_sum,
-                pressure_temp_sum / weight_sum,
-                1.0,
-            ])
-        return sample
-
-    @ti.kernel
-    def _sample_obb_pressure(self):
-        """Sample pressure outside all four exact faces of the rotating OBB."""
-        self.pressure_sample_failures[None] = 0
-        self.pressure_boundary_length[None] = 0.0
-        self.pressure_boundary_p_sum[None] = 0.0
-        self.pressure_boundary_p_temp_sum[None] = 0.0
-        center = self.body_center[None]
-        angle = self.body_angle[None]
-        cosine = ti.cos(angle)
-        sine = ti.sin(angle)
-        half_width = ti.static(self._body_half_width)
-        half_height = ti.static(self._body_half_height)
-        horizontal_samples = ti.static(self._pressure_horizontal_samples)
-        vertical_samples = ti.static(self._pressure_vertical_samples)
-        near_distance = ti.static(0.75)
-        far_distance = ti.static(1.75)
-
-        for face, sample_index in self.pressure_sample_p_temp:
-            self.pressure_sample_point[face, sample_index] = center
-            self.pressure_sample_normal[face, sample_index] = ti.Vector([0.0, 0.0])
-            self.pressure_sample_weight[face, sample_index] = 0.0
-            self.pressure_sample_p[face, sample_index] = 0.0
-            self.pressure_sample_p_temp[face, sample_index] = 0.0
-            self.pressure_sample_valid[face, sample_index] = 0
-
-            sample_count = horizontal_samples
-            face_length = 2.0 * half_width
-            if face == 1 or face == 3:
-                sample_count = vertical_samples
-                face_length = 2.0 * half_height
-            if sample_index < sample_count:
-                segment_length = face_length / ti.cast(sample_count, ti.f32)
-                coordinate = -0.5 * face_length + (
-                    ti.cast(sample_index, ti.f32) + 0.5
-                ) * segment_length
-                local_point = ti.Vector([coordinate, -half_height])
-                local_normal = ti.Vector([0.0, -1.0])
-                if face == 1:
-                    local_point = ti.Vector([half_width, coordinate])
-                    local_normal = ti.Vector([1.0, 0.0])
-                elif face == 2:
-                    local_point = ti.Vector([coordinate, half_height])
-                    local_normal = ti.Vector([0.0, 1.0])
-                elif face == 3:
-                    local_point = ti.Vector([-half_width, coordinate])
-                    local_normal = ti.Vector([-1.0, 0.0])
-
-                point = center + ti.Vector([
-                    cosine * local_point.x - sine * local_point.y,
-                    sine * local_point.x + cosine * local_point.y,
-                ])
-                normal = ti.Vector([
-                    cosine * local_normal.x - sine * local_normal.y,
-                    sine * local_normal.x + cosine * local_normal.y,
-                ])
-                near_sample = self._sample_active_pressure_pair(
-                    point + near_distance * normal
-                )
-                far_sample = self._sample_active_pressure_pair(
-                    point + far_distance * normal
-                )
-                valid = 0
-                pressure = 0.0
-                pressure_temp = 0.0
-                if near_sample.z > 0.5 and far_sample.z > 0.5:
-                    raw_slope = (far_sample.x - near_sample.x) / (
-                        far_distance - near_distance
-                    )
-                    temp_slope = (far_sample.y - near_sample.y) / (
-                        far_distance - near_distance
-                    )
-                    pressure = near_sample.x - near_distance * raw_slope
-                    pressure_temp = near_sample.y - near_distance * temp_slope
-                    # A one-sided extrapolation is required at the wall, but
-                    # a limiter prevents a single noisy outer sample from
-                    # producing an unbounded impact impulse.
-                    raw_limit = 2.0 * ti.abs(far_sample.x - near_sample.x) + 1.0e-8
-                    temp_limit = 2.0 * ti.abs(far_sample.y - near_sample.y) + 1.0e-8
-                    pressure = ti.min(
-                        near_sample.x + raw_limit,
-                        ti.max(near_sample.x - raw_limit, pressure),
-                    )
-                    pressure_temp = ti.min(
-                        near_sample.y + temp_limit,
-                        ti.max(near_sample.y - temp_limit, pressure_temp),
-                    )
-                    valid = 1
-                elif near_sample.z > 0.5:
-                    pressure = near_sample.x
-                    pressure_temp = near_sample.y
-                    valid = 1
-                elif far_sample.z > 0.5:
-                    pressure = far_sample.x
-                    pressure_temp = far_sample.y
-                    valid = 1
-
-                self.pressure_sample_point[face, sample_index] = point
-                self.pressure_sample_normal[face, sample_index] = normal
-                self.pressure_sample_weight[face, sample_index] = segment_length
-                self.pressure_sample_p[face, sample_index] = pressure
-                self.pressure_sample_p_temp[face, sample_index] = pressure_temp
-                self.pressure_sample_valid[face, sample_index] = valid
-                if valid == 1:
-                    ti.atomic_add(
-                        self.pressure_boundary_length[None],
-                        ti.cast(segment_length, ti.f64),
-                    )
-                    ti.atomic_add(
-                        self.pressure_boundary_p_sum[None],
-                        ti.cast(segment_length * pressure, ti.f64),
-                    )
-                    ti.atomic_add(
-                        self.pressure_boundary_p_temp_sum[None],
-                        ti.cast(segment_length * pressure_temp, ti.f64),
-                    )
-                else:
-                    ti.atomic_add(self.pressure_sample_failures[None], 1)
-
-    @ti.kernel
-    def _integrate_obb_pressure(self):
-        """Integrate ``-p n ds`` and its moment on the sampled OBB."""
-        self.pressure_traction_impulse[None] = ti.Vector([0.0, 0.0])
-        self.pressure_traction_torque[None] = 0.0
-        valid_length = self.pressure_boundary_length[None]
-        reference_p = 0.0
-        reference_p_temp = 0.0
-        if valid_length > 1.0e-12:
-            reference_p = ti.cast(self.pressure_boundary_p_sum[None] / valid_length, ti.f32)
-            reference_p_temp = ti.cast(
-                self.pressure_boundary_p_temp_sum[None] / valid_length,
-                ti.f32,
-            )
-        self.pressure_boundary_p_reference[None] = reference_p
-        self.pressure_boundary_p_temp_reference[None] = reference_p_temp
-        center = self.body_center[None]
-        for face, sample_index in self.pressure_sample_p_temp:
-            if self.pressure_sample_valid[face, sample_index] == 1:
-                point = self.pressure_sample_point[face, sample_index]
-                normal = self.pressure_sample_normal[face, sample_index]
-                segment_length = self.pressure_sample_weight[face, sample_index]
-                # p_temp is the smoothed total pressure used by the momentum
-                # equation.  Subtracting one perimeter-wide gauge constant
-                # changes neither force nor torque on a closed exact OBB.
-                pressure = (
-                    self.pressure_sample_p_temp[face, sample_index]
-                    - reference_p_temp
-                )
-                impulse = -pressure * normal * segment_length
-                relative = point - center
-                ti.atomic_add(self.pressure_traction_impulse[None].x, impulse.x)
-                ti.atomic_add(self.pressure_traction_impulse[None].y, impulse.y)
-                ti.atomic_add(
-                    self.pressure_traction_torque[None],
-                    _cross2(relative, impulse),
-                )
-
-    def _compute_pressure_traction(self):
-        self._sample_obb_pressure()
-        self._integrate_obb_pressure()
-
-    @ti.func
     def _sample_phase_outside_box(self, point):
         """Extend phase along a world-horizontal chord of the ice body.
 
@@ -1882,18 +1526,15 @@ class IceFlow2D:
 
     @ti.kernel
     def _compute_hydrostatic_buoyancy(self):
-        """Retain the legacy chord estimate for displaced-volume diagnostics.
-
-        ``buoyancy_impulse`` is reported for comparison with older runs but
-        is no longer consumed by ``_advance_rigid_ice``.
-        """
         rho_water = ti.static(self._rho_water_l)
         rho_air = ti.static(self._rho_air_l)
         gravity = ti.Vector([ti.static(self._gravity_l[0]), ti.static(self._gravity_l[1])])
         self.buoyancy_impulse[None] = ti.Vector([0.0, 0.0])
-        # The horizontal chord remains useful as a backward-compatible volume
-        # ledger, but it misses bottom-only wetting during vertical entry.  Its
-        # first moment is therefore deliberately not used for rigid forcing.
+        # The chord extension gives a robust zeroth-order displaced volume,
+        # but its first moment is not a reliable transient centre of pressure
+        # during dam impact.  Apply this explicit Archimedes correction through
+        # the centre of mass; resolved rotation comes from cut-link momentum
+        # exchange until pressure traction replaces this volume approximation.
         self.buoyancy_torque[None] = 0.0
         self.displaced_water_volume[None] = 0.0
         cell_weight = ti.cast(
@@ -1915,44 +1556,23 @@ class IceFlow2D:
     def _advance_rigid_ice(self):
         relaxation = ti.static(self.cfg.force_relaxation)
         hydro_scale = ti.static(self.cfg.hydrodynamic_force_scale)
-        pressure_scale = ti.static(self.cfg.hydrostatic_buoyancy_scale)
+        buoyancy_scale = ti.static(self.cfg.hydrostatic_buoyancy_scale)
         mass = ti.static(self._body_mass)
         inertia = ti.static(self._body_inertia)
         gravity = ti.Vector([ti.static(self._gravity_l[0]), ti.static(self._gravity_l[1])])
-        residual_impulse = (
-            self.raw_hydrodynamic_impulse[None]
-            - self.pressure_mode_hydrodynamic_impulse[None]
-        )
-        residual_torque = (
-            self.raw_hydrodynamic_torque[None]
-            - self.pressure_mode_hydrodynamic_torque[None]
-        )
-        self.residual_hydrodynamic_impulse[None] = residual_impulse
-        self.residual_hydrodynamic_torque[None] = residual_torque
         filtered_impulse = (
             (1.0 - relaxation) * self.filtered_hydrodynamic_impulse[None]
-            + relaxation * residual_impulse
+            + relaxation * self.raw_hydrodynamic_impulse[None]
         )
         filtered_torque = (
             (1.0 - relaxation) * self.filtered_hydrodynamic_torque[None]
-            + relaxation * residual_torque
+            + relaxation * self.raw_hydrodynamic_torque[None]
         )
         self.filtered_hydrodynamic_impulse[None] = filtered_impulse
         self.filtered_hydrodynamic_torque[None] = filtered_torque
 
-        # Pressure traction is already a spatially integrated impulse and is
-        # intentionally not passed through the GME temporal low-pass: doing
-        # so would delay the short water-entry slamming force.  The legacy
-        # chord-derived buoyancy remains a diagnostic only.
-        total_impulse = (
-            hydro_scale * filtered_impulse
-            + pressure_scale * self.pressure_traction_impulse[None]
-            + mass * gravity
-        )
-        total_torque = (
-            hydro_scale * filtered_torque
-            + pressure_scale * self.pressure_traction_torque[None]
-        )
+        total_impulse = hydro_scale * filtered_impulse + buoyancy_scale * self.buoyancy_impulse[None] + mass * gravity
+        total_torque = hydro_scale * filtered_torque
         self.total_body_impulse[None] = total_impulse
         self.total_body_torque[None] = total_torque
 
