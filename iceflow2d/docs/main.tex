@@ -1,0 +1,813 @@
+\documentclass[UTF8]{ctexart}
+\usepackage[a4paper, margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\definecolor{iceflowcodebg}{HTML}{F6F8FA}
+\definecolor{iceflowcodeframe}{HTML}{D0D7DE}
+\definecolor{iceflowcodekeyword}{HTML}{CF222E}
+\definecolor{iceflowcodecomment}{HTML}{57606A}
+\lstdefinestyle{iceflowcode}{
+      language=Python,
+      basicstyle=\ttfamily\small,
+      keywordstyle=\color{iceflowcodekeyword}\bfseries,
+      commentstyle=\color{iceflowcodecomment}\itshape,
+      backgroundcolor=\color{iceflowcodebg},
+      frame=single,
+      rulecolor=\color{iceflowcodeframe},
+      framerule=0.6pt,
+      framesep=8pt,
+      xleftmargin=0.02\linewidth,
+      xrightmargin=0.02\linewidth,
+      framexleftmargin=6pt,
+      framexrightmargin=6pt,
+      aboveskip=0.8em,
+      belowskip=1em,
+      columns=fullflexible,
+      keepspaces=true,
+      showstringspaces=false
+}
+\setlength{\emergencystretch}{2em}
+
+\title{IceFlow2D 压力--动量两相流与二维焓相变耦合流程}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{范围}
+
+本文对应当前 \texttt{iceflow2d/simulator.py} 中的 \texttt{IceFlow2D}，以及
+\texttt{iceflow2d/thermal.py} 提供的二维有限体积焓模块。求解器保留唯一一套 Liang 型
+压力--动量水动力离散，并在 \texttt{thermal} 非空时，把温度、焓和冰--水相变耦合到同一
+Taichi CUDA 格点。未启用热模块时，原有固定或可动刚性矩形冰体路径保持不变；启用热模块时，
+当前第一版只允许固定冰的姿态，但其边界可随融化或结冰而演化。
+
+\path{iceflow2d/examples/stefan_melting_2d.py} 是独立的 NumPy/CPU
+二维 Stefan 基准，只验证无流动、等密度近似下的热焓离散，不调用 LBM。
+\path{iceflow2d/examples/coupled_fixed_ice_melting_2d.py} 才是空气--水
+LBM、热焓相变、动态锐界和真实冰水密度水量修正的端到端验证。全文中的二维能量均按单位出平面
+厚度计，因此体积焓的单位为 $\mathrm{J\,m^{-3}}$，总焓和边界热输入的单位为
+$\mathrm{J\,m^{-1}}$。
+
+每个格点使用 D2Q9 速度 $\boldsymbol c_q$、权重 $w_q$ 和 $c_s^2=1/3$。墙面指示函数记为
+$\chi^w_{ij}$，锐界冰体指示函数记为 $\chi^s_{ij}$，活动 LBM 节点集合为
+\begin{equation}
+      \mathcal A(t)=
+      \left\{(i,j)\mid \chi^w_{ij}=0,\ \chi^s_{ij}(t)=0\right\}.
+\end{equation}
+LBM 中的空气--水流体密度仍只由相场决定：
+\begin{equation}
+      \widehat\phi=\operatorname{clip}(\phi,0,1),\qquad
+      \rho(\phi)=\rho_w\widehat\phi+\rho_a(1-\widehat\phi).
+\end{equation}
+这里的 $\rho(\phi)$ 不代表热力学冰密度。相变焓反演和冰水质量转换分别使用真实的
+$\rho_i$ 与 $\rho_w$。
+
+\section{主状态与分布函数}
+
+\begin{itemize}
+      \item $f_q$ 是压力--动量分布。其一阶矩给出 $\rho\boldsymbol u$，二阶矩包含
+            $\rho\boldsymbol u\boldsymbol u+p^d\boldsymbol I$；$\sum_q f_q$
+            不是材料密度。
+
+      \item $h_q$ 是守恒 Allen--Cahn 空气--水相场分布，$\phi=\sum_q h_q$。
+            它与后文冰--水液相率 $f_\ell$ 是两个不同变量。
+
+      \item \texttt{f\_post} 与 \texttt{h\_post} 保存碰撞输出；融合流送核直接写回
+            \texttt{f} 与 \texttt{h}。
+
+      \item 公共宏观场包括 $\phi$、$\boldsymbol u$、本步格子加速度
+            $\boldsymbol a$（代码字段 \texttt{fluid\_force}）和压力 $p$。
+
+      \item 热分支另保存体积焓 $H$、温度 $T$、液相率 $f_\ell$、导热系数 $k$、
+            固定相变材料标记 $M$、面热通量及能量诊断量。$H$、$T$ 与面通量使用 f64，
+            以分辨单个 LBM 时间步内较小的物理焓增量。
+
+      \item 启用 \texttt{well\_balanced\_hydrostatics} 时，同时分配冻结的静水参考
+            密度与压力；bulk 残差重力、动态压力分裂和移动冰体 cut-link 静水压力冲量
+            作为一套方案共同启用。当前热相变分支与该选项互斥。
+
+      \item \texttt{solid\_prev} 在可动刚体分支和固定相变分支中都用于识别拓扑变化；
+            只有可动刚体才分配并累加水动力载荷。
+\end{itemize}
+
+压力--动量平衡分布为
+\begin{equation}
+      f_q^{\mathrm{eq}}(p^d,\rho,\boldsymbol u)
+      =\frac{w_q-\delta_{q0}}{c_s^2}p^d
+      +w_q\rho\left[
+      \frac{\boldsymbol c_q\cdot\boldsymbol u}{c_s^2}
+      +\frac{(\boldsymbol c_q\cdot\boldsymbol u)^2}{2c_s^4}
+      -\frac{|\boldsymbol u|^2}{2c_s^2}
+      \right].
+\end{equation}
+相场平衡分布为
+\begin{equation}
+      h_q^{\mathrm{eq}}(\phi,\boldsymbol u)
+      =w_q\phi\left[
+      1+\frac{\boldsymbol c_q\cdot\boldsymbol u}{c_s^2}
+      +\frac{(\boldsymbol c_q\cdot\boldsymbol u)^2}{2c_s^4}
+      -\frac{|\boldsymbol u|^2}{2c_s^2}
+      \right].
+\end{equation}
+若启用 \texttt{well\_balanced\_hydrostatics}，分布函数只携带
+$p^d=p-p^H$；否则 $p^d=p$。参考密度、参考压力和边界压力冲量不能独立开关。
+
+\section{冰--水焓闭合}
+
+相变材料域由初始化时的冰和水共同组成：
+\begin{equation}
+      M_{ij}=
+      \begin{cases}
+            1, & (i,j)\text{ 初始为冰或水},\\
+            0, & (i,j)\text{ 初始为空气或墙面}.
+      \end{cases}
+\end{equation}
+在 $M=1$ 的单元内，取熔点固冰为焓零点。记熔点为 $T_m$，冰和水的定压比热为
+$c_{p,i}$、$c_{p,w}$，熔化潜热为 $L$。真实密度下的体积焓定义为
+\begin{equation}
+      H(T,f_\ell)=
+      \begin{cases}
+            \rho_i c_{p,i}(T-T_m),
+            & T<T_m,\quad f_\ell=0,\\[2mm]
+            \rho_i L f_\ell,
+            & T=T_m,\quad 0\le f_\ell\le 1,\\[2mm]
+            \rho_i L+\rho_w c_{p,w}(T-T_m),
+            & T>T_m,\quad f_\ell=1.
+      \end{cases}
+\end{equation}
+因此潜热平台宽度是 $\rho_iL$，而液态显热斜率是 $\rho_wc_{p,w}$。对应的逐点反演为
+\begin{equation}
+      (T,f_\ell)=
+      \begin{cases}
+            \left(T_m+\dfrac{H}{\rho_i c_{p,i}},\,0\right),
+            & H<0,\\[3mm]
+            \left(T_m,\,\dfrac{H}{\rho_iL}\right),
+            & 0\le H\le \rho_iL,\\[3mm]
+            \left(T_m+\dfrac{H-\rho_iL}{\rho_wc_{p,w}},\,1\right),
+            & H>\rho_iL.
+      \end{cases}
+\end{equation}
+相变区不人为设置有限宽度的温度糊状区；温度保持在 $T_m$，输入或移出的能量直接改变
+$f_\ell$。单元导热系数按液相率线性插值：
+\begin{equation}
+      k(f_\ell)=(1-f_\ell)k_i+f_\ell k_w.
+\end{equation}
+这套闭合允许初始水在冷边界下重新结冰。第一版耦合中，初始空气因水--气热界面绝热而不参与
+冰水相变。
+
+\section{二维有限体积焓离散}
+
+\subsection{守恒方程与面通量}
+
+热模块在与 LBM 相同的方形单元上求解
+\begin{equation}
+      \frac{\partial H}{\partial t}+\nabla\cdot\boldsymbol q=0,
+      \qquad
+      \boldsymbol q=-k\nabla T+
+      \boldsymbol U\,C_{\mathrm{sens}}(T-T_m).
+\end{equation}
+其中 $\boldsymbol U$ 是物理速度。对冰--水相变材料，
+$C_{\mathrm{sens}}=\rho_wc_{p,w}$；只输运相对 $T_m$ 的显热，而不输运
+$\rho_iL$ 的参考偏置。这样在 $\rho_i\ne\rho_w$ 时，同温面两侧不会因潜热参考量不同而产生
+虚假对流通量。
+
+以 $x$ 向内面 $(i+\tfrac12,j)$ 为例，面导热系数采用调和平均
+\begin{equation}
+      k_{i+\frac12,j}
+      =\frac{2k_{ij}k_{i+1,j}}{k_{ij}+k_{i+1,j}},
+\end{equation}
+面速度取相邻活动单元速度的算术平均，显热采用一阶迎风：
+\begin{align}
+      U^x_{i+\frac12,j}
+      &=\frac12\left(U^x_{ij}+U^x_{i+1,j}\right),\\
+      T_{\mathrm{up}}
+      &=
+      \begin{cases}
+            T_{ij}, & U^x_{i+\frac12,j}\ge 0,\\
+            T_{i+1,j}, & U^x_{i+\frac12,j}<0,
+      \end{cases}\\
+      q^x_{i+\frac12,j}
+      &=-k_{i+\frac12,j}
+      \frac{T_{i+1,j}-T_{ij}}{\Delta x}
+      +U^x_{i+\frac12,j}\rho_wc_{p,w}
+      (T_{\mathrm{up}}-T_m).
+\end{align}
+$y$ 向面完全同理。冰体掩膜任一侧为固体时关闭该面的速度输运，但仍通过热焓网格计算导热。
+对每个非墙面单元，显式更新为
+\begin{equation}
+      H_{ij}^{n+1}=H_{ij}^{n}
+      -\frac{\delta t}{\Delta x}
+      \left(
+      q^x_{i+\frac12,j}-q^x_{i-\frac12,j}
+      +q^y_{i,j+\frac12}-q^y_{i,j-\frac12}
+      \right).
+\end{equation}
+每个内部面只计算一次，并由相邻两单元以相反符号使用，所以内部能量交换在离散层面严格抵消。
+
+\subsection{热边界与能量核对}
+
+热壁面设置在“非墙面单元--墙面单元”的相邻面，而不是数组最外层。定义 $q_{\mathrm{in}}$
+为正向计算域内的热流密度，则半格距离 Dirichlet、指定入域 Neumann 和绝热边界分别为
+\begin{equation}
+      q_{\mathrm{in}}=
+      \begin{cases}
+            \dfrac{2k_P}{\Delta x}(T_b-T_P),
+            & \text{Dirichlet},\\[3mm]
+            \overline q_{\mathrm{in}},
+            & \text{Neumann},\\[1mm]
+            0,
+            & \text{adiabatic}.
+      \end{cases}
+\end{equation}
+首版 LBM 耦合强制水--气热界面绝热；空气帽保留水动力作用，只负责吸收冰水真实密度差造成的
+自由液面体积变化。
+
+总焓、累计边界热输入和能量残差定义为
+\begin{align}
+      E_H(t)&=\Delta x^2\sum_{\chi^w_{ij}=0}H_{ij}(t),\\
+      Q_b(t)&=\int_0^t
+      \sum_{\Gamma_b}q_{\mathrm{in}}\,\Delta s\,\mathrm dt,\\
+      R_E(t)&=E_H(t)-E_H(0)-Q_b(t).
+\end{align}
+二维模型按单位出平面厚度积分，所以 $E_H$、$Q_b$ 和 $R_E$ 的单位均为
+$\mathrm{J\,m^{-1}}$。
+
+\subsection{物理--格子尺度与显式稳定性}
+
+设一个格点对应 $\Delta x$，一个 LBM 步对应 $\Delta t_{\mathrm{LBM}}$。
+代码沿用水动力尺度
+\begin{align}
+      L_{\mathrm{ref}}&=N_{\mathrm{ref}}\Delta x,\\
+      U_{\mathrm{ref}}&=\sqrt{4g_{\mathrm{ref}}L_{\mathrm{ref}}},\\
+      \Delta t_{\mathrm{LBM}}
+      &=\frac{u_{\mathrm{ref}}^{\mathrm{lat}}\Delta x}{U_{\mathrm{ref}}},
+      \qquad u_{\mathrm{ref}}^{\mathrm{lat}}=0.1,\\
+      \boldsymbol U&=\frac{\Delta x}{\Delta t_{\mathrm{LBM}}}
+      \boldsymbol u^{\mathrm{lat}}.
+\end{align}
+当机械重力配置为零时，仅在单位换算中取
+$g_{\mathrm{ref}}=9.8\ \mathrm{m\,s^{-2}}$；这不会向动量方程添加重力。
+
+定义
+\begin{equation}
+      \alpha_{\max}
+      =\max\left(
+      \frac{k_i}{\rho_i c_{p,i}},
+      \frac{k_w}{\rho_w c_{p,w}}
+      \right),
+\end{equation}
+以及活动节点半力速度的格子 $L_1$ 上界
+\begin{equation}
+      u_{\max,1}^{\mathrm{lat}}
+      =\max_{\mathcal A}
+      \left(|u_x^\dagger|+|u_y^\dagger|\right).
+\end{equation}
+扩散和对流允许步长分别为
+\begin{align}
+      \Delta t_D&=\mathrm{Fo}_{\max}
+      \frac{\Delta x^2}{\alpha_{\max}},\\
+      \Delta t_A&=
+      \mathrm{Co}_{\max}
+      \frac{\Delta t_{\mathrm{LBM}}}
+      {u_{\max,1}^{\mathrm{lat}}}.
+\end{align}
+半格 Dirichlet 面使方形网格角点出现六个扩散贡献，因此配置要求
+$\mathrm{Fo}_{\max}\le1/6$；当前默认值为 $0.15$，且
+$\mathrm{Co}_{\max}=0.50$。若一次热更新覆盖
+$\Delta t_T=N_T\Delta t_{\mathrm{LBM}}$，子步数取
+\begin{equation}
+      N_{\mathrm{sub}}
+      =\max\left[
+      1,\
+      \left\lceil
+      \frac{\Delta t_T}{\Delta t_D}
+      +\frac{\Delta t_T}{\Delta t_A}
+      \right\rceil
+      \right],
+      \qquad
+      \delta t=\frac{\Delta t_T}{N_{\mathrm{sub}}}.
+\end{equation}
+当无对流或 $u_{\max,1}^{\mathrm{lat}}=0$ 时，第二项取零。
+
+\section{初始化}
+
+公共初始化依次完成刚体状态、墙面与初始 OBB SDF、空气--水相场以及
+$f_q/h_q$ 平衡态。初始活动节点水量为
+\begin{equation}
+      V_{w,0}=\sum_{(i,j)\in\mathcal A(0)}\phi_{ij}.
+\end{equation}
+可选相场 warm-up 只推进 $h_q$，随后恢复宏观量并把水量投影回 $V_{w,0}$。
+
+热分支必须在 warm-up 和首次水量投影之后初始化焓，避免把预热前的组分能量与预热后的
+$\phi$ 混合。程序随后保存连续固相面积和锐界几何面积的格子计数
+\begin{equation}
+      V_{s,0}=\sum_{M_{ij}=1}(1-f_{\ell,ij}),\qquad
+      V_{g,0}=\sum_{ij}\chi^s_{ij}.
+\end{equation}
+初始冰使用 $(T_i,f_\ell)=(T_{i,0},0)$；初始水使用
+$(T_w,f_\ell)=(T_{w,0},1)$。在默认绝热水--气模式下，初始空气保留独立显热状态，但不与
+$M=1$ 的相变域交换热量。
+
+启用 \texttt{well\_balanced\_hydrostatics} 的非热分支从初始相场建立冻结的
+$\rho^H,p^H$。两相水平池使用行平均密度，从自由表面按梯形积分
+$\partial_y p^H=\rho^Hg_y$；满水域使用解析线性压力。well-balanced 初始化令
+$\boldsymbol u=0$、$p=p^H$，而 $f_q$ 中的动态压力为零。
+
+\section{一次 \texttt{step} 的真实调用顺序}
+
+每个 LBM 步的公共水动力部分先完成，热模块按配置的 $N_T$ 个 LBM 步批量推进。
+实际顺序如下。
+
+\begin{enumerate}
+      \item \texttt{\_collide\_velocity}：计算流体加速度与人工黏度，完成压力--动量
+            MRT 碰撞，写入 \texttt{f\_post}。
+
+      \item \texttt{\_collide\_phase}：用半力步速度完成守恒 Allen--Cahn
+            中心矩碰撞，写入 \texttt{h\_post}。
+
+      \item \texttt{\_stream}：融合流送两套分布并处理墙面与冰面 cut-link。
+            可动非热冰体在此归约水动力冲量和力矩。
+
+      \item \texttt{\_update\_streamed\_macroscopic\_fields}：恢复
+            $\phi$ 与 $\boldsymbol u$，重置非活动节点。
+
+      \item \texttt{\_update\_pressure}：从移动方向的压力--动量分布恢复 $p$。
+
+      \item 非固定、非热冰体依次积分刚体、更新 OBB 几何并 refill 拓扑变化节点。
+
+      \item 热分支累计 LBM 步数。达到 $N_T$ 后，先准备半力步热对流速度，再把焓推进
+            $N_T\Delta t_{\mathrm{LBM}}$。
+
+      \item 由新液相率更新锐界相变几何，并 refill 新冻结或新融化节点。
+
+      \item 按真实冰水密度更新当前连续固相体积、锐界体积和活动 LBM 水量目标。
+
+      \item \texttt{\_correct\_water\_volume} 把活动节点相场投影到当前目标；
+            非热分支的目标仍为 $V_{w,0}$。
+
+      \item LBM 步数计数器加一。
+\end{enumerate}
+
+等价控制流为
+\begin{lstlisting}[style=iceflowcode]
+_collide_velocity()
+_collide_phase()
+_stream()
+_update_streamed_macroscopic_fields()
+_update_pressure()
+if not ice_fixed:
+    _integrate_rigid_ice()
+    _update_ice_geometry()
+    _refill_changed_nodes()
+if thermal_enabled:
+    thermal_lbm_steps_pending += 1
+    if thermal_lbm_steps_pending >= thermal_interval:
+        _prepare_thermal_advection_velocity()
+        thermal.advance()
+        _update_phase_change_geometry()
+        _refill_phase_change_nodes()
+        _update_phase_change_water_target()
+        thermal_lbm_steps_pending = 0
+_correct_water_volume()
+steps += 1
+\end{lstlisting}
+若输出时尚有不足 $N_T$ 步的热时间尾段，\texttt{synchronize\_thermal()} 会补齐该段并再次执行
+几何、水量目标和投影同步。
+
+\section{碰撞中的力、热反馈与松弛}
+
+\texttt{\_collide\_velocity} 由相场梯度和拉普拉斯构造化学势毛细力，并加入重力。
+未使用 well-balanced 方案时，热分支的重力--浮力加速度为
+\begin{equation}
+      \boldsymbol a_{g,T}
+      =\boldsymbol g
+      -\widehat\phi\beta_T(T-T_{\mathrm{ref}})\boldsymbol g.
+\end{equation}
+若 $\boldsymbol g=(0,-g_0)$ 且 $T>T_{\mathrm{ref}}$，第二项向上，因此暖水获得
+Boussinesq 浮力修正；$\widehat\phi$ 使该修正只作用于水相。温度更新后的浮力在下一次
+动量碰撞中反馈。
+
+毛细化学势及其加速度贡献为
+\begin{align}
+      \mu_\phi&=
+      4\beta_\phi\widehat\phi(\widehat\phi-1)
+      \left(\widehat\phi-\frac12\right)
+      -\kappa_\phi\nabla_h^2\phi,\\
+      \beta_\phi&=\frac{12\sigma}{W},\qquad
+      \kappa_\phi=\frac32\sigma W,\\
+      \boldsymbol a&=\boldsymbol a_{g,T}
+      +\frac{\mu_\phi\nabla_h\phi}{\rho(\phi)}.
+\end{align}
+在非热 well-balanced 分支中，重力项改写为
+\begin{equation}
+      \boldsymbol a_g=\frac{\rho-\rho^H}{\rho}\boldsymbol g.
+\end{equation}
+
+局部松弛时间为
+\begin{equation}
+      \tau=\frac12+3\left[
+      \widehat\phi\nu_w+(1-\widehat\phi)\nu_a+\nu_{\mathrm{art}}
+      \right].
+\end{equation}
+压力--动量碰撞、相场碰撞、压力恢复及热对流统一使用半力步速度
+\begin{equation}
+      \boldsymbol u^\dagger
+      =\boldsymbol u+\frac12\boldsymbol a.
+\end{equation}
+热模块使用的物理速度是
+\begin{equation}
+      \boldsymbol U_T
+      =\frac{\Delta x}{\Delta t_{\mathrm{LBM}}}\boldsymbol u^\dagger,
+\end{equation}
+墙面和锐界固体节点取零。相场压缩项仍为
+\begin{equation}
+      \frac{4\phi(1-\phi)}{W}
+      \frac{\nabla\phi}{|\nabla\phi|+10^{-14}}.
+\end{equation}
+
+\section{融合流送与锐界 cut-link}
+
+\texttt{\_stream} 是 push-stream 核。活动邻点直接接收
+\texttt{f\_post}/\texttt{h\_post}，静止容器墙采用反向无滑移/无相通量反弹。
+非热刚体使用 OBB SDF；相变分支则定义
+\begin{equation}
+      \psi_{ij}=f_{\ell,ij}-f_{\ell,c},\qquad
+      \chi^s_{ij}
+      =M_{ij}\,\mathbb I(\psi_{ij}\le0),
+\end{equation}
+其中默认阈值 $f_{\ell,c}=0.5$。此时代码字段 \texttt{sdf} 保存的是可线性插值的
+$\psi$，并非欧氏有符号距离。
+
+若流体点 $\boldsymbol x_f$ 沿 $\boldsymbol c_q$ 指向固体点 $\boldsymbol x_s$，边界截距为
+\begin{equation}
+      \eta_q=\operatorname{clip}
+      \left(
+      \frac{\psi_f}{\psi_f-\psi_s},
+      0.05,0.95
+      \right),\qquad
+      \boldsymbol x_b=\boldsymbol x_f+\eta_q\boldsymbol c_q.
+\end{equation}
+统一插值反弹写为
+\begin{equation}
+      f_{\bar q}(\boldsymbol x_f,t+\Delta t)
+      =
+      \frac{
+      \eta_q f_{\bar q}^{*}(\boldsymbol x_f)
+      +(1-\eta_q)f_q^{*}(\boldsymbol x_f-\boldsymbol c_q)
+      +\eta_q f_q^{*}(\boldsymbol x_f)
+      -6w_q\rho\,\boldsymbol c_q\cdot\boldsymbol u_b
+      }{1+\eta_q}.
+\end{equation}
+后向活动节点不可用时，退化为移动壁面反弹
+\begin{equation}
+      f_{\bar q}=f_q^*
+      -6w_q\rho\,\boldsymbol c_q\cdot\boldsymbol u_b,\qquad
+      h_{\bar q}=h_q^*
+      -6w_q\phi\,\boldsymbol c_q\cdot\boldsymbol u_b.
+\end{equation}
+可动非热刚体的
+\begin{equation}
+      \boldsymbol u_b(\boldsymbol x)
+      =\boldsymbol V+\omega_b\bigl(-(y-X_y),x-X_x\bigr)
+\end{equation}
+同时进入动量交换；固定相变冰满足 $\boldsymbol u_b=\boldsymbol0$，只执行边界反弹，
+不累加载荷。
+
+\section{宏观量与压力恢复}
+
+流送后活动节点按
+\begin{equation}
+      \phi=\sum_qh_q,\qquad
+      \rho=\rho(\phi),\qquad
+      \boldsymbol u=
+      \frac{\sum_q\boldsymbol c_qf_q}{\max(\rho,10^{-12})}
+\end{equation}
+恢复宏观量。压力恢复使用 $\boldsymbol u^\dagger$ 和
+$\boldsymbol G_\rho=(\rho_w-\rho_a)\nabla_h\phi$：
+\begin{equation}
+      p^d=0.6\left[
+      \sum_{q=1}^{8}f_q
+      +\frac12\boldsymbol u^\dagger\cdot\boldsymbol G_\rho
+      -\frac32w_0\rho|\boldsymbol u^\dagger|^2
+      \right].
+\end{equation}
+最终写入 $p=p^d+p^H$（启用 well-balanced）或 $p=p^d$（未启用）。
+当前实现没有额外压力平滑或临时压力数组。
+
+\section{几何更新与节点重建}
+
+\subsection{非热可动刚体}
+
+自由冰体首先将水动力冲量与 $m\boldsymbol g$ 相加，再更新平动和转动速度。速度上限维持
+低 Mach 条件；底板接触使用四角投影 Gauss--Seidel 冲量约束和 Coulomb 摩擦，位置级
+split impulse 消除残余穿透。
+
+位姿更新后，程序保存旧 \texttt{solid} 并重新计算 OBB SDF。由流体变为固体的节点保存
+裁剪相场与动态压力残差；由固体变为流体的节点只从旧时刻流体邻点平均外推
+$\phi,p,\boldsymbol u$，随后用 $f_q^{\mathrm{eq}}$ 和 $h_q^{\mathrm{eq}}$ 重建分布。
+
+\subsection{固定相变边界}
+
+热步后按 $f_\ell-f_{\ell,c}$ 更新 $\chi^s$。当节点由活动流体变为固体时，
+\begin{equation}
+      \phi\leftarrow\operatorname{clip}(\phi,0,1),\qquad
+      \boldsymbol u\leftarrow\boldsymbol0,\qquad
+      \boldsymbol a\leftarrow\boldsymbol0.
+\end{equation}
+该节点随后退出活动集合，其动量不再参与流送。
+
+当节点由固体变为活动流体时，设置
+\begin{equation}
+      \phi_0=1,\qquad
+      \boldsymbol u_0=\boldsymbol0,
+\end{equation}
+并从 $3\times3$ 邻域内旧时刻已经是流体的节点平均压力：
+\begin{equation}
+      p_0=
+      \frac{1}{|\mathcal N_f^-|}
+      \sum_{\boldsymbol y\in\mathcal N_f^-}p(\boldsymbol y).
+\end{equation}
+若没有可用邻点则使用当前储存压力。最后重建
+\begin{equation}
+      f_q=f_q^{\mathrm{eq}}(p_0,\rho_w,\boldsymbol0),\qquad
+      h_q=h_q^{\mathrm{eq}}(1,\boldsymbol0).
+\end{equation}
+连续液相率控制热力学体积，阈值掩膜只控制 LBM 拓扑；两者的差异由下一节的活动水量目标显式补偿。
+
+\section{真实密度下的水量目标与有界投影}
+
+\subsection{冰水质量转换}
+
+所有 $V$ 均以格子面积为单位。当前连续固相体积和锐界几何体积为
+\begin{equation}
+      V_s(t)=\sum_{M_{ij}=1}(1-f_{\ell,ij}),\qquad
+      V_g(t)=\sum_{ij}\chi^s_{ij}.
+\end{equation}
+记 $r_\rho=\rho_i/\rho_w$。冰--水质量守恒给出物理总液水体积
+\begin{equation}
+      \boxed{
+      V_w^{\mathrm{tot}}(t)
+      =V_{w,0}
+      +r_\rho\left[V_{s,0}-V_s(t)\right]
+      }.
+\end{equation}
+因此融化一格连续固相只生成 $r_\rho$ 格水；当 $\rho_i<\rho_w$ 时，剩余
+$1-r_\rho$ 是由自由液面吸收的体积收缩。定义正的融化收缩量为
+\begin{equation}
+      V_{\mathrm{contract}}
+      =(1-r_\rho)\left[V_{s,0}-V_s(t)\right].
+\end{equation}
+同一关系反向作用时即表示水结冰导致的体积膨胀。
+
+\subsection{锐界拓扑补偿}
+
+LBM 投影只对 $\mathcal A(t)$ 中的相场求和，而锐界掩膜每次以整格方式增加或删除活动域。
+为使锐界表示的占据体积变化与连续热力学体积变化一致，要求
+\begin{equation}
+      \left[V_g(t)+V_{w,\mathrm{act}}(t)\right]
+      -\left[V_{g,0}+V_{w,0}\right]
+      =(1-r_\rho)\left[V_s(t)-V_{s,0}\right].
+\end{equation}
+由此得到代码实际使用的活动 LBM 水量目标
+\begin{equation}
+      \boxed{
+      V_{w,\mathrm{act}}^\star(t)
+      =
+      V_{w,0}
+      +(1-r_\rho)\left[V_s(t)-V_{s,0}\right]
+      -\left[V_g(t)-V_{g,0}\right]
+      }.
+\end{equation}
+当 $V_g=V_s$ 且 $V_{g,0}=V_{s,0}$ 时，该式严格退化为
+$V_w^{\mathrm{tot}}$。当一个完整格点从锐界固体变为活动流体时，
+$-\Delta V_g$ 恰好抵消 refill 新加入的纯水格点，因而不会产生一格尺度的投影脉冲。
+
+\subsection{有界界面投影}
+
+每步末尾先将 $\phi$ 裁剪到 $[0,1]$，并把 cutoff 外的数值尾部归一为纯空气或纯水。
+程序从局部 $\phi=1/2$ 交叉处播种，在弥散界面带内做确定性八邻域扩张，只在该连通带上应用
+Bernoulli 相对熵映射
+\begin{equation}
+      \phi'(\Lambda)
+      =\frac{\phi e^\Lambda}{1-\phi+\phi e^\Lambda}.
+\end{equation}
+标量 $\Lambda$ 由带括区间的 Newton/二分迭代求得，使
+\begin{equation}
+      \sum_{(i,j)\in\mathcal A}\phi'_{ij}
+      =V_{w,\mathrm{act}}^\star.
+\end{equation}
+非热分支取 $V_{w,\mathrm{act}}^\star=V_{w,0}$。映射保持
+$0\le\phi'\le1$ 且不修改纯相体节点；若允许的最大界面位移内目标不可达，则明确报错。
+相场改变后，$h_q$ 和 $f_q$ 都按新旧平衡态之差抬升，以保留非平衡部分、当前速度和动态压力。
+
+\section{二维固定冰热焓基准}
+
+\texttt{stefan\_melting\_2d.py} 在 $30\ \mathrm{mm}\times30\ \mathrm{mm}$ 方形热水浴
+中央放置 $12\ \mathrm{mm}\times12\ \mathrm{mm}$ 固定方冰，网格为 $120\times120$，
+即 $\Delta x=\Delta y=0.25\ \mathrm{mm}$。初始冰温和熔点均为 $0\,^\circ\mathrm C$，
+初始水温及四壁 Dirichlet 温度均为 $20\,^\circ\mathrm C$。材料参数为
+\begin{equation}
+      \rho_i=\rho_w=1000\ \mathrm{kg\,m^{-3}},\quad
+      c_{p,w}=4186,\quad c_{p,i}=2100\ \mathrm{J\,kg^{-1}K^{-1}},
+\end{equation}
+\begin{equation}
+      k_w=0.60,\quad k_i=2.20\ \mathrm{W\,m^{-1}K^{-1}},\qquad
+      L=334000\ \mathrm{J\,kg^{-1}}.
+\end{equation}
+这里刻意采用等密度、无速度、纯导热近似，用于把二维热焓核与 LBM 耦合误差分离。默认
+$\mathrm{Fo}=0.15$，时间步为
+\begin{equation}
+      \Delta t
+      =\mathrm{Fo}\frac{\min(\Delta x,\Delta y)^2}{\alpha_{\max}}
+      =8.948863636\times10^{-3}\ \mathrm s,
+\end{equation}
+仿真至 $180\ \mathrm s$。
+
+连续固相面积、融化率和等效均匀内蚀深度分别定义为
+\begin{align}
+      A_s(t)&=\Delta x\Delta y
+      \sum_{ij}(1-f_{\ell,ij}),\\
+      \mathcal F_m(t)&=1-\frac{A_s(t)}{A_s(0)},\\
+      d_{\mathrm{eq}}(t)
+      &=\frac{
+      w_0+h_0-\sqrt{(w_0-h_0)^2+4A_s(t)}
+      }{4}.
+\end{align}
+对默认方冰，$d_{\mathrm{eq}}=(w_0-\sqrt{A_s})/2$。方形域、方冰及四壁等温条件还允许
+用二面体群 $D_4$ 核对二维对称性。先定义各场的绝对误差
+\begin{equation}
+      e_{D_4}(X)
+      =\max_{\mathcal R\in D_4}
+      \|X-\mathcal R X\|_\infty,
+\end{equation}
+再按代码中的物理尺度组成
+\begin{equation}
+      \varepsilon_{\mathrm{sym}}
+      =\max\left[
+      e_{D_4}(f_\ell),\
+      \frac{e_{D_4}(T)}{\max(1,|T_b-T_m|)},\
+      \frac{e_{D_4}(H)}
+      {\rho\left[L+c_{p,w}(T_b-T_m)\right]}
+      \right].
+\end{equation}
+
+默认计算的终态结果为
+\begin{center}
+\begin{tabular}{lll}
+      \toprule
+      诊断量 & 数值 & 含义\\
+      \midrule
+      $A_s(180\ \mathrm s)$
+      & $80.2003877\ \mathrm{mm^2}$ & 连续剩余固相面积\\
+      $\mathcal F_m$
+      & $44.3052863\%$ & 已融化面积比例\\
+      $\sqrt{A_s}$
+      & $8.9554669\ \mathrm{mm}$ & 等效方形边长\\
+      $d_{\mathrm{eq}}$
+      & $1.5222665\ \mathrm{mm}$ & 等效四面内蚀深度\\
+      $R_E$
+      & $-4.37\times10^{-11}\ \mathrm{J\,m^{-1}}$ & 能量残差\\
+      $\varepsilon_{\mathrm{sym}}$
+      & $0$ & 归一化二维对称误差\\
+      \bottomrule
+\end{tabular}
+\end{center}
+在 $t=60\ \mathrm s$ 时，$80^2$、$120^2$ 和 $160^2$ 网格得到的
+$d_{\mathrm{eq}}$ 分别为 $0.817989$、$0.810287$ 和 $0.806112\ \mathrm{mm}$；
+相邻网格差随加密减小。该基准验证守恒、对称性、二维四面融化和网格收敛趋势，但不是带闭式解的
+一维 Stefan 问题。
+
+\section{LBM--焓耦合固定冰验证}
+
+\subsection{默认尺度与参数}
+
+\texttt{coupled\_fixed\_ice\_melting\_2d.py} 采用短时毫米尺度，以在可接受步数内观察到
+明显融化。容器尺寸为 $2.5\ \mathrm{mm}\times3.5\ \mathrm{mm}$，网格
+$80\times112$，故
+\begin{equation}
+      \Delta x=31.25\ \mathrm{\mu m}.
+\end{equation}
+初始水位为 $2.75\ \mathrm{mm}$，上方保留 $0.75\ \mathrm{mm}$ 空气帽。
+$1.0\ \mathrm{mm}\times1.0\ \mathrm{mm}$ 方冰占 $32\times32$ 格，中心为
+$(1.25,1.50)\ \mathrm{mm}$，完全浸没且机械固定。
+
+\begin{center}
+\begin{tabular}{llll}
+      \toprule
+      类别 & 参数 & 默认值 & 说明\\
+      \midrule
+      密度 & $(\rho_i,\rho_w,\rho_a)$
+      & $(917,1000,1.25)\ \mathrm{kg\,m^{-3}}$ & 真实冰水密度比\\
+      初温 & $(T_i,T_w,T_a)$
+      & $(0,60,40)\,^\circ\mathrm C$ & 高水温缩短验证时间\\
+      导热 & $(k_i,k_w,k_a)$
+      & $(2.20,0.60,0.026)\ \mathrm{W\,m^{-1}K^{-1}}$ & 水气界面仍绝热\\
+      比热 & $(c_{p,i},c_{p,w},c_{p,a})$
+      & $(2100,4186,1005)\ \mathrm{J\,kg^{-1}K^{-1}}$ & 物理显热参数\\
+      潜热 & $L$
+      & $334000\ \mathrm{J\,kg^{-1}}$ & 熔点 $T_m=0\,^\circ\mathrm C$\\
+      黏度 & $(\nu_w,\nu_a)$
+      & $(10^{-6},1.5\times10^{-5})\ \mathrm{m^2\,s^{-1}}$ & 格子松弛换算\\
+      热边界 & 左、右、底壁
+      & $60\,^\circ\mathrm C$ & Dirichlet\\
+      热边界 & 顶壁、水--气界面
+      & $q_{\mathrm{in}}=0$ & 绝热\\
+      耦合 & $N_T$
+      & $10$ & 每十个 LBM 步更新热场\\
+      控制项 & $(\boldsymbol g,\sigma)$
+      & $(\boldsymbol0,0)$ & 隔离自然对流和毛细瞬态\\
+      \bottomrule
+\end{tabular}
+\end{center}
+
+本例取 $N_{\mathrm{ref}}=112$。虽然机械重力为零，单位换算仍使用
+$g_{\mathrm{ref}}=9.8\ \mathrm{m\,s^{-2}}$，从而
+\begin{equation}
+      U_{\mathrm{ref}}
+      =\sqrt{4(9.8)(112)(31.25\times10^{-6})}
+      =0.37040518\ \mathrm{m\,s^{-1}},
+\end{equation}
+\begin{equation}
+      \Delta t_{\mathrm{LBM}}
+      =8.43670699\times10^{-6}\ \mathrm s.
+\end{equation}
+默认请求终止时间为 $0.30\ \mathrm s$，输出必须落在热同步点，因此实际终态为
+$35560$ 个 LBM 步，即 $0.3000093005\ \mathrm s$。
+
+\subsection{端到端结果}
+
+终态诊断如下。
+\begin{center}
+\begin{tabular}{lll}
+      \toprule
+      诊断量 & 数值 & 守恒含义\\
+      \midrule
+      $V_s(0)\rightarrow V_s(t)$
+      & $1024\rightarrow522.385277$ 格 & 连续固相体积\\
+      $V_g(0)\rightarrow V_g(t)$
+      & $1024\rightarrow536$ 格 & 锐界固体拓扑\\
+      $\mathcal F_m$
+      & $48.9858128\%$ & 连续固相融化比例\\
+      $d_{\mathrm{eq}}$
+      & $0.142878917\ \mathrm{mm}$ & 约 $4.572$ 个网格\\
+      $r_\rho[V_s(0)-V_s(t)]$
+      & $459.980701$ 格 & 生成的物理液水\\
+      $V_{\mathrm{contract}}$
+      & $41.6340220$ 格 & 冰水密度差导致的收缩\\
+      $V_w^{\mathrm{tot}}$
+      & $5725.980701$ 格 & 总物理液水\\
+      $V_{w,\mathrm{act}}^\star$
+      & $5712.3659796$ 格 & 锐界补偿后的投影目标\\
+      $V_{w,\mathrm{act}}-V_{w,\mathrm{act}}^\star$
+      & $7.93\times10^{-7}$ 格 & 投影残差\\
+      $R_E$
+      & $-1.09\times10^{-7}\ \mathrm{J\,m^{-1}}$ & 热能残差\\
+      \bottomrule
+\end{tabular}
+\end{center}
+累计边界热输入为 $2.18908227\ \mathrm{J\,m^{-1}}$，故相对能量残差约
+$4.99\times10^{-8}$。连续固相和锐界固相不必逐时相等；其差异正是
+$V_{w,\mathrm{act}}^\star$ 中几何补偿项存在的原因。
+
+该算例确实执行 LBM 碰撞、空气--水相场流送、cut-link、融化节点重建、自由表面水量投影和
+热对流数据通道。默认 $\boldsymbol g=\boldsymbol0$、$\sigma=0$ 刻意抑制自然对流与毛细瞬态，
+因此它首先验证热--LBM 数据交换、动态几何和真实密度质量守恒，而不是用来标定对流强化融化。
+若设置非零重力，LBM 半力速度会进入热对流，温度也会通过 Boussinesq 项反馈到下一步流场。
+
+\section{当前适用范围与实现不变量}
+
+\begin{itemize}
+      \item LBM 空气--水密度永远来自 $\phi$，不来自 $\sum_qf_q$；冰--水热焓与质量转换
+            则显式使用 $\rho_i$ 和 $\rho_w$。
+
+      \item 一步中只有融合 \texttt{\_stream} 写回流送后的 $f_q/h_q$；
+            碰撞源始终来自 post-collision 数组。
+
+      \item 热对流、LBM 平衡态和压力恢复使用同一半力步速度
+            $\boldsymbol u^\dagger$。
+
+      \item 第一版热耦合要求 \texttt{ice\_fixed=true}。移动融化冰尚缺相变材料标记和焓场的
+            守恒重映射，因而不能与可动刚体路径同时启用。
+
+      \item 热相变与冻结的 well-balanced 静水参考场当前互斥；水--气热界面必须绝热。
+
+      \item 相变材料标记 $M$ 在初始化时固定。初始水可以结冰，但自由表面运动后新进入的
+            初始空气节点不会自动成为相变材料。
+
+      \item 真实密度相变必须保留水--气自由表面，用于吸收
+            $(1-\rho_i/\rho_w)\Delta V_s$ 的体积收缩或膨胀。
+
+      \item 固定相变冰不积分水动力载荷，但会分配 \texttt{solid\_prev}、更新液相率零等值线、
+            refill 拓扑变化节点并更新水量目标。
+
+      \item 热--流采用显式分步耦合；一阶迎风热对流和阈值锐化几何是当前精度边界。
+\end{itemize}
+
+\end{document}

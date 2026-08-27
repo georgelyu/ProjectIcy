@@ -6,7 +6,6 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -130,8 +129,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Taichi CUDA 2D rigid ice block falling through air into a water pool"
     )
-    parser.add_argument("--mode", choices=("coupled",), default="coupled")
-    parser.add_argument("--material", choices=("ice",), default="ice")
     parser.add_argument("--frames", type=int, default=500)
     parser.add_argument("--steps-per-frame", type=int, default=100)
     parser.add_argument("--resolution-x", type=int, default=300)
@@ -166,8 +163,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     drop_group.add_argument(
         "--drop-height-fraction",
         type=float,
-        default=0.05,
-        help="air gap divided by resolution-y (default: 0.05)",
+        default=0.03,
+        help="air gap divided by resolution-y (default: 0.03)",
     )
     parser.add_argument("--initial-horizontal-speed", type=float, default=0.0)
     parser.add_argument("--initial-vertical-speed", type=float, default=0.0)
@@ -218,8 +215,6 @@ def create_ice_fall_config(args: argparse.Namespace, *, output_dir: str):
 
     geometry = derive_ice_fall_geometry(args)
     config = create_iceflow_config(
-        mode=args.mode,
-        material=args.material,
         resolution=(args.resolution_x, args.resolution_y),
         reference_length_cells=(
             args.reference_length_cells
@@ -238,6 +233,7 @@ def create_ice_fall_config(args: argparse.Namespace, *, output_dir: str):
         ice_initial_angle=geometry["ice_angle"],
         boundary_cells=args.boundary_cells,
         phase_warmup_steps=args.phase_warmup_steps,
+        well_balanced_hydrostatics=True,
         output_dir=output_dir,
         show_gui=args.show_gui,
         save_npz=args.save_npz,
@@ -254,24 +250,17 @@ def create_ice_fall_config(args: argparse.Namespace, *, output_dir: str):
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
-    geometry = derive_ice_fall_geometry(args)
     output_dir = args.output_dir or "outputs/iceflow2d/ice_fall"
     config = create_ice_fall_config(args, output_dir=output_dir)
 
     from iceflow2d import IceFlow2D
 
-    print(
-        "Ice-fall setup: "
-        f"water surface y={geometry['water_height']}, "
-        f"ice={geometry['ice_width']}x{geometry['ice_height']} cells, "
-        f"air gap={geometry['drop_height']:.3f} cells"
-    )
     simulation = IceFlow2D(config)
     show_progress = sys.stderr.isatty() if args.progress is None else args.progress
     simulation.run(
         frames=args.frames,
         steps_per_frame=args.steps_per_frame,
-        output_dir=output_dir,
+        output_dir=Path(output_dir),
         show_progress=show_progress,
     )
     print(f"Wrote {args.frames} frames to {output_dir}")

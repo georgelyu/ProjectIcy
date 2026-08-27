@@ -1,0 +1,881 @@
+\documentclass[UTF8,11pt]{ctexart}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{float}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{hyperref}
+
+\usetikzlibrary{arrows.meta,calc,positioning}
+\hypersetup{hidelinks}
+\sisetup{
+      per-mode=symbol,
+      group-separator={\,},
+      exponent-product=\times,
+      output-decimal-marker=.
+}
+\numberwithin{equation}{section}
+\allowdisplaybreaks[2]
+\setlength{\emergencystretch}{2em}
+\renewcommand{\arraystretch}{1.22}
+
+\definecolor{iceblue}{HTML}{DCEEFF}
+\definecolor{waterblue}{HTML}{B9E3F5}
+\definecolor{bathblue}{HTML}{EAF7FC}
+\definecolor{fluxred}{HTML}{C73E1D}
+\definecolor{gridgray}{HTML}{586069}
+\definecolor{iceflowcodebg}{HTML}{F6F8FA}
+\definecolor{iceflowcodeframe}{HTML}{D0D7DE}
+\definecolor{iceflowcodekeyword}{HTML}{CF222E}
+\definecolor{iceflowcodecomment}{HTML}{57606A}
+
+\lstdefinestyle{iceflowcode}{
+      language=Python,
+      basicstyle=\ttfamily\small,
+      keywordstyle=\color{iceflowcodekeyword}\bfseries,
+      commentstyle=\color{iceflowcodecomment}\itshape,
+      backgroundcolor=\color{iceflowcodebg},
+      frame=single,
+      rulecolor=\color{iceflowcodeframe},
+      framerule=0.6pt,
+      framesep=8pt,
+      xleftmargin=0.02\linewidth,
+      xrightmargin=0.02\linewidth,
+      framexleftmargin=6pt,
+      framexrightmargin=6pt,
+      aboveskip=0.8em,
+      belowskip=1em,
+      columns=fullflexible,
+      keepspaces=true,
+      showstringspaces=false,
+      breaklines=true,
+      breakatwhitespace=false,
+      tabsize=4
+}
+
+\newcommand{\fl}{f_{\ell}}
+\newcommand{\dd}{\,\mathrm d}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{固定冰二维融化算例的有限体积焓法实现\\
+\large \texttt{stefan\_melting\_2d.py} 方法说明}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本文说明 IceFlow2D 中独立二维固定冰融化算例的物理模型、有限体积离散、焓--温度反演、
+显式时间推进和验证方法。写作从单个网格单元的能量收支出发，不预设读者掌握有限体积法或
+移动相界面算法。算例在恒温热水浴中央放置一块初始温度等于熔点的方冰，以体积焓作为唯一
+守恒未知量；潜热由焓的等温平台表示，因此不必显式追踪冰--水边界。内部面热流采用调和平均
+导热率，四壁采用半格距离恒温边界，所有单元由同一组面热流守恒更新。默认
+$\SI{30}{\milli\metre}\times\SI{30}{\milli\metre}$、$120\times120$ 网格在
+$\SI{180}{\second}$ 内得到清晰可见的二维融化，并以全局能量平衡、几何对称性和网格细化趋势
+检查实现的自洽性。本文对应 \path{iceflow2d/stefan2d.py} 与
+\path{iceflow2d/examples/stefan_melting_2d.py}，不涉及 LBM、流体速度或真实冰水密度差。
+\end{abstract}
+
+\noindent\textbf{关键词：} 二维融化；焓法；有限体积法；Stefan 相变；显式时间推进；能量守恒
+
+\section{问题定义与阅读路线}
+
+\subsection{求解对象}
+
+计算域为二维矩形
+\begin{equation}
+      \Omega=[0,L_x]\times[0,L_y],
+      \label{eq:domain}
+\end{equation}
+其中央初始冰区为
+\begin{equation}
+      \Omega_i^0=
+      \left[\frac{L_x-w_i}{2},\frac{L_x+w_i}{2}\right]
+      \times
+      \left[\frac{L_y-h_i}{2},\frac{L_y+h_i}{2}\right].
+      \label{eq:initial-ice-domain}
+\end{equation}
+初始冰温等于熔点 $T_m$，其余区域为温度 $T_b>T_m$ 的水；四面边界始终保持温度
+$T_b$：
+\begin{align}
+      T(\bm x,0)&=
+      \begin{cases}
+            T_m, & \bm x\in\Omega_i^0,\\
+            T_b, & \bm x\in\Omega\setminus\Omega_i^0,
+      \end{cases}
+      \label{eq:initial-temperature}\\
+      T(\bm x,t)&=T_b,
+      \qquad \bm x\in\partial\Omega.
+      \label{eq:boundary-temperature}
+\end{align}
+图~\ref{fig:domain} 给出了几何和热边界。所谓“固定冰”只表示不求解冰块的平移、转动或受力；
+冰区的相态并未固定，其边缘仍能吸热并逐渐融化。求解器也没有永久的“初始冰掩膜”：整个
+冰--水区域都遵循同一焓闭合，因而热力学关系本身包含反向结冰分支。不过，当前
+\code{Stefan2DConfig} 明确要求 $T_b>T_m$，且把初始水温和四壁温度统一设为 $T_b$，所以现有
+命令行算例是专门的融化验证；若要构造结冰算例，还须分离初始水温与边界温度并相应放宽配置校验。
+
+\begin{figure}[htbp]
+      \centering
+      \begin{tikzpicture}[>=Latex,scale=0.92]
+            \fill[bathblue] (0,0) rectangle (8.8,6.4);
+            \fill[iceblue] (2.9,2.0) rectangle (5.9,4.4);
+            \draw[line width=1.0pt] (0,0) rectangle (8.8,6.4);
+            \draw[line width=1.0pt,blue!65!black] (2.9,2.0) rectangle (5.9,4.4);
+            \node at (4.4,3.2) {初始固定冰 $T=T_m$};
+            \node at (1.25,5.25) {初始热水 $T=T_b$};
+            \draw[<->] (0,-0.45) -- node[fill=white,inner sep=1pt] {$L_x$} (8.8,-0.45);
+            \draw[<->] (-0.45,0) -- node[fill=white,inner sep=1pt,rotate=90] {$L_y$} (-0.45,6.4);
+            \draw[<->] (2.9,1.65) -- node[fill=bathblue,inner sep=1pt] {$w_i$} (5.9,1.65);
+            \draw[<->] (6.25,2.0) -- node[fill=bathblue,inner sep=1pt,rotate=90] {$h_i$} (6.25,4.4);
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (4.4,6.95) -- (4.4,6.45);
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (4.4,-0.95) -- (4.4,-0.45);
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (-0.95,3.2) -- (-0.45,3.2);
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (9.75,3.2) -- (9.25,3.2);
+            \node[fluxred] at (4.4,7.25) {$T=T_b$};
+            \node[fluxred] at (4.4,-1.25) {$T=T_b$};
+            \node[fluxred,rotate=90] at (-1.25,3.2) {$T=T_b$};
+            \node[fluxred,rotate=90] at (10.05,3.2) {$T=T_b$};
+            \draw[->] (0.25,0.25) -- (1.2,0.25) node[right] {$x$};
+            \draw[->] (0.25,0.25) -- (0.25,1.2) node[above] {$y$};
+      \end{tikzpicture}
+      \caption{二维固定冰融化算例。红色箭头只表示四壁向域内供热，不表示流体运动。}
+      \label{fig:domain}
+\end{figure}
+
+\subsection{三种状态量及其职责}
+
+初学时最重要的是区分以下三个量：
+\begin{itemize}
+      \item 温度 $T$ 回答“单元有多冷或多热”；
+      \item 液相率 $\fl\in[0,1]$ 回答“单元内有多少比例已经成为水”，其中
+            $\fl=0$ 为纯冰，$\fl=1$ 为纯水；
+      \item 体积焓 $H$ 把显热和潜热合并成一个守恒能量变量，单位为
+            $\si{\joule\per\metre\cubed}$。
+\end{itemize}
+程序每一步只沿着
+\begin{equation}
+      H^n\longrightarrow(T^n,\fl^n)
+      \longrightarrow k^n
+      \longrightarrow \bm q_f^n
+      \longrightarrow H^{n+1}
+      \label{eq:data-flow}
+\end{equation}
+推进。换言之，先由已有能量判断温度和相态，再算各面的热流，最后依据净流入热量更新能量。
+
+\subsection{建模假设与适用边界}
+
+本基准有意作如下简化：
+\begin{enumerate}
+      \item 仅考虑二维热传导，不求解速度、压力、自然对流或表面张力；
+      \item 冰和水采用共同密度 $\rho$，默认值为 $\SI{1000}{\kilogram\per\metre\cubed}$；
+      \item 冰为纯物质，熔化发生在单一温度 $T_m$，不设置人为的有限温宽糊状区；
+      \item 按单位出平面厚度积分，故二维总能量的单位为
+            $\si{\joule\per\metre}$；
+      \item 材料参数在每个纯相内为常数，且不考虑辐射、黏性耗散和体积热源。
+\end{enumerate}
+因此，本例的定位是“二维焓离散的守恒、对称性与网格细化自洽验证”，而不是含流动的融冰
+预测，也不是与一维解析 Stefan 相似解逐点比较。等密度假设还意味着它不能验证真实冰水密度差
+引起的体积收缩、自由液面改变或质量交换。
+
+\section{从能量收支到焓法}
+
+\subsection{一个区域为什么会升温或融化}
+
+设 $C\subset\Omega$ 为任意固定区域，$\bm n$ 为其外法向量，傅里叶热流为
+\begin{equation}
+      \bm q=-k\nabla T,
+      \label{eq:fourier-law}
+\end{equation}
+其中 $k$ 是导热率，$\bm q$ 的单位为 $\si{\watt\per\metre\squared}$。负号表示热量从高温处
+流向低温处。能量守恒写为
+\begin{equation}
+      \frac{\dd}{\dd t}\int_C H\dd A
+      =-\oint_{\partial C}\bm q\cdot\bm n\dd s.
+      \label{eq:integral-energy}
+\end{equation}
+右端是穿过边界流入区域的净热功率。因为采用单位出平面厚度，式~\eqref{eq:integral-energy}
+两端单位均为 $\si{\watt\per\metre}$。下面逐步把该积分守恒式转化为单点处的微分方程。
+
+首先，$C$ 是位置和形状均不随时间改变的固定控制体，因此时间导数可以移入面积积分：
+\begin{equation}
+      \frac{\dd}{\dd t}\int_C H\dd A
+      =\int_C\frac{\partial H}{\partial t}\dd A.
+      \label{eq:fixed-control-time-derivative}
+\end{equation}
+其次，对足够光滑的热流场 $\bm q=(q_x,q_y)$ 应用二维散度定理：
+\begin{equation}
+      \oint_{\partial C}\bm q\cdot\bm n\dd s
+      =\int_C\nabla\cdot\bm q\dd A
+      =\int_C\left(
+      \frac{\partial q_x}{\partial x}
+      +\frac{\partial q_y}{\partial y}
+      \right)\dd A.
+      \label{eq:divergence-theorem}
+\end{equation}
+式~\eqref{eq:divergence-theorem} 表明，边界上的净向外热流等于区域内部热流散度的面积积分。
+将式~\eqref{eq:fixed-control-time-derivative} 和式~\eqref{eq:divergence-theorem} 代入
+式~\eqref{eq:integral-energy}，依次得到
+\begin{align}
+      \int_C\frac{\partial H}{\partial t}\dd A
+      &=-\int_C\nabla\cdot\bm q\dd A,
+      \label{eq:integral-energy-after-divergence}\\
+      \int_C\left(
+      \frac{\partial H}{\partial t}
+      +\nabla\cdot\bm q
+      \right)\dd A
+      &=0.
+      \label{eq:zero-integral-energy}
+\end{align}
+控制体 $C$ 可以任意选取。若括号内的连续函数在某一点不为零，总能在该点附近选取一个足够小
+的控制体，使积分不为零；这与式~\eqref{eq:zero-integral-energy} 矛盾。因此括号内的量必须
+处处为零，即得到局部能量守恒方程
+\begin{equation}
+      \frac{\partial H}{\partial t}
+      +\nabla\cdot\bm q=0.
+      \label{eq:local-energy-conservation}
+\end{equation}
+最后代入傅里叶定律 $\bm q=-k\nabla T$：
+\begin{align}
+      \frac{\partial H}{\partial t}
+      +\nabla\cdot(-k\nabla T)&=0,
+      \label{eq:substitute-fourier-law}\\
+      \frac{\partial H}{\partial t}
+      &=\nabla\cdot(k\nabla T).
+      \label{eq:enthalpy-pde}
+\end{align}
+把最后一式在二维直角坐标中完全展开，可写成
+\begin{equation}
+      \frac{\partial H}{\partial t}
+      =
+      \frac{\partial}{\partial x}
+      \left(k\frac{\partial T}{\partial x}\right)
+      +
+      \frac{\partial}{\partial y}
+      \left(k\frac{\partial T}{\partial y}\right).
+      \label{eq:enthalpy-pde-2d}
+\end{equation}
+
+若材料不发生相变，输入热量通常使温度升高。这部分能够通过温度变化直接观察到的能量称为
+显热；在比热近似为常数时，
+\begin{equation}
+      Q_s=mc_p\Delta T,
+      \label{eq:sensible-heat}
+\end{equation}
+其中 $c_p$ 是定压比热，$\Delta T$ 是温度变化。
+
+冰已经到达熔点 $T_m$ 后，继续输入的热量不再立即提高温度，而是用于克服固相结构的束缚，
+使冰在相同温度下转变为水。这部分在相变过程中不能由温度升高直接表现出来、但仍真实储存在
+材料焓中的能量称为\textbf{潜热}；对冰融化而言，更具体地称为\textbf{熔化潜热}。若质量
+$m$ 的冰从“熔点处的纯冰”完全变成“熔点处的纯水”，所需潜热为
+\begin{equation}
+      Q_L=mL,
+      \label{eq:latent-heat}
+\end{equation}
+其中 $L$ 是单位质量熔化潜热，单位为 $\si{\joule\per\kilogram}$；$m$ 的单位为
+$\si{\kilogram}$，所以 $Q_L$ 的单位为 $\si{\joule}$。默认
+$L=\SI{334000}{\joule\per\kilogram}$，表示 $\SI{1}{\kilogram}$、温度恰为
+$\SI{0}{\degreeCelsius}$ 的冰，在温度仍保持 $\SI{0}{\degreeCelsius}$ 的条件下完全熔化，
+需要吸收 $\SI{334}{\kilo\joule}$ 热量。这里没有包含先把低温冰加热至熔点或继续把融水升温
+所需的显热。
+
+若体积为 $V$ 的单元只融化一部分，液相率增加 $\Delta\fl$，则发生相变的质量和所吸收的
+潜热分别为
+\begin{align}
+      \Delta m&=\rho V\Delta\fl,\\
+      \Delta Q_L&=\Delta mL
+      =\rho VL\Delta\fl.
+      \label{eq:partial-latent-heat}
+\end{align}
+除以单元体积 $V$，可得到相应的体积焓增量
+\begin{equation}
+      \Delta H_L=\frac{\Delta Q_L}{V}
+      =\rho L\Delta\fl.
+      \label{eq:volumetric-latent-heat}
+\end{equation}
+这正是后文相变平台 $H=\rho L\fl$ 的来源。反向结冰时，相同质量的水会释放同样大小的潜热：
+对材料本身而言焓减少，对周围环境而言则获得热量。因此，这种“能量改变而温度暂时不变”的
+状态不能只用温度唯一表示，程序必须选取焓 $H$ 作为守恒未知量。
+
+\subsection{焓、温度和液相率的闭合关系}
+
+以熔点处的固态冰为零焓参考，并记冰、水定压比热为 $c_{p,i}$、$c_{p,w}$，则代码采用
+\begin{equation}
+      H(T,\fl)=
+      \begin{cases}
+            \rho c_{p,i}(T-T_m),
+            & T<T_m,\quad \fl=0,\\[2mm]
+            \rho L\fl,
+            & T=T_m,\quad 0\le\fl\le1,\\[2mm]
+            \rho L+\rho c_{p,w}(T-T_m),
+            & T>T_m,\quad \fl=1.
+      \end{cases}
+      \label{eq:enthalpy-definition}
+\end{equation}
+式中 $H=0$ 只是所选能量零点，并不表示材料“没有能量”。相变平台的宽度为
+$\rho L$：当 $H$ 从 $0$ 增加至 $\rho L$ 时，温度保持 $T_m$，液相率从 $0$ 增加至 $1$。
+图~\ref{fig:enthalpy-curve} 以几何方式展示了这一关系。
+
+\begin{figure}[htbp]
+      \centering
+      \begin{tikzpicture}[x=1.0cm,y=0.82cm,>=Latex]
+            \draw[->] (-4.0,0) -- (4.8,0) node[right] {$T$};
+            \draw[->] (0,-2.8) -- (0,6.5) node[above] {$H$};
+            \draw[dashed,gray] (0,-2.4) -- (0,6.0);
+            \draw[dashed,gray] (-3.6,4.0) -- (4.4,4.0);
+            \draw[very thick,blue!70!black] (-3.2,-2.3) -- (0,0);
+            \draw[very thick,blue!70!black] (0,0) -- (0,4.0);
+            \draw[very thick,blue!70!black] (0,4.0) -- (4.0,6.0);
+            \fill[blue!70!black] (0,0) circle (1.7pt);
+            \fill[blue!70!black] (0,4.0) circle (1.7pt);
+            \node[below right] at (0,0) {$T_m$};
+            \node[left] at (0,4.0) {$\rho L$};
+            \node[rotate=34] at (-2.2,-1.2) {纯冰显热};
+            \node[rotate=90,fill=white,inner sep=1pt] at (0.35,2.0) {等温相变};
+            \node[rotate=27] at (2.7,5.25) {纯水显热};
+            \draw[<->,fluxred] (0.75,0.15) -- node[right] {$\rho L$} (0.75,3.85);
+            \node[align=left,anchor=west] at (1.15,2.0)
+            {$0<\fl<1$\\表示单元平均相态};
+      \end{tikzpicture}
+      \caption{以熔点固冰为零点的焓--温度关系。竖直段不是有限温宽材料层，而是纯物质的潜热平台。}
+      \label{fig:enthalpy-curve}
+\end{figure}
+
+数值程序已知 $H$ 后，需要反向恢复 $T$ 和 $\fl$。式~\eqref{eq:enthalpy-definition} 的逐单元
+反演为
+\begin{equation}
+      (T,\fl)=
+      \begin{cases}
+            \left(T_m+\dfrac{H}{\rho c_{p,i}},0\right),
+            & H<0,\\[3mm]
+            \left(T_m,\dfrac{H}{\rho L}\right),
+            & 0\le H\le\rho L,\\[3mm]
+            \left(T_m+\dfrac{H-\rho L}{\rho c_{p,w}},1\right),
+            & H>\rho L.
+      \end{cases}
+      \label{eq:enthalpy-inversion}
+\end{equation}
+有限网格中出现 $0<\fl<1$，表示一个控制体被冰--水界面部分占据后的体积平均，不表示实际
+材料在一个人为温度区间内逐渐软化。单元导热率则在两纯相值之间线性插值：
+\begin{equation}
+      k(\fl)=(1-\fl)k_i+\fl k_w.
+      \label{eq:cell-conductivity}
+\end{equation}
+式~\eqref{eq:cell-conductivity} 是“由相态得到单元性质”；后文内部面上的调和平均是“由两个
+单元性质得到面性质”，二者承担不同任务，不应混为同一种平均。
+
+\section{从控制体能量平衡到二维离散}
+
+\subsection{网格与单元平均量}
+
+将计算域划分为 $N_x\times N_y$ 个矩形控制体，网格尺度和单元中心为
+\begin{align}
+      \Delta x&=\frac{L_x}{N_x},
+      &x_i&=\left(i+\frac12\right)\Delta x,
+      &&i=0,\ldots,N_x-1,\\
+      \Delta y&=\frac{L_y}{N_y},
+      &y_j&=\left(j+\frac12\right)\Delta y,
+      &&j=0,\ldots,N_y-1.
+      \label{eq:grid}
+\end{align}
+代码数组采用 $[j,i]$ 顺序，其形状为 $(N_y,N_x)$。$H_{ij}$ 表示单元内体积焓的平均值；
+在单位出平面厚度下，该单元储存的相对能量为
+\begin{equation}
+      E_{ij}=H_{ij}\Delta x\Delta y,
+      \qquad [E_{ij}]=\si{\joule\per\metre}.
+      \label{eq:cell-energy}
+\end{equation}
+
+有限体积法的核心不是在单元中心直接近似式~\eqref{eq:enthalpy-pde} 的所有导数，而是把
+式~\eqref{eq:integral-energy} 应用于每一个小矩形：分别算四个面送入或带走多少热量，再求净值。
+图~\ref{fig:control-volume} 中，$P=(i,j)$ 是当前单元，$E,W,N,S$ 为相邻单元；面热流的正方向
+统一取坐标正方向。
+
+\begin{figure}[htbp]
+      \centering
+      \begin{tikzpicture}[>=Latex,scale=1.05]
+            \foreach \x in {0,2,4} {\draw[gridgray] (\x,0) -- (\x,6);}
+            \foreach \y in {0,2,4,6} {\draw[gridgray] (0,\y) -- (6,\y);}
+            \fill[iceblue,opacity=0.75] (2,2) rectangle (4,4);
+            \node at (3,3) {$P=(i,j)$};
+            \node at (1,3) {$W$};
+            \node at (5,3) {$E$};
+            \node at (3,5) {$N$};
+            \node at (3,1) {$S$};
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (2.25,3.55) -- (1.25,3.55)
+                  node[above,midway] {$q^x_{i-\frac12,j}$};
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (3.75,2.45) -- (4.75,2.45)
+                  node[below,midway] {$q^x_{i+\frac12,j}$};
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (2.55,2.25) -- (2.55,1.25)
+                  node[left,midway] {$q^y_{i,j-\frac12}$};
+            \draw[fluxred,very thick,-{Latex[length=3mm]}] (3.45,3.75) -- (3.45,4.75)
+                  node[right,midway] {$q^y_{i,j+\frac12}$};
+            \draw[<->] (2,6.35) -- node[fill=white,inner sep=1pt] {$\Delta x$} (4,6.35);
+            \draw[<->] (6.35,2) -- node[fill=white,inner sep=1pt,rotate=90] {$\Delta y$} (6.35,4);
+            \node[align=left,anchor=west] at (7.0,4.7)
+            {正号约定：\\$q^x>0$ 指向 $+x$，\\$q^y>0$ 指向 $+y$};
+      \end{tikzpicture}
+      \caption{二维单元中心有限体积及其四个面热流。箭头给出代码中的坐标正方向，并不表示所有热流实际为正。}
+      \label{fig:control-volume}
+\end{figure}
+
+\subsection{内部面热流与调和平均}
+
+以 $P=(i,j)$ 和东侧 $E=(i+1,j)$ 之间的面为例，中心温度梯度用两点差分近似：
+\begin{equation}
+      q^x_{i+\frac12,j}
+      =-k_{i+\frac12,j}
+      \frac{T_{i+1,j}-T_{ij}}{\Delta x}.
+      \label{eq:east-flux}
+\end{equation}
+若两侧导热率不同，热量依次穿过 $P$ 内的半格和 $E$ 内的半格。这两个热阻串联：
+\begin{equation}
+      R_{i+\frac12,j}
+      =\frac{\Delta x/2}{k_{ij}}
+      +\frac{\Delta x/2}{k_{i+1,j}}.
+      \label{eq:series-resistance}
+\end{equation}
+令单一等效材料在距离 $\Delta x$ 上产生相同热阻，即
+$R_{i+\frac12,j}=\Delta x/k_{i+\frac12,j}$，可得调和平均
+\begin{equation}
+      k_{i+\frac12,j}
+      =\frac{2k_{ij}k_{i+1,j}}{k_{ij}+k_{i+1,j}}.
+      \label{eq:harmonic-x}
+\end{equation}
+这一定义能正确反映“低导热一侧控制串联传热”的物理事实。$y$ 方向面完全同理：
+\begin{align}
+      k_{i,j+\frac12}
+      &=\frac{2k_{ij}k_{i,j+1}}{k_{ij}+k_{i,j+1}},\\
+      q^y_{i,j+\frac12}
+      &=-k_{i,j+\frac12}
+      \frac{T_{i,j+1}-T_{ij}}{\Delta y}.
+      \label{eq:harmonic-y}
+\end{align}
+
+\subsection{四面恒温边界为何出现系数 2}
+
+边界温度给在几何壁面，而第一层单元温度给在距壁面半格的中心。以左壁为例，传热距离是
+$\Delta x/2$，故
+\begin{equation}
+      q^x_{-\frac12,j}
+      =-k_w\frac{T_{0j}-T_b}{\Delta x/2}
+      =\frac{2k_w}{\Delta x}(T_b-T_{0j}).
+      \label{eq:left-boundary-flux}
+\end{equation}
+其余三壁按相同正方向约定写为
+\begin{align}
+      q^x_{N_x-\frac12,j}
+      &=\frac{2k_w}{\Delta x}(T_{N_x-1,j}-T_b),
+      \label{eq:right-boundary-flux}\\
+      q^y_{i,-\frac12}
+      &=\frac{2k_w}{\Delta y}(T_b-T_{i0}),
+      \label{eq:bottom-boundary-flux}\\
+      q^y_{i,N_y-\frac12}
+      &=\frac{2k_w}{\Delta y}(T_{i,N_y-1}-T_b).
+      \label{eq:top-boundary-flux}
+\end{align}
+这里的系数 $2$ 纯粹来自中心到壁面的半格距离。代码在边界半格固定使用水的导热率 $k_w$，
+表示外壁与恒温水浴接触；它不是面平均的一般公式。默认工况的外层单元保持液态，因此该选择与
+场景一致，但若要模拟固体直接接触壁面，则应重新定义边界热阻。
+
+\subsection{守恒的显式单元更新}
+
+在时间区间 $[t^n,t^{n+1}]$ 内把各面热流暂视为时刻 $n$ 的常数，式
+~\eqref{eq:integral-energy} 给出
+\begin{equation}
+\boxed{
+      H_{ij}^{n+1}=H_{ij}^{n}+\Delta t_n
+      \left[
+      \frac{q^x_{i-\frac12,j}-q^x_{i+\frac12,j}}{\Delta x}
+      +
+      \frac{q^y_{i,j-\frac12}-q^y_{i,j+\frac12}}{\Delta y}
+      \right].
+}
+      \label{eq:explicit-update}
+\end{equation}
+例如，东面为正的 $q^x_{i+1/2,j}$ 把热量从当前单元带走，因而在式
+~\eqref{eq:explicit-update} 中带负号。同一内部面通量只计算一次：它是左单元的流出，同时是右单元
+的流入，所以全域求和时逐面严格抵消。该“共享面通量”正是有限体积离散能保持全局能量守恒的
+关键。
+
+\section{时间推进、稳定性与完整算法}
+
+\subsection{显式步长限制}
+
+显式方法直接由旧时刻状态计算新时刻状态，不需求解联立方程，但时间步不能过大。程序先构造
+覆盖纯冰、纯水及插值单元的保守扩散率上界
+\begin{equation}
+      \alpha_b
+      =\frac{\max(k_i,k_w)}
+      {\rho\min(c_{p,i},c_{p,w})}.
+      \label{eq:diffusivity-bound}
+\end{equation}
+注意式~\eqref{eq:diffusivity-bound} 是便于稳定性判断的上界；对任意材料参数，它不一定恰好等于
+两个纯相真实热扩散率中的最大值。考虑半格 Dirichlet 边界后，程序采用
+\begin{equation}
+      \Delta t_{\max}
+      =\frac{1}
+      {3\alpha_b\left(\Delta x^{-2}+\Delta y^{-2}\right)}.
+      \label{eq:maximum-time-step}
+\end{equation}
+默认候选步长由 Fourier 数控制：
+\begin{equation}
+      \Delta t_0
+      =\mathrm{Fo}\,
+      \frac{\min(\Delta x,\Delta y)^2}{\alpha_b},
+      \qquad 0<\mathrm{Fo}\le\frac16.
+      \label{eq:default-time-step}
+\end{equation}
+对方形网格，式~\eqref{eq:maximum-time-step} 化为
+$\Delta t_{\max}=\Delta x^2/(6\alpha_b)$，恰对应 $\mathrm{Fo}\le1/6$。默认
+$\mathrm{Fo}=0.15$ 留有一定裕量。这个限制是数值稳定条件，不代表真实融化过程存在同样的最小
+物理时间尺度；减小步长主要改变离散误差与计算成本。
+
+\subsection{准确命中输出时刻}
+
+配置步长 $\Delta t_0$ 通常不能整除 $\SI{30}{\second}$ 的输出间隔。若下一输出时刻为
+$t_{\mathrm{out}}$，实际使用
+\begin{equation}
+      \Delta t_n=min(\Delta t_0,t_{\mathrm{out}}-t_n).
+      \label{eq:short-step}
+\end{equation}
+因此每段末尾可能插入一个较短步，快照仍精确落在指定物理时刻。这也解释了默认总步数不能简单
+写成 $\lceil t_{\mathrm{end}}/\Delta t_0\rceil$。
+
+\subsection{求解流程}
+
+实现中没有显式界面追踪、非线性迭代或隐式矩阵求解。完整算法可概括为：
+\begin{enumerate}
+      \item 校验物理参数、网格和冰区对齐关系；建立单元中心坐标与初始冰掩膜；
+      \item 由初始温度和相态构造 $H^0$，再用式~\eqref{eq:enthalpy-inversion} 恢复
+            $T^0,\fl^0$；
+      \item 对每一时间步，用式~\eqref{eq:cell-conductivity} 计算单元导热率；
+      \item 用式~\eqref{eq:harmonic-x}--\eqref{eq:harmonic-y} 计算内部面热流，用式
+            ~\eqref{eq:left-boundary-flux}--\eqref{eq:top-boundary-flux} 计算四壁热流；
+      \item 用式~\eqref{eq:explicit-update} 一次性更新全域焓，同时由同一组边界热流累计输入热量；
+      \item 由新焓反演 $T^{n+1},\fl^{n+1}$，检查所有值有限且 $\fl\in[0,1]$；
+      \item 到达输出时刻后记录场量、能量、固相面积与对称性诊断，直至终止时间。
+\end{enumerate}
+
+下列伪代码与 \code{Stefan2DSolver.step()} 的调用顺序一致：
+\begin{lstlisting}[style=iceflowcode]
+while time < next_output_time:
+    dt = min(configured_dt, next_output_time - time)
+    k_cell = (1.0 - liquid_fraction) * k_ice \
+             + liquid_fraction * k_water
+    flux_x, flux_y = conductive_face_fluxes(T, k_cell, T_bath)
+    H += dt * ((flux_x[:, :-1] - flux_x[:, 1:]) / dx
+               + (flux_y[:-1, :] - flux_y[1:, :]) / dy)
+    boundary_heat += dt * boundary_power(flux_x, flux_y)
+    T, liquid_fraction = recover_state_from_enthalpy(H)
+    time += dt
+record_snapshot()
+\end{lstlisting}
+
+\section{初始化、几何对齐与代码映射}
+
+\subsection{几何栅格化与初始焓}
+
+初始冰掩膜在单元中心按
+\begin{equation}
+      \left|x_i-\frac{L_x}{2}\right|<\frac{w_i}{2},
+      \qquad
+      \left|y_j-\frac{L_y}{2}\right|<\frac{h_i}{2}
+      \label{eq:ice-mask}
+\end{equation}
+生成。配置预先要求冰的四条边落在网格面上，因此式~\eqref{eq:ice-mask} 的严格不等号不会产生
+边界单元归属歧义。设
+\begin{equation}
+      N_{i,x}=\frac{w_i}{\Delta x},\qquad
+      N_{i,y}=\frac{h_i}{\Delta y},
+      \label{eq:ice-cell-count}
+\end{equation}
+则 $N_{i,x},N_{i,y}$ 必须为至少 $2$ 的整数，且居中边距格数
+\begin{equation}
+      \frac{N_x-N_{i,x}}{2},\qquad
+      \frac{N_y-N_{i,y}}{2}
+      \label{eq:margin-cell-count}
+\end{equation}
+也必须为整数并不小于 $1$。默认方冰覆盖 $48\times48$ 个单元，每侧有 $36$ 个水浴单元。
+初始化结束后还核对离散固相面积是否等于 $w_i h_i$。
+
+初始冰恰处于熔点且尚未融化，所以其焓为零；初始水是温度为 $T_b$ 的完全液态水：
+\begin{equation}
+      H_{ij}^{0}=
+      \begin{cases}
+            0,
+            & (x_i,y_j)\in\Omega_i^0,\\[1mm]
+            \rho\left[L+c_{p,w}(T_b-T_m)\right],
+            & (x_i,y_j)\in\Omega\setminus\Omega_i^0.
+      \end{cases}
+      \label{eq:initial-enthalpy}
+\end{equation}
+式~\eqref{eq:initial-enthalpy} 中水的焓包含先熔化所需的参考潜热 $\rho L$，再加上从 $T_m$
+升至 $T_b$ 的显热。
+
+\subsection{配置防错条件}
+
+\code{Stefan2DConfig} 在计算开始前检查：网格数是至少 $4$ 的整数；域尺寸、冰尺寸、材料参数、
+终止时间和输出间隔为有限正数；$T_b>T_m$；冰严格小于计算域；式
+~\eqref{eq:ice-cell-count}--\eqref{eq:margin-cell-count} 满足对齐条件；$0<\mathrm{Fo}\le1/6$；
+用户指定的 $\Delta t$ 不超过式~\eqref{eq:maximum-time-step}。这些检查的作用不是改变物理模型，
+而是在计算前拒绝可能导致模糊几何或显式发散的输入。
+
+\subsection{主要程序对象}
+
+表~\ref{tab:code-map} 给出数学量与代码对象的对应关系。由于所有字段均为 NumPy 二维数组，
+本独立例子不调用 Taichi 或 LBM。
+
+\begin{table}[htbp]
+      \centering
+      \caption{数学量与主要代码对象的映射。}
+      \label{tab:code-map}
+      \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.20\textwidth}
+            >{\raggedright\arraybackslash}p{0.33\textwidth}X}
+            \toprule
+            数学对象 & 代码对象 & 作用 \\
+            \midrule
+            物理与数值参数 & \code{Stefan2DConfig} & 校验几何、材料、输出时间和稳定步长 \\
+            $H_{ij}$ & \code{enthalpy\_j\_m3} & 唯一守恒热力学状态，形状为 $(N_y,N_x)$ \\
+            $T_{ij}$ & \code{temperature\_c} & 由焓分段反演得到的单元中心温度 \\
+            $f_{\ell,ij}$ & \code{liquid\_fraction} & 由焓反演得到的液相体积分数 \\
+            $q^x$ & \code{\_flux\_x\_w\_m2} & 所有竖直面的热流，形状为 $(N_y,N_x+1)$ \\
+            $q^y$ & \code{\_flux\_y\_w\_m2} & 所有水平面的热流，形状为 $(N_y+1,N_x)$ \\
+            单步更新 & \code{Stefan2DSolver.step()} & 面热流、焓更新、边界热量累计和状态反演 \\
+            全程推进 & \code{Stefan2DSolver.run()} & 构造精确输出时刻并保存快照 \\
+            文件与绘图 & \path{examples/stefan_melting_2d.py} & 参数解析、CSV/NPZ/JSON 与汇总图输出 \\
+            \bottomrule
+      \end{tabularx}
+\end{table}
+
+\section{守恒、融化程度与二维对称性验证}
+
+\subsection{全局能量平衡}
+
+全域相对总焓为
+\begin{equation}
+      E(t)=\Delta x\Delta y\sum_{i,j}H_{ij}(t).
+      \label{eq:total-enthalpy}
+\end{equation}
+由四面边界热流得到单位出平面厚度的瞬时输入功率
+\begin{equation}
+      P_{\partial\Omega}=
+      \Delta y\sum_j
+      \left(q^x_{-\frac12,j}-q^x_{N_x-\frac12,j}\right)
+      +\Delta x\sum_i
+      \left(q^y_{i,-\frac12}-q^y_{i,N_y-\frac12}\right).
+      \label{eq:boundary-power}
+\end{equation}
+程序用与单元更新完全相同的边界热流累计
+\begin{equation}
+      Q_{\partial\Omega}^{n+1}
+      =Q_{\partial\Omega}^{n}+\Delta t_nP_{\partial\Omega}^{n},
+      \label{eq:boundary-heat}
+\end{equation}
+并报告能量残差
+\begin{equation}
+      R_E(t)=E(t)-E(0)-Q_{\partial\Omega}(t).
+      \label{eq:energy-residual}
+\end{equation}
+理想离散代数中 $R_E=0$；实际浮点运算只留下舍入误差。极小残差说明内部共享面热流正确抵消、
+边界输入与储能更新一致，但由于二者来自同一组面热流，它不是独立解析真值，也不能单独证明
+网格已足够细或导热模型完全符合实验。
+
+\subsection{固相面积、融化比例和等效融化深度}
+
+液相率是单元体积平均，因此连续固相面积定义为
+\begin{equation}
+      A_s(t)=\Delta x\Delta y\sum_{i,j}(1-f_{\ell,ij}),
+      \label{eq:solid-area}
+\end{equation}
+而不是先用 $\fl=0.5$ 画轮廓再二值计数。相对于初始面积 $A_{s,0}=w_i h_i$，融化比例为
+\begin{equation}
+      F_m(t)=1-\frac{A_s(t)}{A_{s,0}}.
+      \label{eq:melted-fraction}
+\end{equation}
+为用一个长度描述二维融化量，定义等效均匀内蚀深度 $d_{\mathrm{eq}}$：假想初始矩形四边均
+向内后退相同距离 $d_{\mathrm{eq}}$，使剩余矩形与真实连续固相面积相等，亦即
+\begin{equation}
+      (w_i-2d_{\mathrm{eq}})(h_i-2d_{\mathrm{eq}})=A_s.
+      \label{eq:equivalent-depth-definition}
+\end{equation}
+取物理上较小的根得到
+\begin{equation}
+      d_{\mathrm{eq}}
+      =\frac{w_i+h_i-
+      \sqrt{(w_i-h_i)^2+4A_s}}{4}.
+      \label{eq:equivalent-depth}
+\end{equation}
+对方冰，等效边长为 $\ell_{\mathrm{eq}}=\sqrt{A_s}$，于是
+$d_{\mathrm{eq}}=(w_i-\sqrt{A_s})/2$。$d_{\mathrm{eq}}$ 是面积积分得到的等效标量，并不表示
+实际二维界面每一处都后退同样距离。
+
+程序另报告水平、竖直中心线的固相率积分。以偶数行数的水平中心线为例，先平均中间两行：
+\begin{equation}
+      W_{\mathrm{mid}}
+      =\Delta x\sum_i
+      \left[1-\frac{f_{\ell,N_y/2-1,i}+f_{\ell,N_y/2,i}}{2}\right].
+      \label{eq:midline-width}
+\end{equation}
+中心线宽度与面积等效边长一般不同；二者的差异正能反映角部比边中部更快融化的二维效应。
+
+\subsection{反射与方形的 \texorpdfstring{$D_4$}{D4} 对称性}
+
+若域、网格、初始冰和边界条件完全对称，则数值解应保持相应对称性。对于方形情形，正方形的
+八种旋转与反射构成 $D_4$ 群。对任意场 $X$ 定义
+\begin{equation}
+      \epsilon_{D_4}(X)
+      =\max_{g\in D_4}\lVert X-g(X)\rVert_{\infty}.
+      \label{eq:d4-error}
+\end{equation}
+温度、焓和液相率量纲不同，程序用各自尺度归一化后取最大值：
+\begin{equation}
+      \epsilon_{\mathrm{sym}}=max\left[
+      \epsilon_{D_4}(\fl),\,
+      \frac{\epsilon_{D_4}(T)}{\max(1,|T_b-T_m|)},\,
+      \frac{\epsilon_{D_4}(H)}
+      {\rho[L+c_{p,w}(T_b-T_m)]}
+      \right].
+      \label{eq:normalized-symmetry}
+\end{equation}
+一般矩形算例只检查水平和竖直反射。对称误差能敏感发现数组转置、某一壁符号错误等实现问题，
+但对称的错误解仍可能通过此检查，因此必须同时考察能量平衡和网格细化。
+
+\section{默认尺度、参数与数值结果}
+
+\subsection{为何选择该时间与空间尺度}
+
+默认域宽高均为 $\SI{30}{\milli\metre}$，方冰边长为 $\SI{12}{\milli\metre}$，网格间距
+$\Delta x=\Delta y=\SI{0.25}{\milli\metre}$。该尺度有三点作用：冰体跨 $48$ 格，界面曲率和
+角部二维传热能够被清晰分辨；每侧 $\SI{9}{\milli\metre}$ 的水浴隔开冰与外壁；同时计算域
+仍足够小，可用纯 NumPy 显式推进。水浴升温至 $\SI{20}{\degreeCelsius}$，使
+$\SI{180}{\second}$ 内已有约 $44\%$ 初始固相面积融化，既能直观看到界面移动，又没有让方冰
+完全消失。
+
+\begin{table}[htbp]
+      \centering
+      \caption{默认几何、初边值与材料参数。}
+      \label{tab:default-parameters}
+      \begin{tabular}{lll}
+            \toprule
+            类别 & 参数 & 默认值 \\
+            \midrule
+            几何 & $L_x\times L_y$ & $\SI{30}{\milli\metre}\times\SI{30}{\milli\metre}$ \\
+                 & $w_i\times h_i$ & $\SI{12}{\milli\metre}\times\SI{12}{\milli\metre}$ \\
+            网格 & $N_x\times N_y$ & $120\times120$ \\
+                 & $\Delta x=\Delta y$ & $\SI{0.25}{\milli\metre}$ \\
+            温度 & $T_m$；$T_b$ & $\SI{0}{\degreeCelsius}$；$\SI{20}{\degreeCelsius}$ \\
+            密度 & $\rho$ & $\SI{1000}{\kilogram\per\metre\cubed}$ \\
+            比热 & $c_{p,w}$；$c_{p,i}$ & $4186$；$2100\ \si{\joule\per\kilogram\per\kelvin}$ \\
+            导热率 & $k_w$；$k_i$ & $0.60$；$2.20\ \si{\watt\per\metre\per\kelvin}$ \\
+            潜热 & $L$ & $\SI{334000}{\joule\per\kilogram}$ \\
+            时间 & $t_{\mathrm{end}}$；输出间隔 & $\SI{180}{\second}$；$\SI{30}{\second}$ \\
+            控制数 & $\mathrm{Fo}$ & $0.15$ \\
+            \bottomrule
+      \end{tabular}
+\end{table}
+
+由上述参数得到
+\begin{align}
+      \alpha_w&=\frac{k_w}{\rho c_{p,w}}
+      =\SI{1.4333493e-7}{\metre\squared\per\second},\\
+      \alpha_i&=\frac{k_i}{\rho c_{p,i}}
+      =\alpha_b
+      =\SI{1.0476190e-6}{\metre\squared\per\second},\\
+      \Delta t_{\max}&=\SI{9.9431818e-3}{\second},\\
+      \Delta t_0&=\SI{8.9488636e-3}{\second}.
+      \label{eq:default-derived}
+\end{align}
+
+\subsection{默认运行结果及其解释}
+
+默认输出时刻为 $t=(0,30,60,90,120,150,180)\ \si{\second}$，因每段末尾的短步处理，总步数
+为 $20118$。$t=\SI{180}{\second}$ 的主要结果列于表~\ref{tab:default-results}。
+
+\begin{table}[H]
+      \centering
+      \caption{默认算例在 $t=\SI{180}{\second}$ 的积分诊断。}
+      \label{tab:default-results}
+      \begin{tabular}{lll}
+            \toprule
+            诊断量 & 数值 & 含义 \\
+            \midrule
+            $A_s$ & $\SI{80.200387709}{\milli\metre\squared}$ & 连续固相率积分面积 \\
+            $F_m$ & $44.3052863\%$ & 初始固相面积的融化比例 \\
+            $\ell_{\mathrm{eq}}$ & $\SI{8.955466917}{\milli\metre}$ & 面积等效正方形边长 \\
+            $d_{\mathrm{eq}}$ & $\SI{1.522266541}{\milli\metre}$ & 面积等效均匀内蚀深度 \\
+            $W_{\mathrm{mid}}=H_{\mathrm{mid}}$ & $\SI{9.301623864}{\milli\metre}$ & 两条中心线固相积分宽度 \\
+            $Q_{\partial\Omega}$ & $\SI{6095.418250235}{\joule\per\metre}$ & 四壁累计输入热量 \\
+            $R_E$ & $-4.37\times10^{-11}\ \si{\joule\per\metre}$ & 全局能量残差 \\
+            相对能量残差 & $7.16\times10^{-15}$ & $|R_E|/\max(1,|Q_{\partial\Omega}|)$ \\
+            $\epsilon_{\mathrm{sym}}$ & 机器级零 & 默认方形条件的归一化对称误差 \\
+            \bottomrule
+      \end{tabular}
+\end{table}
+
+最终中心单元仍为纯冰，$f_{\ell,\mathrm{center}}=0$；单元中心温度范围为
+$0\le T\le\SI{19.9981907}{\degreeCelsius}$。四壁的 $\SI{20}{\degreeCelsius}$ 温度施加在
+边界面上，而非第一层单元中心，因此不应要求单元中心最大温度恰等于 $\SI{20}{\degreeCelsius}$。
+此外，$W_{\mathrm{mid}}$ 大于 $\ell_{\mathrm{eq}}$，说明角部融化快于边中部；二维冰块并未简单保持
+为均匀缩小的正方形。
+
+为检查空间细化趋势，保持物理尺寸和时间不变，在 $t=\SI{60}{\second}$ 比较三个方形网格：
+\begin{table}[H]
+      \centering
+      \caption{$t=\SI{60}{\second}$ 的网格细化趋势。}
+      \label{tab:grid-refinement}
+      \begin{tabular}{ccc}
+            \toprule
+            $N_x=N_y$ & $\Delta x$（\si{\milli\metre}） & $d_{\mathrm{eq}}$（\si{\milli\metre}） \\
+            \midrule
+            80  & 0.3750 & 0.817989 \\
+            120 & 0.2500 & 0.810287 \\
+            160 & 0.1875 & 0.806112 \\
+            \bottomrule
+      \end{tabular}
+\end{table}
+后两级之差小于前两级之差，表明该积分量随网格细化呈稳定趋势。三组结果尚不足以证明理论
+收敛阶、进入渐近收敛区或收敛到解析真值，故本文不作此类过度推断。
+
+\section{运行、输出与结果复核}
+
+在项目根目录执行
+\begin{lstlisting}[style=iceflowcode]
+python iceflow2d/examples/stefan_melting_2d.py
+\end{lstlisting}
+即可使用默认参数运行。命令行选项允许修改域尺寸、网格数、冰尺寸、温度、材料参数、
+Fourier 数、时间步和输出位置；显式指定的时间步仍须通过稳定性检查。默认输出目录为
+\path{outputs/iceflow2d/stefan_melting_2d}，包含：
+\begin{itemize}
+      \item \code{history.csv}：七个输出时刻的面积、融化量、能量和对称性诊断；
+      \item \code{fields.npz}：坐标、时间及形状为 $(7,120,120)$ 的 $T,\fl,H$ 场；
+      \item \code{metadata.json}：输入配置、派生尺度、模型假设和最终诊断；
+      \item \code{stefan\_melting\_2d.png}：四个时刻的液相率、最终温度和融化历史汇总图。
+\end{itemize}
+图中的 $\fl=0.5$ 等值线只服务于可视化；求解器没有把它当作显式追踪界面，固相面积也不由该
+二值轮廓计算。复核结果时，建议依次检查：配置记录是否与预期一致；$0\le\fl\le1$；融化量和
+温度场是否保持几何对称；式~\eqref{eq:energy-residual} 是否接近浮点舍入量级；网格细化后积分
+诊断是否趋于稳定。
+
+\section{方法边界与结论}
+
+本算例把融化问题转化为一个清晰的守恒循环：体积焓保存能量，分段闭合将焓解释为温度和液相
+率，有限体积面热流负责在相邻单元间交换能量，显式更新则推进时间。由于潜热包含在 $H$ 中，
+冰--水界面可在固定网格上自然穿过单元，无需为界面位置建立额外运动方程。
+
+该实现适合作为二维相变热模块的基础验证，但结论受其假设限制。它没有流体运动，因而不能表现
+自然对流对融化形状和速率的影响；采用等密度，因而不能表现融化收缩或结冰膨胀；恒温外壁和
+固定 $k_w$ 边界半格也只对应当前热水浴场景。若将来与 LBM、真实 $\rho_i\ne\rho_w$、自由液面
+或移动刚体耦合，应在保留本文共享面通量与焓守恒结构的同时，另行加入显热对流、相变几何更新、
+质量--体积转换和流体边界重建。本文的默认结果首先证明独立二维热焓实现具有内部能量守恒、
+预期对称性和合理的空间细化趋势，而不把这些自洽检查误称为完整实验验证或解析解验证。
+
+\end{document}

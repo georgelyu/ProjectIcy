@@ -1,5 +1,8 @@
-"""CUDA regression tests kept inside the independent iceflow2d package."""
+"""Focused regression tests for the retained IceFlow2D simulation API."""
 
+from __future__ import annotations
+
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,231 +10,309 @@ from pathlib import Path
 import numpy as np
 
 from iceflow2d import IceFlow2D, create_iceflow_config
+from iceflow2d.simulator import ensure_taichi_cuda
+
+
+def _full_active_fraction(size: int, boundary: int = 3) -> float:
+    """Return a fraction whose integer extent ends at the far wall."""
+
+    return (size - boundary + 0.5) / size
+
+
+def _active_mask(simulation: IceFlow2D) -> np.ndarray:
+    return (simulation.wall.to_numpy() == 0) & (simulation.solid.to_numpy() == 0)
+
+
+def _assert_body_inside(test: unittest.TestCase, simulation: IceFlow2D) -> None:
+    center = np.asarray(simulation.body_center[None], dtype=np.float64)
+    angle = float(simulation.body_angle[None])
+    cosine = abs(math.cos(angle))
+    sine = abs(math.sin(angle))
+    extent_x = (
+        cosine * simulation._body_half_width + sine * simulation._body_half_height
+    )
+    extent_y = (
+        sine * simulation._body_half_width + cosine * simulation._body_half_height
+    )
+    boundary = simulation.cfg.boundary_cells
+    tolerance = 2.0e-5
+    test.assertGreaterEqual(center[0] - extent_x, boundary - tolerance)
+    test.assertLessEqual(center[0] + extent_x, simulation.nx - boundary + tolerance)
+    test.assertGreaterEqual(center[1] - extent_y, boundary - tolerance)
+    test.assertLessEqual(center[1] + extent_y, simulation.ny - boundary + tolerance)
 
 
 class IceFlowConfigTests(unittest.TestCase):
-    def test_default_matches_legacy_coupled_ice_geometry(self):
+    def test_default_geometry_and_rigid_properties(self):
         config = create_iceflow_config()
         self.assertEqual(config.resolution, (600, 300))
         self.assertEqual((config.water_width, config.water_height), (150, 200))
         self.assertEqual((config.ice_width, config.ice_height), (90, 90))
         self.assertEqual(config.ice_initial_center, (300.0, 48.0))
         self.assertAlmostEqual(config.ice_mass_lattice, 7427.7)
-        self.assertEqual(config.linear_damping, 1.0)
-        self.assertEqual(config.bottom_wall_friction, 0.03)
+        self.assertGreater(config.ice_inertia_lattice, 0.0)
 
     def test_unknown_option_is_rejected(self):
         with self.assertRaisesRegex(TypeError, "Unknown IceFlowConfig option"):
-            create_iceflow_config(temperature=273.15)
+            create_iceflow_config(unrelated_solver_option=True)
 
-    def test_bottom_friction_range_is_validated(self):
-        for value in (-0.01, 1.01):
+    def test_resolution_override_updates_reference_length(self):
+        config = create_iceflow_config(resolution=(120, 60))
+        self.assertEqual(config.reference_length_cells, 60)
+        explicit = create_iceflow_config(
+            resolution=(120, 60), reference_length_cells=30
+        )
+        self.assertEqual(explicit.reference_length_cells, 30)
+
+    def test_fixed_ice_requires_zero_initial_motion(self):
+        self.assertTrue(create_iceflow_config(ice_fixed=True).ice_fixed)
+        with self.assertRaisesRegex(ValueError, "fixed ice must have zero"):
+            create_iceflow_config(ice_fixed=True, ice_initial_velocity=(0.01, 0.0))
+        with self.assertRaisesRegex(ValueError, "fixed ice must have zero"):
+            create_iceflow_config(ice_fixed=True, ice_initial_angular_velocity=1.0e-4)
+
+    def test_contact_coefficients_are_bounded(self):
+        for name in ("wall_restitution", "wall_friction", "bottom_wall_friction"):
+            for value in (-0.01, 1.01):
+                with self.subTest(name=name, value=value):
+                    with self.assertRaisesRegex(ValueError, name):
+                        create_iceflow_config(**{name: value})
+
+    def test_well_balanced_hydrostatic_geometry_is_validated(self):
+        with self.assertRaisesRegex(ValueError, "full-width horizontal pool"):
+            create_iceflow_config(well_balanced_hydrostatics=True)
+
+        size = 64
+        config = create_iceflow_config(
+            resolution=(size, size),
+            water_width_fraction=_full_active_fraction(size),
+            water_height_fraction=0.5,
+            well_balanced_hydrostatics=True,
+        )
+        self.assertTrue(config.well_balanced_hydrostatics)
+        self.assertNotIn("hydrostatic_initialization", config.to_dict())
+        self.assertNotIn("pressure_completed_gimem", config.to_dict())
+
+        with self.assertRaisesRegex(ValueError, "requires vertical gravity"):
+            create_iceflow_config(
+                resolution=(size, size),
+                water_width_fraction=_full_active_fraction(size),
+                water_height_fraction=0.5,
+                gravity=(1.0, -9.8),
+                well_balanced_hydrostatics=True,
+            )
+
+    def test_removed_hydrostatic_options_are_rejected(self):
+        for option in ("hydrostatic_initialization", "pressure_completed_gimem"):
+            for value in (False, True):
+                with self.subTest(option=option, value=value):
+                    with self.assertRaisesRegex(
+                        TypeError, f"Unknown IceFlowConfig option: {option}"
+                    ):
+                        create_iceflow_config(**{option: value})
+
+        config = create_iceflow_config()
+        self.assertFalse(hasattr(config, "hydrostatic_initialization"))
+        self.assertFalse(hasattr(config, "pressure_completed_gimem"))
+
+    def test_well_balanced_hydrostatics_requires_boolean(self):
+        for value in (None, 0, 1, "true"):
             with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "bottom_wall_friction must be in"):
-                    create_iceflow_config(bottom_wall_friction=value)
+                with self.assertRaisesRegex(
+                    ValueError, "well_balanced_hydrostatics must be a boolean"
+                ):
+                    create_iceflow_config(well_balanced_hydrostatics=value)
 
 
 class IceFlowCudaTests(unittest.TestCase):
-    def test_coupling_stays_finite_and_writes_png(self):
-        output = Path(tempfile.mkdtemp(prefix="iceflow2d-test-"))
-        config = create_iceflow_config(
-            resolution=(64, 32),
-            reference_length_cells=300,
-            phase_warmup_steps=5,
-            output_dir=str(output),
-        )
-        simulation = IceFlow2D(config)
-        initial = simulation.diagnostics()
-        self.assertEqual(initial["solid_cells"], config.ice_width * config.ice_height)
-        simulation.step(200)
-        result = simulation.diagnostics()
-        self.assertTrue(result["fluid_finite"])
-        self.assertTrue(result["rigid_finite"])
-        self.assertTrue(result["body_inside"])
-        self.assertGreater(result["cut_links"], 0)
-        relative_water_error = abs(result["water_volume_error"]) / result["water_volume_target"]
-        self.assertLess(relative_water_error, 1.0e-4)
-        self.assertLess(result["max_fluid_speed"], 0.1)
-        for field in (simulation.f, simulation.h, simulation.phi, simulation.u, simulation.p, simulation.sdf):
-            self.assertTrue(np.isfinite(field.to_numpy()).all())
-
-        frame_path = output / "frame_00000.png"
-        simulation.save_frame(frame_path)
-        self.assertTrue(frame_path.is_file())
+    @classmethod
+    def setUpClass(cls):
         try:
-            from PIL import Image
+            ensure_taichi_cuda()
+        except RuntimeError as exc:  # pragma: no cover - depends on test host
+            raise unittest.SkipTest(str(exc)) from exc
 
-            with Image.open(frame_path) as image:
-                self.assertEqual(image.size, (64, 32))
-        except ImportError:
-                self.assertGreater(frame_path.stat().st_size, 0)
+    def test_short_run_stays_finite_conservative_and_writes_state(self):
+        with tempfile.TemporaryDirectory(prefix="iceflow2d-test-") as directory:
+            output = Path(directory)
+            config = create_iceflow_config(
+                resolution=(64, 32),
+                reference_length_cells=300,
+                phase_warmup_steps=2,
+                output_dir=str(output),
+            )
+            simulation = IceFlow2D(config)
 
-    def test_fully_submerged_body_displaces_its_area(self):
+            self.assertIsNotNone(simulation.hydrodynamic_impulse)
+            self.assertIsNotNone(simulation.hydrodynamic_torque)
+            self.assertIsNotNone(simulation.solid_prev)
+            self.assertIsNone(simulation.hydrostatic_reference_pressure)
+            self.assertIsNone(simulation.hydrostatic_reference_density)
+
+            simulation.step(3)
+            self.assertEqual(simulation.steps, 3)
+            for name in ("f", "h", "phi", "u", "fluid_force", "p"):
+                self.assertTrue(
+                    np.isfinite(getattr(simulation, name).to_numpy()).all(), name
+                )
+            self.assertTrue(
+                np.isfinite(np.asarray(simulation.hydrodynamic_impulse[None])).all()
+            )
+            self.assertTrue(math.isfinite(float(simulation.hydrodynamic_torque[None])))
+
+            active = _active_mask(simulation)
+            phase = simulation.phi.to_numpy()
+            self.assertGreater(np.count_nonzero(active), 0)
+            self.assertGreaterEqual(float(np.min(phase[active])), 0.0)
+            self.assertLessEqual(float(np.max(phase[active])), 1.0)
+            target = float(simulation.water_volume_target[None])
+            current = float(simulation.water_volume_current[None])
+            host_volume = float(np.sum(phase[active], dtype=np.float64))
+            tolerance = max(5.0e-5, 5.0e-8 * max(1.0, abs(target)))
+            self.assertAlmostEqual(current, host_volume, delta=1.0e-8)
+            self.assertAlmostEqual(current, target, delta=tolerance)
+            _assert_body_inside(self, simulation)
+
+            frame_path = output / "frame.png"
+            state_path = output / "state.npz"
+            simulation.save_frame(frame_path)
+            simulation.save_state_npz(state_path)
+            self.assertGreater(frame_path.stat().st_size, 0)
+            with np.load(state_path) as state:
+                self.assertEqual(state["phi"].shape, config.resolution)
+                self.assertEqual(state["u"].shape, config.resolution + (2,))
+                self.assertEqual(state["solid"].shape, config.resolution)
+                self.assertNotIn("hydrostatic_reference_pressure", state.files)
+
+    def test_fixed_ice_keeps_pose_and_avoids_moving_body_allocations(self):
+        size = 48
         config = create_iceflow_config(
-            resolution=(120, 60),
-            reference_length_cells=300,
+            resolution=(size, size),
             phase_warmup_steps=0,
-            water_width_fraction=0.95,
-            water_height_fraction=0.80,
+            water_width_fraction=_full_active_fraction(size),
+            water_height_fraction=_full_active_fraction(size),
+            ice_width_fraction=8.0 / size,
+            ice_height_fraction=8.0 / size,
             ice_base_y_cells=20.0,
-            gravity=(0.0, 0.0),
+            ice_fixed=True,
+            well_balanced_hydrostatics=True,
         )
         simulation = IceFlow2D(config)
-        simulation._compute_hydrostatic_buoyancy()
-        result = simulation.diagnostics()
-        expected_area = config.ice_width * config.ice_height
-        self.assertEqual(result["solid_cells"], expected_area)
-        self.assertAlmostEqual(result["displaced_water_volume"], expected_area, delta=1.0e-5 * expected_area)
+        center_before = np.asarray(simulation.body_center[None], dtype=np.float64)
+        angle_before = float(simulation.body_angle[None])
+        solid_before = simulation.solid.to_numpy()
 
-    def test_horizontal_waterline_gives_geometric_partial_displacement(self):
-        config = create_iceflow_config(
-            resolution=(120, 60),
-            reference_length_cells=300,
-            phase_warmup_steps=0,
-            water_width_fraction=0.95,
-            water_height_fraction=0.50,
-            ice_base_y_cells=20.0,
-            gravity=(0.0, 0.0),
-        )
-        simulation = IceFlow2D(config)
-        simulation._compute_hydrostatic_buoyancy()
-        # The 18-cell-high body spans y=20..38 while water occupies cell
-        # centers below y=30: ten immersed rows out of eighteen.
-        expected = config.ice_width * 10.0
-        self.assertAlmostEqual(
-            simulation.diagnostics()["displaced_water_volume"], expected, delta=1.0e-5 * expected
-        )
+        self.assertIsNone(simulation.hydrodynamic_impulse)
+        self.assertIsNone(simulation.hydrodynamic_torque)
+        self.assertIsNone(simulation.solid_prev)
+        self.assertIsNotNone(simulation.hydrostatic_reference_pressure)
+        self.assertIsNotNone(simulation.hydrostatic_reference_density)
 
-    def test_asymmetric_displacement_applies_force_without_artificial_torque(self):
-        config = create_iceflow_config(
-            resolution=(120, 60),
-            reference_length_cells=300,
-            phase_warmup_steps=0,
-            water_width_fraction=0.50,
-            water_height_fraction=0.80,
-            ice_base_y_cells=20.0,
+        simulation.step(2)
+        np.testing.assert_array_equal(simulation.solid.to_numpy(), solid_before)
+        np.testing.assert_allclose(
+            np.asarray(simulation.body_center[None]), center_before, rtol=0.0, atol=0.0
         )
-        simulation = IceFlow2D(config)
-        simulation._compute_hydrostatic_buoyancy()
-        result = simulation.diagnostics()
-        self.assertGreater(result["buoyancy_impulse_y"], 0.0)
-        self.assertEqual(result["buoyancy_torque"], 0.0)
+        self.assertEqual(float(simulation.body_angle[None]), angle_before)
+        np.testing.assert_array_equal(
+            np.asarray(simulation.body_velocity[None]), np.zeros(2, dtype=np.float32)
+        )
+        self.assertEqual(float(simulation.body_angular_velocity[None]), 0.0)
+        self.assertTrue(np.isfinite(simulation.p.to_numpy()).all())
+        _assert_body_inside(self, simulation)
 
-    def test_bottom_contact_impulse_updates_translation_and_rotation(self):
+    def test_unforced_moving_body_advances_under_gravity(self):
+        size = 64
         config = create_iceflow_config(
-            resolution=(120, 60),
-            reference_length_cells=300,
+            resolution=(size, size),
             phase_warmup_steps=0,
-            gravity=(0.0, 0.0),
-            hydrodynamic_force_scale=0.0,
-            hydrostatic_buoyancy_scale=0.0,
+            ice_width_fraction=8.0 / size,
+            ice_height_fraction=8.0 / size,
+            ice_base_y_cells=35.0,
             linear_damping=1.0,
             angular_damping=1.0,
-            max_ice_angular_speed=0.01,
-            bottom_wall_friction=0.0,
         )
         simulation = IceFlow2D(config)
-        angle = 0.15
-        half_width = 0.5 * config.ice_width
-        half_height = 0.5 * config.ice_height
-        extent_y = abs(np.sin(angle)) * half_width + abs(np.cos(angle)) * half_height
-        simulation.body_angle[None] = angle
-        simulation.body_center[None] = (0.5 * config.nx, config.boundary_cells + extent_y + 0.001)
-        simulation.body_velocity[None] = (0.0, -0.02)
-        simulation.body_angular_velocity[None] = 0.0
+        center_before = np.asarray(simulation.body_center[None], dtype=np.float64)
+        simulation.hydrodynamic_impulse[None] = (0.0, 0.0)
+        simulation.hydrodynamic_torque[None] = 0.0
 
-        simulation._advance_rigid_ice()
-        result = simulation.diagnostics()
-        self.assertGreater(result["bottom_contact_impulse"], 0.0)
-        self.assertAlmostEqual(result["body_velocity_y"], -0.009303354, delta=2.0e-5)
-        self.assertAlmostEqual(result["body_angular_velocity"], -0.001496341, delta=2.0e-6)
-        self.assertAlmostEqual(result["bottom_contact_impulse"], 3.178059, delta=2.0e-4)
-        self.assertLess(abs(result["bottom_position_correction"]), 1.0e-5)
+        for _ in range(8):
+            simulation._integrate_rigid_ice()
 
-    def test_corner_position_projection_does_not_inject_velocity(self):
+        center_after = np.asarray(simulation.body_center[None], dtype=np.float64)
+        velocity = np.asarray(simulation.body_velocity[None], dtype=np.float64)
+        self.assertTrue(np.isfinite(center_after).all())
+        self.assertTrue(np.isfinite(velocity).all())
+        self.assertLess(center_after[1], center_before[1])
+        self.assertLess(velocity[1], 0.0)
+        self.assertAlmostEqual(velocity[0], 0.0, delta=1.0e-8)
+        self.assertAlmostEqual(float(simulation.body_angular_velocity[None]), 0.0)
+        _assert_body_inside(self, simulation)
+
+    def test_cut_link_load_is_f64_and_cleared_after_rigid_integration(self):
+        size = 64
         config = create_iceflow_config(
-            resolution=(120, 60),
-            reference_length_cells=300,
+            resolution=(size, size),
             phase_warmup_steps=0,
             gravity=(0.0, 0.0),
-            hydrodynamic_force_scale=0.0,
-            hydrostatic_buoyancy_scale=0.0,
+            ice_width_fraction=8.0 / size,
+            ice_height_fraction=8.0 / size,
+            ice_base_y_cells=35.0,
             linear_damping=1.0,
             angular_damping=1.0,
-            max_ice_angular_speed=0.01,
-            bottom_wall_friction=0.0,
         )
         simulation = IceFlow2D(config)
-        angle = 0.15
-        half_width = 0.5 * config.ice_width
-        half_height = 0.5 * config.ice_height
-        extent_y = abs(np.sin(angle)) * half_width + abs(np.cos(angle)) * half_height
-        center_y = config.boundary_cells + extent_y - 0.01
-        simulation.body_angle[None] = angle
-        simulation.body_center[None] = (0.5 * config.nx, center_y)
-        simulation.body_velocity[None] = (0.0, 0.0)
-        simulation.body_angular_velocity[None] = 0.0
+        impulse = np.asarray([0.01, -0.02]) * simulation._body_mass
+        torque = 1.0e-4 * simulation._body_inertia
+        simulation.hydrodynamic_impulse[None] = impulse
+        simulation.hydrodynamic_torque[None] = torque
 
-        simulation._advance_rigid_ice()
-        result = simulation.diagnostics()
-        corrected_angle = result["body_angle"]
-        corrected_center_y = result["body_center_y"]
-        corners = []
-        cosine = np.cos(corrected_angle)
-        sine = np.sin(corrected_angle)
-        for local_x in (-half_width, half_width):
-            for local_y in (-half_height, half_height):
-                rotated_y = sine * local_x + cosine * local_y
-                corners.append(corrected_center_y + rotated_y)
-        self.assertGreaterEqual(min(corners), config.boundary_cells - 2.0e-5)
-        self.assertEqual(result["body_velocity_x"], 0.0)
-        self.assertEqual(result["body_velocity_y"], 0.0)
-        self.assertEqual(result["body_angular_velocity"], 0.0)
-        self.assertGreater(result["bottom_position_correction"], 0.0)
-        self.assertLess(result["bottom_position_correction"], 0.01)
-        self.assertLess(corrected_angle, angle)
+        self.assertEqual(simulation.hydrodynamic_impulse.to_numpy().dtype, np.float64)
+        self.assertEqual(simulation.hydrodynamic_torque.to_numpy().dtype, np.float64)
+        simulation._integrate_rigid_ice()
 
-    def test_bottom_coulomb_friction_reduces_sliding_with_bounded_impulse(self):
+        np.testing.assert_allclose(
+            np.asarray(simulation.body_velocity[None]),
+            np.asarray([0.01, -0.02], dtype=np.float32),
+            rtol=0.0,
+            atol=2.0e-7,
+        )
+        self.assertAlmostEqual(
+            float(simulation.body_angular_velocity[None]), 1.0e-4, delta=1.0e-7
+        )
+        np.testing.assert_array_equal(
+            simulation.hydrodynamic_impulse.to_numpy(),
+            np.zeros(2, dtype=np.float64),
+        )
+        self.assertEqual(float(simulation.hydrodynamic_torque[None]), 0.0)
+
+    def test_bottom_contact_prevents_penetration_and_applies_friction(self):
+        nx, ny = 80, 48
+        initial_velocity = (0.01, -0.01)
         config = create_iceflow_config(
-            resolution=(120, 60),
-            reference_length_cells=300,
+            resolution=(nx, ny),
             phase_warmup_steps=0,
             gravity=(0.0, 0.0),
-            hydrodynamic_force_scale=0.0,
-            hydrostatic_buoyancy_scale=0.0,
+            ice_width_fraction=8.0 / nx,
+            ice_height_fraction=6.0 / ny,
+            ice_base_y_cells=3.0,
+            ice_initial_velocity=initial_velocity,
             linear_damping=1.0,
             angular_damping=1.0,
-            max_ice_angular_speed=0.01,
-            wall_restitution=0.0,
-            bottom_wall_friction=0.03,
+            wall_restitution=0.2,
+            bottom_wall_friction=0.5,
         )
         simulation = IceFlow2D(config)
-        initial_vx = 0.01
-        simulation.body_velocity[None] = (initial_vx, -0.01)
-        simulation.body_angular_velocity[None] = 0.0
+        simulation.hydrodynamic_impulse[None] = (0.0, 0.0)
+        simulation.hydrodynamic_torque[None] = 0.0
+        simulation._integrate_rigid_ice()
 
-        simulation._advance_rigid_ice()
-        result = simulation.diagnostics()
-        normal_impulse = result["bottom_contact_impulse"]
-        tangent_impulse = result["bottom_friction_impulse"]
-        friction_torque = result["bottom_friction_torque_impulse"]
-        self.assertGreater(normal_impulse, 0.0)
-        self.assertLess(tangent_impulse, 0.0)
-        self.assertLess(result["body_velocity_x"], initial_vx)
-        self.assertLessEqual(
-            result["bottom_friction_abs_impulse"],
-            config.bottom_wall_friction * normal_impulse + 2.0e-5,
-        )
-        self.assertAlmostEqual(
-            config.ice_mass_lattice * (result["body_velocity_x"] - initial_vx),
-            tangent_impulse,
-            delta=2.0e-5,
-        )
-        self.assertAlmostEqual(
-            config.ice_inertia_lattice * result["body_angular_velocity"],
-            result["bottom_contact_torque_impulse"] + friction_torque,
-            delta=2.0e-4,
-        )
+        velocity = np.asarray(simulation.body_velocity[None], dtype=np.float64)
+        self.assertTrue(np.isfinite(velocity).all())
+        self.assertGreaterEqual(velocity[1], -1.0e-6)
+        self.assertLess(abs(velocity[0]), abs(initial_velocity[0]))
+        _assert_body_inside(self, simulation)
 
 
 if __name__ == "__main__":

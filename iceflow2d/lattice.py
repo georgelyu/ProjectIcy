@@ -1,29 +1,8 @@
-"""D2Q9 helpers shared by the IceFlow2D Taichi kernels.
-
-These are the minimal velocity/phase-lattice primitives used by mixture2d's
-pure-fluid path.  Coupling-specific rigid-boundary kernels live in
-``simulator.py`` rather than changing these collision-basis helpers.
-"""
-
-from __future__ import annotations
+"""D2Q9 primitives used by the IceFlow2D Taichi kernels."""
 
 import taichi as ti
 
-
 Q = 9
-C = (
-    (0, 0),
-    (1, 0),
-    (0, 1),
-    (-1, 0),
-    (0, -1),
-    (1, 1),
-    (-1, 1),
-    (-1, -1),
-    (1, -1),
-)
-W = (4.0 / 9.0, 1.0 / 9.0, 1.0 / 9.0, 1.0 / 9.0, 1.0 / 9.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0)
-OPPOSITE = (0, 3, 4, 1, 2, 7, 8, 5, 6)
 
 
 @ti.func
@@ -81,11 +60,23 @@ def _opp(q):
 
 
 @ti.func
-def _feq(q, rho, u):
+def _pressure_eq(q, pressure, rho, u):
+    """Liang et al. pressure--momentum equilibrium for large density ratios.
+
+    Its zeroth moment is zero, its first moment is ``rho * u``, and its
+    second moment is ``rho * u u + pressure * I``.  Consequently material
+    density remains an independent phase-field quantity rather than an
+    isothermal equation-of-state pressure.
+    """
+
     cq = ti.cast(_c(q), ti.f32)
     cu = cq.dot(u)
     uu = u.dot(u)
-    return _w(q) * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * uu)
+    velocity_part = _w(q) * rho * (3.0 * cu + 4.5 * cu * cu - 1.5 * uu)
+    pressure_part = 3.0 * _w(q) * pressure
+    if q == 0:
+        pressure_part -= 3.0 * pressure
+    return pressure_part + velocity_part
 
 
 @ti.func
@@ -105,32 +96,6 @@ def _inside(i, j, nx, ny):
 def _rho_mix(phi, rho_water, rho_air):
     p = ti.min(1.0, ti.max(0.0, phi))
     return rho_water * p + rho_air * (1.0 - p)
-
-
-@ti.func
-def _viscosity_mix(phi, rho_water, rho_air, nu_water, nu_air):
-    p = ti.min(1.0, ti.max(0.0, phi))
-    rho = _rho_mix(p, rho_water, rho_air)
-    return (rho_water * nu_water * p + rho_air * nu_air * (1.0 - p)) / rho
-
-
-@ti.func
-def _tau_mix(phi, artificial_vis, rho_water, rho_air, nu_water, nu_air):
-    return 3.0 * (_viscosity_mix(phi, rho_water, rho_air, nu_water, nu_air) + artificial_vis) + 0.5
-
-
-@ti.func
-def _axis_c(index):
-    out = ti.Vector([0, 0], dt=ti.i32)
-    if index == 0:
-        out = ti.Vector([1, 0])
-    elif index == 1:
-        out = ti.Vector([0, 1])
-    elif index == 2:
-        out = ti.Vector([-1, 0])
-    else:
-        out = ti.Vector([0, -1])
-    return out
 
 
 @ti.func
@@ -184,25 +149,3 @@ def _reconstruct_central(cxi, cyi, ux, uy, k00, k10, k01, k20, k02, k11, k21, k1
 @ti.func
 def _cross2(a, b):
     return a.x * b.y - a.y * b.x
-
-
-__all__ = [
-    "Q",
-    "C",
-    "W",
-    "OPPOSITE",
-    "_c",
-    "_w",
-    "_opp",
-    "_feq",
-    "_heq",
-    "_inside",
-    "_rho_mix",
-    "_viscosity_mix",
-    "_tau_mix",
-    "_axis_c",
-    "_inv1d",
-    "_reconstruct_central",
-    "_cross2",
-]
-

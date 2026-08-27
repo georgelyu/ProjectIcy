@@ -1,5 +1,4 @@
-# Local reference implementation and generated simulation output.
-reference/
+# Generated simulation output.
 outputs/
 
 # Python caches and test/tool caches.
@@ -28,6 +27,32 @@ ENV/
 build/
 dist/
 *.egg-info/
+
+# LaTeX build artifacts generated under the iceflow2d documentation tree.
+iceflow2d/docs/**/*.aux
+iceflow2d/docs/**/*.bbl
+iceflow2d/docs/**/*.bcf
+iceflow2d/docs/**/*.blg
+iceflow2d/docs/**/*.fdb_latexmk
+iceflow2d/docs/**/*.fls
+iceflow2d/docs/**/*.glg
+iceflow2d/docs/**/*.glo
+iceflow2d/docs/**/*.gls
+iceflow2d/docs/**/*.idx
+iceflow2d/docs/**/*.ilg
+iceflow2d/docs/**/*.ind
+iceflow2d/docs/**/*.ist
+iceflow2d/docs/**/*.lof
+iceflow2d/docs/**/*.log
+iceflow2d/docs/**/*.lot
+iceflow2d/docs/**/*.nav
+iceflow2d/docs/**/*.out
+iceflow2d/docs/**/*.run.xml
+iceflow2d/docs/**/*.snm
+iceflow2d/docs/**/*.synctex.gz
+iceflow2d/docs/**/*.toc
+iceflow2d/docs/**/*.vrb
+iceflow2d/docs/**/*.xdv
 
 # Local editor and OS files.
 .idea/

@@ -10,7 +10,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-
 EXAMPLE_PATH = (
     Path(__file__).resolve().parents[1] / "iceflow2d" / "examples" / "ice_fall_2d.py"
 )
@@ -39,16 +38,17 @@ class IceFallExampleGeometryTests(unittest.TestCase):
         args = EXAMPLE.parse_args([])
         geometry = EXAMPLE.derive_ice_fall_geometry(args)
 
+        self.assertEqual(args.drop_height_fraction, 0.03)
         self.assertEqual(
-            (geometry["water_width"], geometry["water_height"]), (597, 120)
+            (geometry["water_width"], geometry["water_height"]), (297, 420)
         )
-        self.assertEqual((geometry["ice_width"], geometry["ice_height"]), (60, 60))
-        self.assertAlmostEqual(geometry["drop_height"], 60.0)
-        self.assertAlmostEqual(geometry["ice_lowest_y"], 180.0)
+        self.assertEqual((geometry["ice_width"], geometry["ice_height"]), (30, 30))
+        self.assertAlmostEqual(geometry["drop_height"], 18.0)
+        self.assertAlmostEqual(geometry["ice_lowest_y"], 438.0)
         self.assertGreater(geometry["ice_highest_y"], geometry["ice_lowest_y"])
-        self.assertLessEqual(geometry["ice_highest_y"], 300 - args.boundary_cells)
+        self.assertLessEqual(geometry["ice_highest_y"], 600 - args.boundary_cells)
 
-        expected_extent = 30.0 * (
+        expected_extent = 15.0 * (
             abs(math.cos(math.radians(5.0))) + abs(math.sin(math.radians(5.0)))
         )
         self.assertAlmostEqual(
@@ -56,14 +56,23 @@ class IceFallExampleGeometryTests(unittest.TestCase):
         )
 
     def test_default_fractional_gap_scales_to_a_small_grid(self):
-        args = EXAMPLE.parse_args(["--resolution-x", "120", "--resolution-y", "60"])
+        args = EXAMPLE.parse_args(
+            [
+                "--resolution-x",
+                "120",
+                "--resolution-y",
+                "60",
+                "--drop-height-cells",
+                "10",
+            ]
+        )
         geometry = EXAMPLE.derive_ice_fall_geometry(args)
 
-        self.assertEqual((geometry["water_width"], geometry["water_height"]), (117, 24))
-        self.assertEqual((geometry["ice_width"], geometry["ice_height"]), (12, 12))
-        self.assertAlmostEqual(geometry["drop_height"], 12.0)
+        self.assertEqual((geometry["water_width"], geometry["water_height"]), (117, 42))
+        self.assertEqual((geometry["ice_width"], geometry["ice_height"]), (12, 3))
+        self.assertAlmostEqual(geometry["drop_height"], 10.0)
         self.assertAlmostEqual(
-            geometry["ice_lowest_y"] - geometry["water_height"], 12.0
+            geometry["ice_lowest_y"] - geometry["water_height"], 10.0
         )
         self.assertLessEqual(geometry["ice_highest_y"], 57.0)
 
@@ -76,22 +85,19 @@ class IceFallExampleGeometryTests(unittest.TestCase):
                 args, output_dir="outputs/iceflow2d/test_ice_fall"
             )
 
-        self.assertEqual((config.water_width, config.water_height), (597, 120))
-        self.assertEqual((config.ice_width, config.ice_height), (60, 60))
+        self.assertEqual((config.water_width, config.water_height), (297, 420))
+        self.assertEqual((config.ice_width, config.ice_height), (30, 30))
+        self.assertFalse(config.well_balanced_hydrostatics)
         self.assertEqual(config.output_dir, "outputs/iceflow2d/test_ice_fall")
         extent_y = (
             abs(math.sin(config.ice_initial_angle)) * 0.5 * config.ice_width
             + abs(math.cos(config.ice_initial_angle)) * 0.5 * config.ice_height
         )
-        self.assertAlmostEqual(config.ice_initial_center[1] - extent_y, 180.0)
+        self.assertAlmostEqual(config.ice_initial_center[1] - extent_y, 438.0)
 
     def test_explicit_cell_gap_measures_the_lowest_rotated_corner(self):
         args = EXAMPLE.parse_args(
             [
-                "--resolution-x",
-                "120",
-                "--resolution-y",
-                "60",
                 "--ice-angle-degrees",
                 "20",
                 "--drop-height-cells",

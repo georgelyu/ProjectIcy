@@ -1,4 +1,4 @@
-"""Compatibility entry point for the rigid-ice dam-break example."""
+"""Package entry point for the rigid-ice dam-break example."""
 
 from .examples.dam_break_2d import main, parse_args
 
