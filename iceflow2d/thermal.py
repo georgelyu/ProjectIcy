@@ -38,6 +38,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on optional dependency
 
 
 ThermalBoundaryKind = Literal["adiabatic", "dirichlet", "neumann"]
+WaterBuoyancyModel = Literal["linear", "freshwater_quadratic"]
 
 _ADIABATIC = 0
 _DIRICHLET = 1
@@ -177,8 +178,11 @@ class ThermalConfig:
     solid_liquid_threshold: float = 0.5
     max_fourier_number: float = 0.15
     max_courant_number: float = 0.50
+    water_buoyancy_model: WaterBuoyancyModel = "linear"
     thermal_expansion_water_1_k: float = 2.1e-4
-    buoyancy_reference_temperature_c: float = 0.0
+    buoyancy_reference_temperature_c: float | None = None
+    freshwater_density_max_temperature_c: float = 4.0
+    freshwater_density_quadratic_coefficient_1_k2: float = 8.0e-6
     scheme: Literal["enthalpy_fv"] = "enthalpy_fv"
 
     def __post_init__(self) -> None:
@@ -188,6 +192,11 @@ class ThermalConfig:
             raise TypeError("boundaries must be a ThermalBoundarySet")
         if self.scheme != "enthalpy_fv":
             raise ValueError("scheme must be 'enthalpy_fv'")
+        if self.water_buoyancy_model not in ("linear", "freshwater_quadratic"):
+            raise ValueError(
+                "water_buoyancy_model must be 'linear' or "
+                "'freshwater_quadratic'"
+            )
         if not isinstance(self.advection_enabled, bool):
             raise ValueError("advection_enabled must be a boolean")
         if not isinstance(self.water_air_interface_adiabatic, bool):
@@ -206,11 +215,22 @@ class ThermalConfig:
             raise ValueError("solid_liquid_threshold must be in (0, 1)")
         object.__setattr__(self, "solid_liquid_threshold", threshold)
 
+        if self.buoyancy_reference_temperature_c is None:
+            object.__setattr__(
+                self,
+                "buoyancy_reference_temperature_c",
+                _finite(
+                    "initial_water_temperature_c",
+                    self.initial_water_temperature_c,
+                ),
+            )
+
         for name in (
             "initial_water_temperature_c",
             "initial_ice_temperature_c",
             "initial_air_temperature_c",
             "buoyancy_reference_temperature_c",
+            "freshwater_density_max_temperature_c",
         ):
             object.__setattr__(self, name, _finite(name, getattr(self, name)))
 
@@ -243,6 +263,77 @@ class ThermalConfig:
                 self.thermal_expansion_water_1_k,
             ),
         )
+        object.__setattr__(
+            self,
+            "freshwater_density_quadratic_coefficient_1_k2",
+            _non_negative(
+                "freshwater_density_quadratic_coefficient_1_k2",
+                self.freshwater_density_quadratic_coefficient_1_k2,
+            ),
+        )
+        if self.water_buoyancy_model == "freshwater_quadratic":
+            reference_factor = 1.0 - (
+                self.freshwater_density_quadratic_coefficient_1_k2
+                * (
+                    self.buoyancy_reference_temperature_c
+                    - self.freshwater_density_max_temperature_c
+                )
+                ** 2
+            )
+            if reference_factor <= 0.0:
+                raise ValueError(
+                    "freshwater quadratic density must remain positive at the "
+                    "buoyancy reference temperature"
+                )
+
+
+def water_density_ratio_to_reference(
+    temperature_c: Any, config: ThermalConfig
+) -> float | np.ndarray:
+    """Return liquid-water density divided by its buoyancy reference density.
+
+    This ratio is used only in the Boussinesq gravity source.  It does not
+    replace the material density used by the air--water LBM, the enthalpy law,
+    or the ice/water mass-conversion model.  The quadratic branch implements
+    ``rho(T)=rho_star*(1-beta*(T-T_star)**2)`` and normalizes it by the same
+    expression evaluated at the configured far-field reference temperature.
+    """
+
+    if not isinstance(config, ThermalConfig):
+        raise TypeError("config must be a ThermalConfig")
+    anomaly = water_density_anomaly_ratio_to_reference(temperature_c, config)
+    return 1.0 + anomaly
+
+
+def water_density_anomaly_ratio_to_reference(
+    temperature_c: Any, config: ThermalConfig
+) -> float | np.ndarray:
+    """Return ``(rho_water(T) - rho_water(T_inf)) / rho_water(T_inf)``.
+
+    The quadratic expression is evaluated directly instead of subtracting two
+    nearly equal density ratios.  ``T_inf`` is the configured far-field
+    buoyancy reference and defaults to the initial bath temperature.
+    """
+
+    if not isinstance(config, ThermalConfig):
+        raise TypeError("config must be a ThermalConfig")
+    temperature = np.asarray(temperature_c, dtype=np.float64)
+    reference = float(config.buoyancy_reference_temperature_c)
+    if config.water_buoyancy_model == "linear":
+        anomaly = -float(config.thermal_expansion_water_1_k) * (
+            temperature - reference
+        )
+    else:
+        beta = float(config.freshwater_density_quadratic_coefficient_1_k2)
+        maximum_temperature = float(config.freshwater_density_max_temperature_c)
+        reference_factor = 1.0 - beta * (reference - maximum_temperature) ** 2
+        anomaly = beta * (
+            (reference - maximum_temperature) ** 2
+            - (temperature - maximum_temperature) ** 2
+        ) / reference_factor
+    if anomaly.ndim == 0:
+        return float(anomaly)
+    return anomaly
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,32 +375,22 @@ class LatticeScales:
         return _finite("velocity_lattice", velocity_lattice) * self.velocity_scale_m_s
 
     @classmethod
-    def from_hydrodynamic_reference(
+    def from_reference_velocity(
         cls,
         *,
         dx_m: float,
-        reference_length_cells: int,
-        gravity_m_s2: float,
+        reference_velocity_m_s: float,
         reference_density_kg_m3: float,
         reference_lattice_velocity: float = 0.1,
     ) -> "LatticeScales":
-        """Reproduce IceFlow2D's dimensional-to-lattice conversion."""
+        """Map a fixed physical reference speed to a lattice speed."""
 
         spacing = _positive("dx_m", dx_m)
-        if (
-            isinstance(reference_length_cells, bool)
-            or int(reference_length_cells) != reference_length_cells
-            or int(reference_length_cells) <= 0
-        ):
-            raise ValueError("reference_length_cells must be a positive integer")
-        gravity = abs(_finite("gravity_m_s2", gravity_m_s2))
-        if gravity == 0.0:
-            gravity = 9.8
+        reference_velocity = _positive(
+            "reference_velocity_m_s", reference_velocity_m_s
+        )
         lattice_velocity = _positive(
             "reference_lattice_velocity", reference_lattice_velocity
-        )
-        reference_velocity = math.sqrt(
-            4.0 * gravity * int(reference_length_cells) * spacing
         )
         dt_s = lattice_velocity * spacing / reference_velocity
         return cls(
@@ -324,17 +405,14 @@ class LatticeScales:
         """Build scales from an IceFlowConfig-like object without importing it."""
 
         try:
-            gravity_y = config.gravity[1]
-            return cls.from_hydrodynamic_reference(
+            return cls.from_reference_velocity(
                 dx_m=config.dx,
-                reference_length_cells=config.reference_length_cells,
-                gravity_m_s2=gravity_y,
+                reference_velocity_m_s=config.reference_velocity,
                 reference_density_kg_m3=config.rho_water,
             )
-        except (AttributeError, IndexError, TypeError) as exc:
+        except (AttributeError, TypeError) as exc:
             raise TypeError(
-                "config must provide dx, reference_length_cells, rho_water, "
-                "and a two-component gravity"
+                "config must provide dx, reference_velocity, and rho_water"
             ) from exc
 
 

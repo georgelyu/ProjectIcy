@@ -536,6 +536,10 @@ class IceFlow2D:
                 "dx_m": self.scales.dx_m,
                 "dt_s": self.scales.dt_s,
                 "velocity_scale_m_s": self.scales.velocity_scale_m_s,
+                "reference_lattice_velocity": (
+                    self.scales.reference_lattice_velocity
+                ),
+                "reference_velocity_m_s": self.scales.reference_velocity_m_s,
             },
             "config": self.cfg.to_dict(),
         }
@@ -836,9 +840,15 @@ class IceFlow2D:
                 and self.wall[i, j] == 0
             )
             if became_solid:
+                reservoir_pressure = self.p[i, j]
+                if ti.static(self.cfg.well_balanced_hydrostatics):
+                    reservoir_pressure -= self.hydrostatic_reference_pressure[i, j]
                 self.phi[i, j] = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
                 self.u[i, j] = self._body_velocity_at(self._cell_point(i, j))
                 self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
+                # In well-balanced mode an inactive phase-change cell stores
+                # only p_dyn, just like a covered moving-body reservoir.
+                self.p[i, j] = reservoir_pressure
             elif became_fluid:
                 pressure_sum = 0.0
                 count = 0.0
@@ -849,10 +859,19 @@ class IceFlow2D:
                         (di != 0 or dj != 0)
                         and _inside(ni, nj, nx, ny)
                         and self.wall[ni, nj] == 0
+                        and self._active(ni, nj)
                         and self.solid_prev[ni, nj] == 0
                     ):
-                        pressure_sum += self.p[ni, nj]
+                        neighbor_pressure = self.p[ni, nj]
+                        if ti.static(self.cfg.well_balanced_hydrostatics):
+                            neighbor_pressure -= self.hydrostatic_reference_pressure[
+                                ni, nj
+                            ]
+                        pressure_sum += neighbor_pressure
                         count += 1.0
+                # An inactive thermal cell carries a pressure reservoir.  It
+                # is p_dyn in well-balanced mode and ordinary pressure
+                # otherwise, so the same value initializes the populations.
                 pressure0 = self.p[i, j]
                 if count > 0.0:
                     pressure0 = pressure_sum / count
@@ -860,7 +879,10 @@ class IceFlow2D:
                 self.phi[i, j] = 1.0
                 self.u[i, j] = velocity0
                 self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
-                self.p[i, j] = pressure0
+                total_pressure0 = pressure0
+                if ti.static(self.cfg.well_balanced_hydrostatics):
+                    total_pressure0 += self.hydrostatic_reference_pressure[i, j]
+                self.p[i, j] = total_pressure0
                 for q in range(Q):
                     self.f[i, j, q] = _pressure_eq(q, pressure0, rho_water, velocity0)
                     self.h[i, j, q] = _heq(q, 1.0, velocity0)
@@ -976,23 +998,71 @@ class IceFlow2D:
             )
             laplacian += 6.0 * _w(q) * (phi1 - phi)
 
-        force = gravity
+        # Assemble gravity sources as force densities.  The frozen
+        # hydrostatic reference removes only the base far-field load; the
+        # temperature-dependent density anomaly must remain additive.
+        gravity_force_density = density * gravity
+        if ti.static(self.cfg.well_balanced_hydrostatics):
+            reference_density = self.hydrostatic_reference_density[i, j]
+            gravity_force_density = (density - reference_density) * gravity
         if ti.static(self._thermal_enabled):
-            # Boussinesq feedback acts only in water.  For downward gravity,
-            # a positive temperature excess therefore produces an upward
-            # acceleration while the base gravity remains in the existing
-            # pressure--momentum formulation.
-            expansion = ti.static(float(self.cfg.thermal.thermal_expansion_water_1_k))
             reference_temperature = ti.static(
                 float(self.cfg.thermal.buoyancy_reference_temperature_c)
             )
-            temperature_excess = ti.cast(
-                self.temperature[i, j] - reference_temperature, ti.f32
+            temperature = ti.cast(self.temperature[i, j], ti.f32)
+            density_anomaly_ratio = 0.0
+            if ti.static(self.cfg.thermal.water_buoyancy_model == "linear"):
+                expansion = ti.static(
+                    float(self.cfg.thermal.thermal_expansion_water_1_k)
+                )
+                density_anomaly_ratio = -expansion * (
+                    temperature - reference_temperature
+                )
+            else:
+                density_beta = ti.static(
+                    float(
+                        self.cfg.thermal.freshwater_density_quadratic_coefficient_1_k2
+                    )
+                )
+                maximum_density_temperature = ti.static(
+                    float(
+                        self.cfg.thermal.freshwater_density_max_temperature_c
+                    )
+                )
+                reference_offset = (
+                    reference_temperature - maximum_density_temperature
+                )
+                local_offset = temperature - maximum_density_temperature
+                reference_factor = ti.static(
+                    1.0
+                    - float(
+                        self.cfg.thermal.freshwater_density_quadratic_coefficient_1_k2
+                    )
+                    * (
+                        float(self.cfg.thermal.buoyancy_reference_temperature_c)
+                        - float(
+                            self.cfg.thermal.freshwater_density_max_temperature_c
+                        )
+                    )
+                    ** 2
+                )
+                density_anomaly_ratio = density_beta * (
+                    reference_offset * reference_offset
+                    - local_offset * local_offset
+                ) / reference_factor
+
+            # The thermal field deliberately treats the water/air interface
+            # as adiabatic and stores the air temperature on phi < 0.5.  A
+            # smooth water-side gate prevents that unrelated air value from
+            # producing an anomalous freshwater force in the diffuse layer.
+            water_weight = ti.min(1.0, ti.max(0.0, 2.0 * bounded_phi - 1.0))
+            gravity_force_density += (
+                water_weight
+                * rho_water
+                * density_anomaly_ratio
+                * gravity
             )
-            force -= bounded_phi * expansion * temperature_excess * gravity
-        if ti.static(self.cfg.well_balanced_hydrostatics):
-            reference_density = self.hydrostatic_reference_density[i, j]
-            force = (density - reference_density) * gravity / density
+        force = gravity_force_density / density
         chemical = (
             4.0 * beta * bounded_phi * (bounded_phi - 1.0) * (bounded_phi - 0.5)
             - kapa * laplacian
@@ -1529,7 +1599,14 @@ class IceFlow2D:
                 self.p[i, j] = reference_pressure + dynamic_pressure
             else:
                 if ti.static(self.cfg.ice_fixed):
-                    self.p[i, j] = 0.0
+                    if ti.static(self._thermal_enabled):
+                        # Preserve the dynamic-pressure reservoir stored when
+                        # a phase-change node freezes.  Static container walls
+                        # do not need such a reservoir.
+                        if self.wall[i, j] == 1:
+                            self.p[i, j] = 0.0
+                    else:
+                        self.p[i, j] = 0.0
                 elif self.wall[i, j] == 1:
                     self.p[i, j] = 0.0
 

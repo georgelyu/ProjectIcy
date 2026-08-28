@@ -96,7 +96,7 @@ class IceFlowVolumeProjectionCudaTests(unittest.TestCase):
     def _simulation() -> IceFlow2D:
         config = create_iceflow_config(
             resolution=(72, 40),
-            reference_length_cells=300,
+            reference_velocity=10.844353369380768,
             phase_warmup_steps=16,
             water_width_fraction=0.75,
             water_height_fraction=0.65,
@@ -273,7 +273,7 @@ class IceFlowVolumeProjectionCudaTests(unittest.TestCase):
         boundary = 3
         config = create_iceflow_config(
             resolution=(nx, ny),
-            reference_length_cells=ny,
+            reference_velocity=10.844353369380768,
             phase_warmup_steps=32,
             water_width_fraction=(nx - boundary + 0.5) / nx,
             water_height_fraction=0.5,

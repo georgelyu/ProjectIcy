@@ -12,10 +12,13 @@ from .thermal import (
     ThermalBoundary,
     ThermalBoundarySet,
     ThermalConfig,
+    WaterBuoyancyModel,
     phase_change_active_water_target_cells,
     phase_change_enthalpy_numpy,
     phase_change_water_target_cells,
     recover_temperature_and_liquid_fraction_numpy,
+    water_density_anomaly_ratio_to_reference,
+    water_density_ratio_to_reference,
 )
 
 if TYPE_CHECKING:
@@ -33,11 +36,14 @@ __all__ = [
     "ThermalBoundary",
     "ThermalBoundarySet",
     "ThermalConfig",
+    "WaterBuoyancyModel",
     "create_iceflow_config",
     "phase_change_active_water_target_cells",
     "phase_change_enthalpy_numpy",
     "phase_change_water_target_cells",
     "recover_temperature_and_liquid_fraction_numpy",
+    "water_density_anomaly_ratio_to_reference",
+    "water_density_ratio_to_reference",
 ]
 
 

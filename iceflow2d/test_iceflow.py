@@ -12,6 +12,8 @@ import numpy as np
 from iceflow2d import IceFlow2D, create_iceflow_config
 from iceflow2d.simulator import ensure_taichi_cuda
 
+REGRESSION_REFERENCE_VELOCITY_M_S = 10.844353369380768
+
 
 def _full_active_fraction(size: int, boundary: int = 3) -> float:
     """Return a fraction whose integer extent ends at the far wall."""
@@ -55,14 +57,22 @@ class IceFlowConfigTests(unittest.TestCase):
     def test_unknown_option_is_rejected(self):
         with self.assertRaisesRegex(TypeError, "Unknown IceFlowConfig option"):
             create_iceflow_config(unrelated_solver_option=True)
+        with self.assertRaisesRegex(TypeError, "reference_length_cells"):
+            create_iceflow_config(reference_length_cells=300)
 
-    def test_resolution_override_updates_reference_length(self):
+    def test_reference_velocity_is_fixed_independently_of_resolution(self):
         config = create_iceflow_config(resolution=(120, 60))
-        self.assertEqual(config.reference_length_cells, 60)
+        self.assertEqual(config.reference_velocity, 1.0e-3)
         explicit = create_iceflow_config(
-            resolution=(120, 60), reference_length_cells=30
+            resolution=(120, 60), reference_velocity=2.0e-3
         )
-        self.assertEqual(explicit.reference_length_cells, 30)
+        self.assertEqual(explicit.reference_velocity, 2.0e-3)
+
+    def test_reference_velocity_must_be_positive_and_finite(self):
+        for value in (0.0, -1.0, float("nan"), float("inf")):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "reference_velocity"):
+                    create_iceflow_config(reference_velocity=value)
 
     def test_fixed_ice_requires_zero_initial_motion(self):
         self.assertTrue(create_iceflow_config(ice_fixed=True).ice_fixed)
@@ -137,7 +147,7 @@ class IceFlowCudaTests(unittest.TestCase):
             output = Path(directory)
             config = create_iceflow_config(
                 resolution=(64, 32),
-                reference_length_cells=300,
+                reference_velocity=REGRESSION_REFERENCE_VELOCITY_M_S,
                 phase_warmup_steps=2,
                 output_dir=str(output),
             )
@@ -188,6 +198,7 @@ class IceFlowCudaTests(unittest.TestCase):
         size = 48
         config = create_iceflow_config(
             resolution=(size, size),
+            reference_velocity=REGRESSION_REFERENCE_VELOCITY_M_S,
             phase_warmup_steps=0,
             water_width_fraction=_full_active_fraction(size),
             water_height_fraction=_full_active_fraction(size),
@@ -225,6 +236,7 @@ class IceFlowCudaTests(unittest.TestCase):
         size = 64
         config = create_iceflow_config(
             resolution=(size, size),
+            reference_velocity=REGRESSION_REFERENCE_VELOCITY_M_S,
             phase_warmup_steps=0,
             ice_width_fraction=8.0 / size,
             ice_height_fraction=8.0 / size,
@@ -254,6 +266,7 @@ class IceFlowCudaTests(unittest.TestCase):
         size = 64
         config = create_iceflow_config(
             resolution=(size, size),
+            reference_velocity=REGRESSION_REFERENCE_VELOCITY_M_S,
             phase_warmup_steps=0,
             gravity=(0.0, 0.0),
             ice_width_fraction=8.0 / size,
@@ -292,6 +305,7 @@ class IceFlowCudaTests(unittest.TestCase):
         initial_velocity = (0.01, -0.01)
         config = create_iceflow_config(
             resolution=(nx, ny),
+            reference_velocity=REGRESSION_REFERENCE_VELOCITY_M_S,
             phase_warmup_steps=0,
             gravity=(0.0, 0.0),
             ice_width_fraction=8.0 / nx,

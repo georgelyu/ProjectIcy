@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .thermal import ThermalConfig
 
 RigidBoundaryScheme = Literal["unified", "halfway"]
+DEFAULT_REFERENCE_VELOCITY_M_S = 1.0e-1
 
 
 def _finite(name: str, value: float) -> float:
@@ -37,7 +38,8 @@ class IceFlowConfig:
 
     resolution: tuple[int, int] = (600, 300)
     dx: float = 0.01
-    reference_length_cells: int = 300
+    # Fixed physical speed represented by 0.1 lattice cells per LBM step.
+    reference_velocity: float = DEFAULT_REFERENCE_VELOCITY_M_S
 
     # Physical two-phase parameters.
     rho_water: float = 1000.0
@@ -135,14 +137,6 @@ class IceFlowConfig:
         if nx <= 0 or ny <= 0:
             raise ValueError("resolution components must be positive")
         if (
-            isinstance(self.reference_length_cells, bool)
-            or int(self.reference_length_cells) != self.reference_length_cells
-        ):
-            raise ValueError("reference_length_cells must be an integer")
-        self.reference_length_cells = int(self.reference_length_cells)
-        if self.reference_length_cells <= 0:
-            raise ValueError("reference_length_cells must be positive")
-        if (
             isinstance(self.boundary_cells, bool)
             or int(self.boundary_cells) != self.boundary_cells
         ):
@@ -174,6 +168,9 @@ class IceFlowConfig:
                 raise TypeError("thermal must be a ThermalConfig or None")
 
         _positive("dx", self.dx)
+        self.reference_velocity = _positive(
+            "reference_velocity", self.reference_velocity
+        )
         _positive("rho_water", self.rho_water)
         _positive("rho_air", self.rho_air)
         _positive("rho_ice", self.rho_ice)
@@ -314,11 +311,6 @@ class IceFlowConfig:
                     "the first thermal coupling requires ice_fixed=True; "
                     "moving melting ice needs conservative thermal remapping"
                 )
-            if self.well_balanced_hydrostatics:
-                raise ValueError(
-                    "thermal phase change is not yet compatible with a frozen "
-                    "well-balanced hydrostatic reference"
-                )
             if not self.thermal.water_air_interface_adiabatic:
                 raise ValueError(
                     "the first LBM thermal coupling requires an adiabatic "
@@ -330,17 +322,21 @@ class IceFlowConfig:
                     "continuous phase-volume projection"
                 )
 
-        # Central-moment collision requires tau > 0.5.  The upper bound and
-        # body-surface Mach cap reject clearly unstable custom configurations.
-        g_ref = abs(float(self.gravity[1])) or 9.8
-        u_ref = math.sqrt(g_ref * self.reference_length_cells * float(self.dx) * 4.0)
+        # Central-moment collision requires finite tau > 0.5.  Large physical
+        # viscosities can legitimately map to tau > 2 when a deliberately low
+        # fixed reference velocity is used, so no arbitrary upper cap is
+        # imposed here.  The body-surface Mach cap remains independent.
         for name, viscosity in (
             ("viscosity_water", float(self.viscosity_water)),
             ("viscosity_air", float(self.viscosity_air)),
         ):
-            nu_lattice = viscosity * 0.1 / (float(self.dx) * u_ref)
+            nu_lattice = (
+                viscosity
+                * 0.1
+                / (float(self.dx) * float(self.reference_velocity))
+            )
             tau = 0.5 + 3.0 * nu_lattice
-            if not math.isfinite(tau) or not 0.5 < tau <= 2.0:
+            if not math.isfinite(tau) or tau <= 0.5:
                 raise ValueError(
                     f"{name} gives an unstable lattice relaxation time ({tau})"
                 )
@@ -404,9 +400,4 @@ def create_iceflow_config(**overrides) -> IceFlowConfig:
     for key in overrides:
         if key not in valid_names:
             raise TypeError(f"Unknown IceFlowConfig option: {key}")
-    if "resolution" in overrides and "reference_length_cells" not in overrides:
-        resolution = overrides["resolution"]
-        if not hasattr(resolution, "__len__") or len(resolution) != 2:
-            raise ValueError("resolution must contain exactly two integers")
-        overrides["reference_length_cells"] = int(resolution[1])
     return IceFlowConfig(**overrides)

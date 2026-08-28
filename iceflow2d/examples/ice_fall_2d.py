@@ -12,6 +12,10 @@ if str(ROOT) not in sys.path:
 
 DEFAULT_INTERFACE_WIDTH = 5.0
 DEFAULT_INTERFACE_CUTOFF = 1.0e-3
+# Fixed value chosen to preserve the original default falling-ice lattice
+# scaling.  IceFlowConfig itself defaults to 1.0e-3 m/s; this strongly forced
+# gravity example needs an explicitly larger scenario-specific scale.
+DEFAULT_REFERENCE_VELOCITY_M_S = 15.336231610144651
 
 
 def derive_ice_fall_geometry(args: argparse.Namespace) -> dict[str, float | int]:
@@ -134,10 +138,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--resolution-x", type=int, default=300)
     parser.add_argument("--resolution-y", type=int, default=600)
     parser.add_argument(
-        "--reference-length-cells",
-        type=int,
-        default=None,
-        help="physical reference length in cells (defaults to resolution-y)",
+        "--reference-velocity-m-s",
+        type=float,
+        default=DEFAULT_REFERENCE_VELOCITY_M_S,
+        help="physical speed represented by the fixed reference speed 0.1 LU",
     )
     parser.add_argument(
         "--water-level-fraction",
@@ -195,8 +199,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--steps-per-frame must be positive")
     if args.resolution_x <= 0 or args.resolution_y <= 0:
         parser.error("resolution components must be positive")
-    if args.reference_length_cells is not None and args.reference_length_cells <= 0:
-        parser.error("--reference-length-cells must be positive")
+    if (
+        not math.isfinite(args.reference_velocity_m_s)
+        or args.reference_velocity_m_s <= 0.0
+    ):
+        parser.error("--reference-velocity-m-s must be finite and positive")
     if isinstance(args.boundary_cells, bool) or args.boundary_cells < 1:
         parser.error("--boundary-cells must be a positive integer")
     if args.phase_warmup_steps < 0:
@@ -216,11 +223,7 @@ def create_ice_fall_config(args: argparse.Namespace, *, output_dir: str):
     geometry = derive_ice_fall_geometry(args)
     config = create_iceflow_config(
         resolution=(args.resolution_x, args.resolution_y),
-        reference_length_cells=(
-            args.reference_length_cells
-            if args.reference_length_cells is not None
-            else args.resolution_y
-        ),
+        reference_velocity=args.reference_velocity_m_s,
         water_width_fraction=geometry["water_width_fraction"],
         water_height_fraction=args.water_level_fraction,
         ice_width_fraction=args.ice_width_fraction,

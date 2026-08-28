@@ -6,6 +6,7 @@
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{hyperref}
+\hypersetup{hidelinks}
 
 \definecolor{iceflowcodebg}{HTML}{F6F8FA}
 \definecolor{iceflowcodeframe}{HTML}{D0D7DE}
@@ -33,7 +34,7 @@
 }
 \setlength{\emergencystretch}{2em}
 
-\title{IceFlow2D 压力--动量两相流与二维焓相变耦合流程}
+\title{IceFlow2D 压力--动量两相流、异常淡水浮力与二维焓相变耦合流程}
 \author{}
 \date{}
 
@@ -47,6 +48,9 @@
 压力--动量水动力离散，并在 \texttt{thermal} 非空时，把温度、焓和冰--水相变耦合到同一
 Taichi CUDA 格点。未启用热模块时，原有固定或可动刚性矩形冰体路径保持不变；启用热模块时，
 当前第一版只允许固定冰的姿态，但其边界可随融化或结冰而演化。
+热模块可选择线性热膨胀模型或在约 $0$--$10\,^{\circ}\mathrm C$ 范围使用的二次淡水状态方程；
+温度引起的密度异常作为 Boussinesq 力源与冻结的 well-balanced 静水参考相加，而不改变
+压力--动量 LBM 的惯性密度、焓闭合中的物性密度或冰--水质量转换关系。
 
 \path{iceflow2d/examples/stefan_melting_2d.py} 是独立的 NumPy/CPU
 二维 Stefan 基准，只验证无流动、等密度近似下的热焓离散，不调用 LBM。
@@ -61,13 +65,16 @@ $\chi^w_{ij}$，锐界冰体指示函数记为 $\chi^s_{ij}$，活动 LBM 节点
       \mathcal A(t)=
       \left\{(i,j)\mid \chi^w_{ij}=0,\ \chi^s_{ij}(t)=0\right\}.
 \end{equation}
-LBM 中的空气--水流体密度仍只由相场决定：
+LBM 中的空气--水惯性密度仍只由相场决定：
 \begin{equation}
       \widehat\phi=\operatorname{clip}(\phi,0,1),\qquad
-      \rho(\phi)=\rho_w\widehat\phi+\rho_a(1-\widehat\phi).
+      \rho(\phi)=\rho_w\widehat\phi
+      +\rho_a(1-\widehat\phi).
 \end{equation}
-这里的 $\rho(\phi)$ 不代表热力学冰密度。相变焓反演和冰水质量转换分别使用真实的
-$\rho_i$ 与 $\rho_w$。
+其中配置常数 $\rho_w$ 是固定的惯性与 Boussinesq 密度尺度；在不同远场温度
+$T_\infty$ 之间扫描时，它也不随工况改写。后文以辅助函数 $\varrho_w(T)$ 表示淡水状态方程；
+$\varrho_w$ 只用于构造相对 $T_\infty$ 的密度异常，不替换 $\rho(\phi)$。相变焓反演和冰水质量
+转换分别使用真实的 $\rho_i$ 与常值 $\rho_w$。
 
 \section{主状态与分布函数}
 
@@ -91,7 +98,8 @@ $\rho_i$ 与 $\rho_w$。
 
       \item 启用 \texttt{well\_balanced\_hydrostatics} 时，同时分配冻结的静水参考
             密度与压力；bulk 残差重力、动态压力分裂和移动冰体 cut-link 静水压力冲量
-            作为一套方案共同启用。当前热相变分支与该选项互斥。
+            作为一套方案共同启用。固定冰热相变分支可与该选项同时使用；温度异常力不进入
+            静水参考，而在每次动量碰撞中作为独立力密度叠加。
 
       \item \texttt{solid\_prev} 在可动刚体分支和固定相变分支中都用于识别拓扑变化；
             只有可动刚体才分配并累加水动力载荷。
@@ -242,18 +250,18 @@ $\mathrm{J\,m^{-1}}$。
 \subsection{物理--格子尺度与显式稳定性}
 
 设一个格点对应 $\Delta x$，一个 LBM 步对应 $\Delta t_{\mathrm{LBM}}$。
-代码沿用水动力尺度
+配置直接给定固定物理参考速度 $U_{\mathrm{ref}}$，并规定该速度对应格子速度
+$u_{\mathrm{ref}}^{\mathrm{lat}}=0.1$：
 \begin{align}
-      L_{\mathrm{ref}}&=N_{\mathrm{ref}}\Delta x,\\
-      U_{\mathrm{ref}}&=\sqrt{4g_{\mathrm{ref}}L_{\mathrm{ref}}},\\
+      U_{\mathrm{ref}}&=\texttt{reference\_velocity},\\
+      u_{\mathrm{ref}}^{\mathrm{lat}}&=0.1,\\
       \Delta t_{\mathrm{LBM}}
-      &=\frac{u_{\mathrm{ref}}^{\mathrm{lat}}\Delta x}{U_{\mathrm{ref}}},
-      \qquad u_{\mathrm{ref}}^{\mathrm{lat}}=0.1,\\
+      &=\frac{u_{\mathrm{ref}}^{\mathrm{lat}}\Delta x}{U_{\mathrm{ref}}},\\
       \boldsymbol U&=\frac{\Delta x}{\Delta t_{\mathrm{LBM}}}
       \boldsymbol u^{\mathrm{lat}}.
 \end{align}
-当机械重力配置为零时，仅在单位换算中取
-$g_{\mathrm{ref}}=9.8\ \mathrm{m\,s^{-2}}$；这不会向动量方程添加重力。
+默认值为 $U_{\mathrm{ref}}=10^{-3}\ \mathrm{m\,s^{-1}}$。该时间尺度不再由重力、
+参考长度或网格高度推导；机械重力只进入动量方程的力换算。
 
 定义
 \begin{equation}
@@ -285,7 +293,7 @@ $\Delta t_T=N_T\Delta t_{\mathrm{LBM}}$，子步数取
 \begin{equation}
       N_{\mathrm{sub}}
       =\max\left[
-      1,\
+      1,\,
       \left\lceil
       \frac{\Delta t_T}{\Delta t_D}
       +\frac{\Delta t_T}{\Delta t_A}
@@ -315,9 +323,23 @@ $\phi$ 混合。程序随后保存连续固相面积和锐界几何面积的格�
 $(T_w,f_\ell)=(T_{w,0},1)$。在默认绝热水--气模式下，初始空气保留独立显热状态，但不与
 $M=1$ 的相变域交换热量。
 
-启用 \texttt{well\_balanced\_hydrostatics} 的非热分支从初始相场建立冻结的
-$\rho^H,p^H$。两相水平池使用行平均密度，从自由表面按梯形积分
-$\partial_y p^H=\rho^Hg_y$；满水域使用解析线性压力。well-balanced 初始化令
+启用 \texttt{well\_balanced\_hydrostatics} 时，求解器在相场 warm-up、水量投影以及
+可选的热焓初始化之后，从初始相场建立冻结的 $\rho^H,p^H$。两相水平池使用行平均惯性密度
+$\rho(\phi)$，从自由表面按梯形积分。若 $\overline\rho_j^H$ 表示第 $j$ 行的参考密度，
+则相邻行严格满足
+\begin{equation}
+      p^H_{j+1}-p^H_j
+      =\frac12\left(
+      \overline\rho_j^H+\overline\rho_{j+1}^H
+      \right)g_y.
+\end{equation}
+满水域则使用解析式
+$p^H(\boldsymbol x)=\rho_w\boldsymbol g\cdot
+(\boldsymbol x-\boldsymbol x_g)$；两种情形均写成 $p=p^H+p^d$。
+当浮力参考温度未显式给定时，\texttt{ThermalConfig} 默认令
+$T_\infty=T_{w,0}$；本耦合示例也采用该设置，故初始水域的密度异常满足
+$\delta_\rho(T_\infty;T_\infty)=0$。局部温度变化既不触发 $\rho^H,p^H$
+重建，也不写入冻结参考，从而避免把需要解析的自然对流一并抵消。well-balanced 初始化令
 $\boldsymbol u=0$、$p=p^H$，而 $f_q$ 中的动态压力为零。
 
 \section{一次 \texttt{step} 的真实调用顺序}
@@ -383,16 +405,78 @@ steps += 1
 
 \section{碰撞中的力、热反馈与松弛}
 
-\texttt{\_collide\_velocity} 由相场梯度和拉普拉斯构造化学势毛细力，并加入重力。
-未使用 well-balanced 方案时，热分支的重力--浮力加速度为
+\subsection{远场归一化的淡水状态方程}
+
+为表示 $4\,^\circ\mathrm C$ 附近的密度极大值，二次模型引入辅助状态方程
+\begin{align}
+      \varrho_w(T)&=\varrho_\star D(T),\qquad
+      D(T)=1-\beta_\rho(T-T_\star)^2,
+      \label{eq:freshwater-eos}\\
+      T_\star&=4\,^\circ\mathrm C,\qquad
+      \beta_\rho=8.0\times10^{-6}\ \mathrm{K^{-2}}.
+\end{align}
+第二行给出当前可配置参数的默认值。
+系数 $\varrho_\star$ 在 Boussinesq 异常比中相消。以远场水温 $T_\infty$ 为基准，代码直接计算
+\begin{align}
+      \delta_\rho(T;T_\infty)
+      &\equiv
+      \frac{\varrho_w(T)-\varrho_w(T_\infty)}
+           {\varrho_w(T_\infty)}\notag\\
+      &=\frac{\beta_\rho\left[
+      (T_\infty-T_\star)^2-(T-T_\star)^2\right]}
+      {1-\beta_\rho(T_\infty-T_\star)^2}.
+      \label{eq:freshwater-anomaly}
+\end{align}
+此形式使 $\delta_\rho(T_\infty;T_\infty)=0$ 在浮点计算中也严格成立，并避免两个接近于一的
+密度比相减。为保留原有 API，线性热膨胀分支仍定义为
 \begin{equation}
-      \boldsymbol a_{g,T}
-      =\boldsymbol g
-      -\widehat\phi\beta_T(T-T_{\mathrm{ref}})\boldsymbol g.
+      \delta_\rho^{\mathrm{lin}}(T;T_\infty)
+      =-\beta_T(T-T_\infty).
 \end{equation}
-若 $\boldsymbol g=(0,-g_0)$ 且 $T>T_{\mathrm{ref}}$，第二项向上，因此暖水获得
-Boussinesq 浮力修正；$\widehat\phi$ 使该修正只作用于水相。温度更新后的浮力在下一次
-动量碰撞中反馈。
+式~\eqref{eq:freshwater-eos} 是低温范围的二次近似；当开启重力时，其定量使用限于约
+$0$--$10\,^\circ\mathrm C$。默认 $60\,^\circ\mathrm C$ 快速融化工况的 $\boldsymbol g=\boldsymbol0$，因而不会使用
+该近似产生动量源。
+
+\subsection{与 well-balanced 兼容的统一力密度}
+
+绝热水--气热边界在 $\phi<1/2$ 一侧保留独立的空气温度。因此淡水异常使用水侧权重
+\begin{equation}
+      \omega_w(\phi)
+      =\operatorname{clip}(2\widehat\phi-1,0,1),
+\end{equation}
+以阻止弥散界面空气侧的温度进入淡水状态方程。定义开关指示量
+\begin{equation}
+      I_{\mathrm{WB}}=
+      \begin{cases}
+            1,&\text{well-balanced 静水方案开启},\\
+            0,&\text{否则},
+      \end{cases}
+\end{equation}
+则重力与温度异常先在力密度层面统一组装为
+\begin{equation}
+      \boxed{
+      \boldsymbol F_{g,T}
+      =\left[\rho(\phi)-I_{\mathrm{WB}}\rho^H\right]\boldsymbol g
+      +\omega_w(\phi)\rho_w
+      \delta_\rho(T;T_\infty)\boldsymbol g
+      }.
+      \label{eq:unified-gravity-thermal-force}
+\end{equation}
+这一写法的关键是：冻结的 $\rho^H$ 只抵消基础静水载荷，局部温度异常项始终相加；
+故热浮力不会被 well-balanced 残差重力覆盖。温度更新后的异常力在下一次动量碰撞中
+反馈。
+
+对于向下的 $\boldsymbol g=(0,-g_0)$，$\delta_\rho>0$ 表示局部水比远场更密，异常力向下；
+$\delta_\rho<0$ 则异常力向上。二次模型在三个代表性远场温度下给出
+\begin{align}
+      \delta_\rho(0;4)&<0,\label{eq:eos-sign-4}\\
+      \delta_\rho(0;5.6)&<0<\delta_\rho(4;5.6),\label{eq:eos-sign-5p6}\\
+      \delta_\rho(0;8)&=0<\delta_\rho(4;8).
+      \label{eq:eos-sign-8}
+\end{align}
+因而 $4\,^\circ\mathrm C$ 远场中的熔点水上浮；$5.6\,^\circ\mathrm C$ 工况可同时出现上浮的接近
+$0\,^\circ\mathrm C$ 水层和下沉的接近 $4\,^\circ\mathrm C$ 水层；$8\,^\circ\mathrm C$ 的理想对称二次式使
+$0\,^\circ\mathrm C$ 与远场等密度，而中间温度水下沉。
 
 毛细化学势及其加速度贡献为
 \begin{align}
@@ -402,13 +486,12 @@ Boussinesq 浮力修正；$\widehat\phi$ 使该修正只作用于水相。温度
       -\kappa_\phi\nabla_h^2\phi,\\
       \beta_\phi&=\frac{12\sigma}{W},\qquad
       \kappa_\phi=\frac32\sigma W,\\
-      \boldsymbol a&=\boldsymbol a_{g,T}
+      \boldsymbol a&=\frac{\boldsymbol F_{g,T}}{\rho(\phi)}
       +\frac{\mu_\phi\nabla_h\phi}{\rho(\phi)}.
 \end{align}
-在非热 well-balanced 分支中，重力项改写为
-\begin{equation}
-      \boldsymbol a_g=\frac{\rho-\rho^H}{\rho}\boldsymbol g.
-\end{equation}
+当 $I_{\mathrm{WB}}=0$ 且温度异常关闭时，上式退化为 $\boldsymbol a_g=\boldsymbol g$；当
+$I_{\mathrm{WB}}=1$ 且 $\delta_\rho=0$ 时，则退化为
+$\boldsymbol a_g=(\rho-\rho^H)\boldsymbol g/\rho$。
 
 局部松弛时间为
 \begin{equation}
@@ -521,25 +604,55 @@ $\phi,p,\boldsymbol u$，随后用 $f_q^{\mathrm{eq}}$ 和 $h_q^{\mathrm{eq}}$ �
       \boldsymbol u\leftarrow\boldsymbol0,\qquad
       \boldsymbol a\leftarrow\boldsymbol0.
 \end{equation}
-该节点随后退出活动集合，其动量不再参与流送。
+该节点随后退出活动集合，其动量不再参与流送。其压力槽转为非活动节点的 reservoir，并保存
+\begin{equation}
+      p_{\mathrm{res}}^d
+      =p-I_{\mathrm{WB}}p^H.
+      \label{eq:phase-change-pressure-reservoir}
+\end{equation}
+因此在 well-balanced 模式下，reservoir 保存动态压力，而不是总静水压力。
 
 当节点由固体变为活动流体时，设置
 \begin{equation}
       \phi_0=1,\qquad
       \boldsymbol u_0=\boldsymbol0,
 \end{equation}
-并从 $3\times3$ 邻域内旧时刻已经是流体的节点平均压力：
+并只从 $3\times3$ 邻域中旧时刻与新时刻都为活动流体的节点外推。令
 \begin{equation}
-      p_0=
+      \mathcal N_f^-(\boldsymbol x_0)
+      =
+      \left\{
+      \boldsymbol y\in\mathcal N_{3\times3}(\boldsymbol x_0)
+      \setminus\{\boldsymbol x_0\}
+      \,\middle|\,
+      \chi^w(\boldsymbol y)=0,\qquad
+      \chi^{s,-}(\boldsymbol y)=\chi^{s,+}(\boldsymbol y)=0
+      \right\}.
+\end{equation}
+新融出节点的动态压力由
+\begin{equation}
+      p_0^d=
       \frac{1}{|\mathcal N_f^-|}
-      \sum_{\boldsymbol y\in\mathcal N_f^-}p(\boldsymbol y).
+      \sum_{\boldsymbol y\in\mathcal N_f^-}
+      \left[
+      p(\boldsymbol y)-I_{\mathrm{WB}}p^H(\boldsymbol y)
+      \right]
+      \label{eq:phase-change-dynamic-pressure-average}
 \end{equation}
-若没有可用邻点则使用当前储存压力。最后重建
-\begin{equation}
-      f_q=f_q^{\mathrm{eq}}(p_0,\rho_w,\boldsymbol0),\qquad
-      h_q=h_q^{\mathrm{eq}}(1,\boldsymbol0).
-\end{equation}
-连续液相率控制热力学体积，阈值掩膜只控制 LBM 拓扑；两者的差异由下一节的活动水量目标显式补偿。
+给出；若 $\mathcal N_f^-=\varnothing$，则取
+$p_0^d=p_{\mathrm{res}}^d(\boldsymbol x_0)$。活动节点保存的仍是总压力，
+但压力--动量分布只携带动态压力：
+\begin{align}
+      p(\boldsymbol x_0)
+      &=p_0^d+I_{\mathrm{WB}}p^H(\boldsymbol x_0),\\
+      f_q(\boldsymbol x_0)
+      &=f_q^{\mathrm{eq}}(p_0^d,\rho_w,\boldsymbol0),\\
+      h_q(\boldsymbol x_0)
+      &=h_q^{\mathrm{eq}}(1,\boldsymbol0).
+\end{align}
+式~\eqref{eq:phase-change-pressure-reservoir}--\eqref{eq:phase-change-dynamic-pressure-average}
+避免把总静水压力再次编码进 $f_q$，从而抑制融出瞬间的非物理速度脉冲。连续液相率控制
+热力学体积，阈值掩膜只控制 LBM 拓扑；两者的差异由下一节的活动水量目标显式补偿。
 
 \section{真实密度下的水量目标与有界投影}
 
@@ -651,8 +764,8 @@ $\mathrm{Fo}=0.15$，时间步为
 \begin{equation}
       \varepsilon_{\mathrm{sym}}
       =\max\left[
-      e_{D_4}(f_\ell),\
-      \frac{e_{D_4}(T)}{\max(1,|T_b-T_m|)},\
+      e_{D_4}(f_\ell),\,
+      \frac{e_{D_4}(T)}{\max(1,|T_b-T_m|)},\,
       \frac{e_{D_4}(H)}
       {\rho\left[L+c_{p,w}(T_b-T_m)\right]}
       \right].
@@ -686,17 +799,21 @@ $d_{\mathrm{eq}}$ 分别为 $0.817989$、$0.810287$ 和 $0.806112\ \mathrm{mm}$�
 
 \section{LBM--焓耦合固定冰验证}
 
-\subsection{默认尺度与参数}
+\subsection{当前默认尺度与参数}
 
-\texttt{coupled\_fixed\_ice\_melting\_2d.py} 采用短时毫米尺度，以在可接受步数内观察到
-明显融化。容器尺寸为 $2.5\ \mathrm{mm}\times3.5\ \mathrm{mm}$，网格
-$80\times112$，故
+\texttt{coupled\_fixed\_ice\_melting\_2d.py} 采用厘米尺度。当前物理域为
+$L_x\times L_y=0.025\ \mathrm m\times0.035\ \mathrm m$，默认网格为
 \begin{equation}
-      \Delta x=31.25\ \mathrm{\mu m}.
+      (N_x,N_y)=(200,280),\qquad
+      \Delta x=\frac{L_x}{N_x}
+      =\frac{L_y}{N_y}
+      =1.25\times10^{-4}\ \mathrm m.
+      \label{eq:current-coupled-grid}
 \end{equation}
-初始水位为 $2.75\ \mathrm{mm}$，上方保留 $0.75\ \mathrm{mm}$ 空气帽。
-$1.0\ \mathrm{mm}\times1.0\ \mathrm{mm}$ 方冰占 $32\times32$ 格，中心为
-$(1.25,1.50)\ \mathrm{mm}$，完全浸没且机械固定。
+初始水位为 $0.0275\ \mathrm m$，上方保留 $0.0075\ \mathrm m$ 空气帽。
+$0.008\ \mathrm m\times0.008\ \mathrm m$ 方冰占 $64\times64$ 格，中心为
+$(0.0125,0.015)\ \mathrm m$，即格子坐标 $(100,120)$；水位占 $220$ 格。冰体完全浸没
+且机械固定。
 
 \begin{center}
 \begin{tabular}{llll}
@@ -715,35 +832,242 @@ $(1.25,1.50)\ \mathrm{mm}$，完全浸没且机械固定。
       & $334000\ \mathrm{J\,kg^{-1}}$ & 熔点 $T_m=0\,^\circ\mathrm C$\\
       黏度 & $(\nu_w,\nu_a)$
       & $(10^{-6},1.5\times10^{-5})\ \mathrm{m^2\,s^{-1}}$ & 格子松弛换算\\
+      尺度 & $U_{\mathrm{ref}}$
+      & $10^{-3}\ \mathrm{m\,s^{-1}}$ & 对应 $u_{\mathrm{ref}}^{\mathrm{lat}}=0.1$\\
       热边界 & 左、右、底壁
       & $60\,^\circ\mathrm C$ & Dirichlet\\
       热边界 & 顶壁、水--气界面
       & $q_{\mathrm{in}}=0$ & 绝热\\
       耦合 & $N_T$
       & $10$ & 每十个 LBM 步更新热场\\
+      浮力 & $(T_\star,\beta_\rho)$
+      & $(4\,^\circ\mathrm C,8\times10^{-6}\ \mathrm{K^{-2}})$
+      & 默认二次淡水 EOS\\
       控制项 & $(\boldsymbol g,\sigma)$
       & $(\boldsymbol0,0)$ & 隔离自然对流和毛细瞬态\\
       \bottomrule
 \end{tabular}
 \end{center}
 
-本例取 $N_{\mathrm{ref}}=112$。虽然机械重力为零，单位换算仍使用
-$g_{\mathrm{ref}}=9.8\ \mathrm{m\,s^{-2}}$，从而
+默认 $T_w=60\,^\circ\mathrm C$ 仅用于加速无重力耦合回归；此时二次 EOS 虽被选中，
+但因 $\boldsymbol g=\boldsymbol0$ 而有
+$\boldsymbol F_{g,T}=\boldsymbol0$。本例直接取
 \begin{equation}
-      U_{\mathrm{ref}}
-      =\sqrt{4(9.8)(112)(31.25\times10^{-6})}
-      =0.37040518\ \mathrm{m\,s^{-1}},
+      U_{\mathrm{ref}}=10^{-3}\ \mathrm{m\,s^{-1}},
 \end{equation}
+并令 $u_{\mathrm{ref}}^{\mathrm{lat}}=0.1$，从而
 \begin{equation}
       \Delta t_{\mathrm{LBM}}
-      =8.43670699\times10^{-6}\ \mathrm s.
+      =\frac{0.1(1.25\times10^{-4})}{10^{-3}}
+      =0.0125\ \mathrm s.
 \end{equation}
-默认请求终止时间为 $0.30\ \mathrm s$，输出必须落在热同步点，因此实际终态为
-$35560$ 个 LBM 步，即 $0.3000093005\ \mathrm s$。
+当前默认请求终止时间和输出间隔分别为
+\begin{equation}
+      t_{\mathrm{end}}^{\,r}=2.0\ \mathrm s,\qquad
+      \Delta t_{\mathrm{out}}^{\,r}=0.01\ \mathrm s.
+\end{equation}
+所有快照必须落在热同步点。对请求时刻 $t_k^{\,r}$，实际步数和物理时刻为
+\begin{equation}
+      n_k=N_T\left\lceil
+      \frac{t_k^{\,r}}{N_T\Delta t_{\mathrm{LBM}}}
+      \right\rceil,\qquad
+      t_k=n_k\Delta t_{\mathrm{LBM}}.
+      \label{eq:synchronized-output-time}
+\end{equation}
+由于 $N_T\Delta t_{\mathrm{LBM}}=0.125\ \mathrm s$，小于该间隔的请求时刻会映射到
+同一热同步点并去重。因此默认序列含初态在内共有 $17$ 个快照，终态为 $160$ 个
+LBM 步，即 $t_{\mathrm{end}}=2.0\ \mathrm s$。
 
-\subsection{端到端结果}
+\subsection{异常浮力温度扫描与速度--涡量--温度场序列}
 
-终态诊断如下。
+指定非零重力时，示例默认自动启用 well-balanced 静水方案；只有显式要求关闭该选项时才会停用。
+下列命令建立三个相互独立的工况：
+\begin{lstlisting}[style=iceflowcode]
+python iceflow2d/examples/coupled_fixed_ice_melting_2d.py \
+  --water-temperatures-c 4 5.6 8 \
+  --gravity-m-s2 9.8 \
+  --reference-velocity-m-s 0.4
+\end{lstlisting}
+固定低速默认值 $10^{-3}\ \mathrm{m\,s^{-1}}$ 会把该重力映射为
+$|g_y^{\mathrm{lat}}|=12.25$。配置阶段不再禁止这一组合，但完整算例实测会迅速
+失稳，因此重力工况仍推荐显式提高参考速度。上式取
+$0.4\ \mathrm{m\,s^{-1}}$，对应
+$|g_y^{\mathrm{lat}}|=7.65625\times10^{-5}$；零重力默认工况仍使用
+$10^{-3}\ \mathrm{m\,s^{-1}}$。
+对每个 $r\in\{4,5.6,8\}$，初始水温、远场浮力参考温度及左、右、底壁温度同步设置为
+\begin{equation}
+      T_{w,0}^{(r)}
+      =T_\infty^{(r)}
+      =T_{\mathrm{wall}}^{(r)}
+      =r\,^\circ\mathrm C.
+\end{equation}
+这保证初始水域的异常源严格为零；冰面融化后形成的局部温度层才驱动式
+\eqref{eq:unified-gravity-thermal-force} 中的异常对流。三个结果目录依次为
+\texttt{T\_4C}、\texttt{T\_5p6C} 与 \texttt{T\_8C}，故每个温度都会产生各自完整的
+速度、涡量与温度场序列，而不会互相覆盖。
+
+第 $k$ 帧用于后处理的速度不是裸动量矩，而是半力修正后的物理速度
+\begin{equation}
+      \boldsymbol U_{k,ij}
+      =\frac{\Delta x}{\Delta t_{\mathrm{LBM}}}
+      \left(
+      \boldsymbol u_{k,ij}
+      +\frac12\boldsymbol a_{k,ij}
+      \right).
+      \label{eq:plotted-physical-velocity}
+\end{equation}
+可见水域定义为
+\begin{equation}
+      \mathcal W_k=
+      \left\{
+      (i,j)\,\middle|\,
+      \chi^w_{ij}=0,\quad
+      \chi^s_{ij}(t_k)=0,\quad
+      \phi_{ij}(t_k)\ge\frac12
+      \right\}.
+\end{equation}
+一次命令所建立的全部温度工况共用预先给定的速度显示上限。当前默认值为
+\begin{equation}
+      U_{\mathrm{vis}}
+      =9.0\times10^{-6}\ \mathrm{m\,s^{-1}},
+      \qquad
+      0\le\|\boldsymbol U\|_{\mathrm{color}}\le U_{\mathrm{vis}}.
+      \label{eq:shared-velocity-visualization-scale}
+\end{equation}
+色标的 \texttt{vmax} 取 $U_{\mathrm{vis}}$，箭头长度亦按
+\begin{equation}
+      \ell_{k,ij}
+      =\ell_{\mathrm{ref}}
+      \frac{\|\boldsymbol U_{k,ij}\|_2}{U_{\mathrm{vis}}}
+\end{equation}
+映射。因此不同帧与不同温度之间的颜色和箭头均可直接比较。每个工况仍单独记录未裁切诊断量
+\begin{equation}
+      U_{\mathrm{obs}}^{(r)}
+      =\max_k\ \max_{(i,j)\in\mathcal W_k}
+      \left\|\boldsymbol U_{k,ij}^{(r)}\right\|_2,
+\end{equation}
+该量写入字段 \path{observed_max_velocity_m_s}，但不再改变显示尺度。
+显示上限 $U_{\mathrm{vis}}$ 可由命令行参数
+\path{--velocity-visualization-max-m-s} 覆盖。
+
+同一组物理速度还用于构造垂直于二维计算平面的有符号涡量
+\begin{equation}
+      \omega_z
+      =\frac{\partial V}{\partial x}
+      -\frac{\partial U}{\partial y},
+      \qquad [\omega_z]=\mathrm{s^{-1}},
+      \label{eq:plotted-water-vorticity}
+\end{equation}
+其中 $\omega_z>0$ 表示在 $x$ 向右、$y$ 向上的坐标系中逆时针旋转。为避免冰--水界面或
+水--气界面两侧速度跳变被误判为涡，定义五点液态水有效域
+\begin{equation}
+      \mathcal W_k^{\omega}
+      =\left\{(i,j)\in\mathcal W_k\ \middle|\
+      (i\!\pm\!1,j),(i,j\!\pm\!1)\in\mathcal W_k\right\}.
+\end{equation}
+仅对 $(i,j)\in\mathcal W_k^{\omega}$ 使用二阶中心差分
+\begin{equation}
+      \omega_{k,ij}
+      =\frac{V_{k,i+1,j}-V_{k,i-1,j}}{2\Delta x}
+      -\frac{U_{k,i,j+1}-U_{k,i,j-1}}{2\Delta x}.
+      \label{eq:discrete-water-vorticity}
+\end{equation}
+其跨帧、跨温度的共享对称显示范围为
+\begin{equation}
+      \omega_{\mathrm{vis}}=0.2\ \mathrm{s^{-1}},\qquad
+      -\omega_{\mathrm{vis}}
+      \leq\omega_{\mathrm{color}}
+      \leq\omega_{\mathrm{vis}}.
+      \label{eq:shared-vorticity-visualization-scale}
+\end{equation}
+各工况另行记录
+\begin{equation}
+      \omega_{\mathrm{obs}}^{(r)}
+      =\max_k\ \max_{(i,j)\in\mathcal W_k^{\omega}}
+      \left|\omega_{k,ij}^{(r)}\right|,
+\end{equation}
+但该诊断量不改变色标。涡量图叠加的速度箭头继续使用
+式~\eqref{eq:shared-velocity-visualization-scale} 的 $U_{\mathrm{vis}}$，故箭头与速度图
+保持完全相同的物理尺度。参数
+\path{--vorticity-visualization-max-s-1} 可覆盖 $\omega_{\mathrm{vis}}$。
+
+终态温度图与逐时温度序列共用本次温度扫描预先固定的范围
+\begin{equation}
+      T_{\mathrm{vis,min}}=T_m,\qquad
+      T_{\mathrm{vis,max}}=\max_r T_\infty^{(r)}.
+      \label{eq:shared-temperature-visualization-scale}
+\end{equation}
+故 $4/5.6/8\,^\circ\mathrm C$ 扫描的全部温度色标均为
+$[0,8]\,^\circ\mathrm C$。
+温度帧只显示热活跃域
+\begin{equation}
+      \mathcal T_k=
+      \left\{(i,j)\ \middle|\
+      \chi^w_{ij}=0,\quad
+      \left[\phi_{ij}(t_k)\ge\frac12
+      \ \lor\ M_{ij}=1\right]
+      \right\},
+      \label{eq:temperature-visualization-domain}
+\end{equation}
+即水相与相变材料；绝热且不参与热输运的空气帽以及容器墙在图中遮罩。各工况另把
+$\min_{k,\mathcal T_k}T$ 与 $\max_{k,\mathcal T_k}T$ 写入 metadata 作为未裁切诊断量，
+但不据此重缩放色标。
+
+每个工况默认写出 \path{history.csv}、\path{metadata.json}、
+\path{coupled_fixed_ice_melting_2d.png}，以及
+\path{velocity_frames/frame_*.png}、\path{velocity_field.gif}、
+\path{vorticity_frames/frame_*.png}、\path{vorticity_field.gif}、
+\path{temperature_frames/frame_*.png} 和 \path{temperature_field.gif}，即速度、涡量与温度
+三套 PNG/GIF 序列。
+场归档 \path{fields.npz} 不属于默认输出；只有显式传入 \path{--save-npz} 时才生成。
+
+输出链路与时间推进同步。记第 $k$ 个采样时刻的瞬时场集合为 $\mathcal S_k$，则默认模式依次执行
+\begin{equation}
+      \mathcal S_k
+      \longrightarrow
+      \left(h_k,P_k^U,P_k^\omega,P_k^T\right)
+      \longrightarrow
+      \left(G_k^U,G_k^\omega,G_k^T\right)
+      \longrightarrow
+      \operatorname{release}(\mathcal S_k),
+      \label{eq:streamed-coupled-output}
+\end{equation}
+其中 $h_k$ 是追加到 \path{history.csv} 的诊断行，$P_k^U$、$P_k^\omega$ 与 $P_k^T$ 分别是
+当场写出的速度、涡量和温度 PNG，$G_k^U$、$G_k^\omega$ 与 $G_k^T$ 表示把同一帧增量
+追加到三个 GIF。因而在仿真运行期间，三套帧目录与 GIF 文件均随采样时刻增长，不需要等待
+终态再集中渲染。每张速度、涡量或温度 PNG 仍以
+$6.4\times8.0$ 英寸、$170\ \mathrm{dpi}$ 输出，即 $1088\times1360$ 像素；其对应物理场
+分辨率保持为式~\eqref{eq:current-coupled-grid} 的 $200\times280$。
+
+设 $N_f$ 为采样帧数。由于默认模式在完成式~\eqref{eq:streamed-coupled-output} 后立即释放
+$\mathcal S_k$，其峰值内存阶数为
+\begin{equation}
+      M_{\mathrm{default}}
+      =\mathcal O(N_xN_y),
+      \label{eq:default-streaming-memory}
+\end{equation}
+与 $N_f$ 无关。启用 \path{--save-npz} 后，为在终态组装完整场归档，需要保留全部采样快照，故
+\begin{equation}
+      M_{\mathrm{NPZ}}
+      =\mathcal O(N_fN_xN_y).
+      \label{eq:npz-archive-memory}
+\end{equation}
+可选的 \path{fields.npz} 保留原始动量速度 \path{velocity_lattice} 与半力修正速度
+\path{physical_velocity_lattice}；涡量仍可由后者和 $\Delta x$ 重建，因而不另存一份
+派生数组。第三套温度序列同样逐帧写盘，不改变
+式~\eqref{eq:default-streaming-memory} 的默认内存阶数。参数 \path{--no-plot} 会关闭终态图以及
+速度、涡量与温度三套 PNG/GIF 输出，但不影响
+\path{history.csv} 和 \path{metadata.json}；除非同时给出 \path{--save-npz}，此模式也不会
+产生场归档。
+
+\subsection{归档的旧毫米尺度 80×112 守恒回归结果}
+
+下表仅归档长度放大和固定参考速度改造之前的端到端守恒回归，以便追溯算法历史；它不代表
+当前厘米尺度物理问题，融深和融化率也不能按长度倍率直接换算。其旧配置为
+$80\times112$、$\Delta x=31.25\ \mathrm{\mu m}$、$t_{\mathrm{end}}^{\,r}=0.30\ \mathrm s$，
+初始锐界冰体为 $32^2=1024$ 格；该表不是当前式~\eqref{eq:current-coupled-grid} 所定义的
+$200\times280$ 默认结果，也不能按格点数直接外推。
+
 \begin{center}
 \begin{tabular}{lll}
       \toprule
@@ -776,16 +1100,18 @@ $35560$ 个 LBM 步，即 $0.3000093005\ \mathrm s$。
 $4.99\times10^{-8}$。连续固相和锐界固相不必逐时相等；其差异正是
 $V_{w,\mathrm{act}}^\star$ 中几何补偿项存在的原因。
 
-该算例确实执行 LBM 碰撞、空气--水相场流送、cut-link、融化节点重建、自由表面水量投影和
-热对流数据通道。默认 $\boldsymbol g=\boldsymbol0$、$\sigma=0$ 刻意抑制自然对流与毛细瞬态，
-因此它首先验证热--LBM 数据交换、动态几何和真实密度质量守恒，而不是用来标定对流强化融化。
-若设置非零重力，LBM 半力速度会进入热对流，温度也会通过 Boussinesq 项反馈到下一步流场。
+该旧算例执行了 LBM 碰撞、空气--水相场流送、cut-link、融化节点重建、自由表面水量投影和
+热对流数据通道；其 $\boldsymbol g=\boldsymbol0$、$\sigma=0$，因而验证的是热--LBM
+数据交换、动态几何和真实密度质量守恒，而不是异常自然对流。当前非零重力温度扫描则进一步使
+式~\eqref{eq:plotted-physical-velocity} 进入热对流，并由式
+\eqref{eq:freshwater-anomaly} 在下一次动量碰撞中闭环反馈。
 
 \section{当前适用范围与实现不变量}
 
 \begin{itemize}
-      \item LBM 空气--水密度永远来自 $\phi$，不来自 $\sum_qf_q$；冰--水热焓与质量转换
-            则显式使用 $\rho_i$ 和 $\rho_w$。
+      \item LBM 空气--水惯性密度永远来自 $\phi$，不来自 $\sum_qf_q$；冰--水热焓与质量转换
+            则显式使用 $\rho_i$ 和 $\rho_w$。辅助 EOS 的 $\varrho_w(T)$ 只构造
+            $\delta_\rho$，不修改上述任一密度。
 
       \item 一步中只有融合 \texttt{\_stream} 写回流送后的 $f_q/h_q$；
             碰撞源始终来自 post-collision 数组。
@@ -796,7 +1122,12 @@ $V_{w,\mathrm{act}}^\star$ 中几何补偿项存在的原因。
       \item 第一版热耦合要求 \texttt{ice\_fixed=true}。移动融化冰尚缺相变材料标记和焓场的
             守恒重映射，因而不能与可动刚体路径同时启用。
 
-      \item 热相变与冻结的 well-balanced 静水参考场当前互斥；水--气热界面必须绝热。
+      \item 固定冰热相变可与 well-balanced 静水参考场同时启用。
+            $\rho^H,p^H$ 在初始化后冻结，温度异常力按式
+            \eqref{eq:unified-gravity-thermal-force} 独立叠加，融出节点按动态压力重建。
+
+      \item well-balanced 两相池必须为水平全宽水池，且重力必须竖直；热相变仍要求保留
+            水--气自由表面并令其热学绝热。
 
       \item 相变材料标记 $M$ 在初始化时固定。初始水可以结冰，但自由表面运动后新进入的
             初始空气节点不会自动成为相变材料。
@@ -804,8 +1135,8 @@ $V_{w,\mathrm{act}}^\star$ 中几何补偿项存在的原因。
       \item 真实密度相变必须保留水--气自由表面，用于吸收
             $(1-\rho_i/\rho_w)\Delta V_s$ 的体积收缩或膨胀。
 
-      \item 固定相变冰不积分水动力载荷，但会分配 \texttt{solid\_prev}、更新液相率零等值线、
-            refill 拓扑变化节点并更新水量目标。
+      \item 固定相变冰不积分水动力载荷，但会分配 \texttt{solid\_prev}、更新
+            $f_\ell=f_{\ell,c}$ 等值线、refill 拓扑变化节点并更新水量目标。
 
       \item 热--流采用显式分步耦合；一阶迎风热对流和阈值锐化几何是当前精度边界。
 \end{itemize}

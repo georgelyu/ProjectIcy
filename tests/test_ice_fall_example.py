@@ -87,7 +87,11 @@ class IceFallExampleGeometryTests(unittest.TestCase):
 
         self.assertEqual((config.water_width, config.water_height), (297, 420))
         self.assertEqual((config.ice_width, config.ice_height), (30, 30))
-        self.assertFalse(config.well_balanced_hydrostatics)
+        self.assertEqual(
+            config.reference_velocity,
+            EXAMPLE.DEFAULT_REFERENCE_VELOCITY_M_S,
+        )
+        self.assertTrue(config.well_balanced_hydrostatics)
         self.assertEqual(config.output_dir, "outputs/iceflow2d/test_ice_fall")
         extent_y = (
             abs(math.sin(config.ice_initial_angle)) * 0.5 * config.ice_width

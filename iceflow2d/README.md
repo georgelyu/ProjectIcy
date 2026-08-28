@@ -65,12 +65,13 @@ well-balanced cut-link 动量交换，不是刚体方程中另加的一项。当
 python iceflow2d/examples/coupled_fixed_ice_melting_2d.py
 ```
 
-默认物理尺度为 `2.5 x 3.5 mm`、网格 `80 x 112`，因此
-`dx=31.25 μm`。水面位于 `2.75 mm`，固定方冰大小为 `1 x 1 mm`，中心位于
-`(1.25, 1.50) mm`。冰初温为 `0 °C`，水和左/右/底热边界为 `60 °C`，顶壁与
-水气热界面绝热。总物理时间 `0.30 s`，对应约 `35,560` 个 LBM 步；升高水温使
-毫米级冰在短时间内即可出现多格点融深。Taichi 参考运行的最终融化面积约为
-`49.0%`，等效均匀融深约 `0.143 mm`（约 4.6 格），且中心仍保持固态。
+默认物理尺度为 `0.025 x 0.035 m`、网格 `200 x 280`，因此
+`dx=1.25e-4 m`。水面位于 `0.0275 m`，固定方冰大小为 `0.008 x 0.008 m`，中心位于
+`(0.0125, 0.015) m`。冰初温为 `0 °C`，水和左/右/底热边界为 `60 °C`，顶壁与
+水气热界面绝热。固定换算取 `reference_velocity=0.001 m/s`，令 `0.1 LU`
+对应这一物理速度，因此 `dt=0.0125 s`，总物理时间 `2.0 s` 对应 160 个 LBM 步。
+该高分辨率默认值已取代原来的
+`80 x 112` 耦合基线；定量融化率应以对应运行生成的 metadata 为准。
 
 冰和水分别使用 `rho_i=917 kg/m³` 与 `rho_w=1000 kg/m³`。连续固相体积由
 `V_s=sum(1-lambda)` 计算；相变后的物理总液态水体积为
@@ -94,13 +95,61 @@ V_water,active = V_water,0
 公式自动给出体积膨胀。焓反演的潜热区使用
 `rho_i L`，液态显热使用水的真实密度和热容。热场采用 f64 焓与面通量，并按
 Fourier/Courant 条件自动子步进；LBM 速度进入迎风显热通量，非零重力工况还可通过
-Boussinesq 项把温度反馈到动量方程。
+Boussinesq 项把温度反馈到动量方程。`ThermalConfig.water_buoyancy_model` 可选择原有
+线性模型或二次淡水状态方程
+`rho(T)=rho_star[1-beta(T-T_star)^2]`。二次模型以远场温度 `T_inf` 的密度归一化，
+仅把 `rho(T)-rho(T_inf)` 作为异常浮力加入冻结的静水参考；因此它可以和
+`well_balanced_hydrostatics` 同时使用，而不会把真实热浮力一并抵消。冰面格点融出时，
+populations 同样只继承邻域动态压力 `p_dyn=p-p_H`。
 
 默认验证把机械重力和表面张力设为零，以隔离导热、相界面更新和密度收缩水量修正。
 当前限制是：冰体不能移动，水气热界面必须绝热且需要保留空气层供体积投影使用；
 移动冰与移动热材料掩膜的守恒重映射属于后续版本。输出目录
-`outputs/iceflow2d/coupled_fixed_ice_melting_2d/` 包含 `history.csv`、`fields.npz`、
-`metadata.json` 和最终温度/液相率图。
+`outputs/iceflow2d/coupled_fixed_ice_melting_2d/` 默认包含 `history.csv`、
+`metadata.json`、最终温度/液相率图、`velocity_frames/frame_*.png` 速度场序列、
+`velocity_field.gif` 动图，以及 `vorticity_frames/frame_*.png` 和
+`vorticity_field.gif` 涡量序列，以及 `temperature_frames/frame_*.png` 和
+`temperature_field.gif` 温度序列。每到一个采样时刻，速度、涡量与温度 PNG 都立即渲染到
+磁盘，同一帧同时追加到相应 GIF；因此运行期间即可查看三套已经完成的帧，程序不再等到全部
+时间步结束后才集中生成序列。速度底图只统计水相单元；一次命令中的全部帧和温度工况
+共用速度模值上限 `9e-6 m/s`，色标和矢量箭头都按该物理尺度归一化。可用
+`--velocity-visualization-max-m-s` 修改这一上限；`metadata.json` 仍记录未裁切的实际
+观测最大速度作为诊断量。涡量取 `omega_z=dv/dx-du/dy`，只在中心格及其上下左右
+均为液态水时使用中心差分，避免跨冰面或自由液面求导；其默认共享色标为
+`[-0.2, 0.2] s^-1`，可用 `--vorticity-visualization-max-s-1` 修改。终态图与温度序列
+统一使用本次温度扫描固定的 `[T_m, max(T_inf)]` 色标，因此 `4/5.6/8 °C` 扫描的范围为
+`[0, 8] °C`；温度帧只显示水相与相变材料，热学上不参与计算的空气帽和容器墙被遮罩。
+`--no-plot` 会同时关闭终态图以及速度、涡量、温度三套 PNG/GIF 序列。
+由于默认验证的
+重力、表面张力和初始速度均为零，参考输出是静止速度场；改为有外力的配置后，
+同一输出即可显示流动过程。
+三套序列均逐帧写盘且默认不再保存原始场，因此增加温度序列后，内存峰值仍不随采样帧数增长，
+其阶数仍为 `O(Nx Ny)`。只有显式传入
+`--save-npz` 才会保留全部快照并写出 `fields.npz`；此时内存阶数为
+`O(Nf Nx Ny)`，其中 `Nf` 是采样帧数。该可选归档保留原有的原始动量速度
+`velocity_lattice`，并包含绘图所用的半力修正物理速度
+`physical_velocity_lattice = u + 0.5F`，避免改变已有后处理字段的语义。
+
+可用一次命令扫描论文相关的三个远场温度，并为每个工况输出速度、涡量与温度三套演化序列：
+
+```bash
+python iceflow2d/examples/coupled_fixed_ice_melting_2d.py \
+  --water-temperatures-c 4 5.6 8 --gravity-m-s2 9.8 \
+  --reference-velocity-m-s 0.4 \
+  --output-dir outputs/iceflow2d/freshwater_temperature_sweep
+```
+
+重力工况显式使用较大的参考速度，以满足当前显式两相 LBM 的稳定性要求。配置阶段
+不再拒绝较低的数值，但 `0.001 m/s` 会把完整重力映射为 `g_LU=12.25`，实测会迅速
+失稳，因此该默认值只用于零重力耦合工况。该示例默认使用二次淡水 EOS，
+`T_star=4 °C`、`beta=8e-6 K^-2`；每个温度同时作为
+该工况的远场浮力参考。只要 `--gravity-m-s2` 非零，well-balanced 静水方案就自动启用
+（也可用 `--no-well-balanced-hydrostatics` 显式关闭）。扫描结果分别写入
+`T_4C/`、`T_5p6C/`、`T_8C/`，根目录的 `temperature_sweep.json` 汇总融化率、
+峰值速度、峰值绝对涡量、帧数以及全扫描共用的显示范围。各工况 GIF 的颜色和箭头
+使用相同尺度，
+`observed_max_velocity_m_s` 只用于判断速度色图是否超过上限；箭头保持同一线性尺度，
+不会按工况重新归一化。
 
 这里的“没有相变”特指移动刚体水动力求解器。仓库现已加入一个独立的 CPU 二维
 固定冰相变验证，作为后续二维热耦合的基础：冰不平移，固相区域可因相变缩小；
