@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from iceflow2d.examples import coupled_falling_ice_melting_2d as example
-from iceflow2d.thermal import LatticeScales
+from iceflow2d.config import LatticeScales
 
 
 class _FakeField:
@@ -48,20 +48,24 @@ class _FakeMovingThermal:
 
 class _FakeMovingSimulation:
     def __init__(self, config):
-        self.cfg = config
+        self.config = config
         shape = (config.nx, config.ny)
         vector_shape = (*shape, 2)
         scalar_float = _FakeField(np.zeros(shape, dtype=np.float32))
         self.temperature = _FakeField(np.zeros(shape, dtype=np.float64))
         self.liquid_fraction = scalar_float
         self.thermal_enthalpy = _FakeField(np.zeros(shape, dtype=np.float64))
-        self.phi = scalar_float
-        self.solid = _FakeField(np.zeros(shape, dtype=np.int8))
-        self.wall = _FakeField(np.zeros(shape, dtype=np.int8))
-        self.sdf = scalar_float
+        self.water_phase = scalar_float
+        self.solid_mask = _FakeField(np.zeros(shape, dtype=np.int8))
+        self.wall_mask = _FakeField(np.zeros(shape, dtype=np.int8))
+        self.body_signed_distance_m = scalar_float
         self.phase_change_material = _FakeField(np.zeros(shape, dtype=np.int8))
-        self.u = _FakeField(np.zeros(vector_shape, dtype=np.float32))
-        self.fluid_force = _FakeField(np.zeros(vector_shape, dtype=np.float32))
+        self.momentum_velocity_lattice = _FakeField(
+            np.zeros(vector_shape, dtype=np.float32)
+        )
+        self.fluid_acceleration_lattice = _FakeField(
+            np.zeros(vector_shape, dtype=np.float32)
+        )
         water_volume = float(config.water_width * config.water_height)
         self.water_volume_target = _FakeField(water_volume)
         self.water_volume_current = _FakeField(water_volume)
@@ -73,7 +77,7 @@ class _FakeMovingSimulation:
         self.physical_time_s = 0.0
 
     def phase_change_solid_volume_cells(self) -> float:
-        return float(self.cfg.ice_width * self.cfg.ice_height)
+        return float(self.config.ice_width * self.config.ice_height)
 
     def phase_change_geometry_volume_cells(self) -> float:
         return self.phase_change_solid_volume_cells()
@@ -197,11 +201,15 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
                 ice_cells = config.ice_width * config.ice_height
                 water_mass = water_cells * config.dx**2 * config.rho_water
                 ice_mass = ice_cells * config.dx**2 * config.rho_ice
-                water_heat = water_mass * props.specific_heat_water_j_kg_k * (
-                    args.water_temperature_c - props.melting_temperature_c
+                water_heat = (
+                    water_mass
+                    * props.specific_heat_water_j_kg_k
+                    * (args.water_temperature_c - props.melting_temperature_c)
                 )
-                ice_warming_heat = ice_mass * props.specific_heat_ice_j_kg_k * (
-                    props.melting_temperature_c - args.ice_temperature_c
+                ice_warming_heat = (
+                    ice_mass
+                    * props.specific_heat_ice_j_kg_k
+                    * (props.melting_temperature_c - args.ice_temperature_c)
                 )
                 melt_heat = ice_mass * props.latent_heat_j_kg
                 simulation.water_volume_current.value = float(water_cells)
@@ -249,13 +257,19 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
 
                 # Heat lost by the original water pays for warming the ice,
                 # its latent heat, and warming the newly produced water.
-                released_heat = water_mass * props.specific_heat_water_j_kg_k * (
-                    args.water_temperature_c - equilibrium
-                )
-                absorbed_heat = ice_warming_heat + melt_heat + (
-                    ice_mass
+                released_heat = (
+                    water_mass
                     * props.specific_heat_water_j_kg_k
-                    * (equilibrium - props.melting_temperature_c)
+                    * (args.water_temperature_c - equilibrium)
+                )
+                absorbed_heat = (
+                    ice_warming_heat
+                    + melt_heat
+                    + (
+                        ice_mass
+                        * props.specific_heat_water_j_kg_k
+                        * (equilibrium - props.melting_temperature_c)
+                    )
                 )
                 self.assertAlmostEqual(released_heat, absorbed_heat, delta=1.0e-8)
                 if not argv:

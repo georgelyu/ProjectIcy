@@ -88,7 +88,7 @@
 \title{IceFlow2D：下落冰块--热水--融化二维耦合方法\\
 \large 从物理概念到 \code{step()} 每一行的离散实现}
 \author{}
-\date{对应当前 \code{iceflow2d/simulator.py} 与 \code{iceflow2d/thermal.py}}
+\date{对应当前 \code{iceflow2d/simulator.py} 与 \code{iceflow2d/config.py}}
 
 \begin{document}
 \maketitle
@@ -289,6 +289,23 @@ $E_\alpha^s,S_P^w$ 的单位为 $\mathrm{J\,m^{-1}}$，$V_P^w$ 的单位为 $\ma
   \label{eq:diagnostic-enthalpy}
 \end{equation}
 
+\subsection{GPU 存储与并行归约}
+
+物理状态与其廉价派生量分别处理：材料初始质量是 CPU 常数，固相率由当前质量求得，
+冰水温度由质量、液水面积和显热求得，材料插值索引由位姿求得。墙掩膜由坐标边界比较得到，
+SDF 由唯一覆盖率光栅与位姿求得。世界温度、液相率和体积焓只在输出采样时合成。
+\code{body\_center} 也是参考原点与材料质心旋转的只读视图，不再有独立 GPU 存储。
+
+两组 population 各保留当前状态和流送缓冲；它们具有不同时间层，不能原地混用。
+宏观相场、动量速度、压力与启闭掩膜保留碰撞、流送和 refill 所需的冻结快照。
+世界水的面能量与体积通量必须保留，避免更新水状态时读取其他线程已覆盖的迎风源。
+冰内导热在质量与显热尚未改变时直接求邻面通量，因此不需要冰面通量数组。
+
+高开销的标量归约使用 CUDA warp 内 f64 树形求和；f64 shuffle 按位搬运两个 32 位字，
+不会把归约值降到 f32。水开口测量先输出独立 warp 的六项部分结果，再归约到全域统计量，
+以减少对单个全局地址的原子竞争。遍历范围补齐到 128 线程块，补齐单元贡献为相应恒等元。
+完整的字段清单、保留理由、验证方式与性能结果见 \path{iceflow2d/docs/gpu_state_review.md}。
+
 \subsection{常用符号速查}
 
 \begin{longtable}{@{}p{0.19\textwidth}p{0.27\textwidth}p{0.46\textwidth}@{}}
@@ -302,13 +319,13 @@ $E_\alpha^s,S_P^w$ 的单位为 $\mathrm{J\,m^{-1}}$，$V_P^w$ 的单位为 $\ma
 \midrule
 \endhead
 $P=(i,j)$，$q$ & 数组索引 & 世界单元及 D2Q9 方向编号 \\
-$\phi$ & \code{phi} & 空气--水相场；水约为 1，空气约为 0 \\
-$f_q,h_q$ & \code{f}, \code{h} & 压力--动量分布与相场分布 \\
-$\vect u,\vect u^\star$ & \code{u}, \code{u + force/2} & 存储速度与半力物理速度 \\
-$p^H,p^d,p$ & hydrostatic/reference, \code{p} & 静水参考、动态压力及总压力，$p=p^H+p^d$ \\
-$C_P$ & \code{world\_body\_indicator} & 当前位姿下连续冰覆盖率 \\
-$\chi_P^s$ & \code{solid} & 由 $C_P$ 阈值化得到的锐冰掩膜 \\
-$d_P$ & \code{sdf} & 冰界有符号距离；共享世界 SDF 的物理单位为米 \\
+$\phi$ & \code{water\_phase} & 空气--水相场；水约为 1，空气约为 0 \\
+$f_q,h_q$ & \code{momentum\_populations}, \code{phase\_populations} & 压力--动量分布与相场分布 \\
+$\vect u,\vect u^\star$ & \code{momentum\_velocity\_lattice}, \code{u + force/2} & 存储速度与半力物理速度 \\
+$p^H,p^d,p$ & hydrostatic/reference, \code{pressure\_lattice} & 静水参考、动态压力及总压力，$p=p^H+p^d$ \\
+$C_P$ & \code{world\_body\_solid\_fraction} & 当前位姿下连续冰覆盖率 \\
+$\chi_P^s$ & \code{solid\_mask} & 由 $C_P$ 阈值化得到的锐冰掩膜 \\
+$d_P$ & \code{body\_signed\_distance\_m} & 冰界有符号距离；共享世界 SDF 的物理单位为米 \\
 $\vect X_0,\vect X_c$ & reference origin, body center & 材料参考原点与当前质量中心 \\
 $\vect V_c,\omega$ & body velocity/angular velocity & 质心格子速度与每步转角 \\
 $m_b,I_b$ & body mass/inertia & 由剩余材料质量归约的格子质量与惯量 \\
@@ -426,7 +443,7 @@ $(\rho-\rho^H)\vect g$，而冰 cut-link 的动量交换补回同一 $p^H$ 的�
 \begin{algorithmic}[1]
 \Require $n$ 层流体 distributions、宏观场、刚体状态、材料冰与世界水热广延量
 \Ensure 所有状态推进到 $n+1$ 层，且离散水量、热水 aperture 与待处理融水动量一致
-\State \code{\_collide\_velocity()}：计算力、黏度和 $f_q^\star$
+\State \code{\_collide\_momentum()}：计算力、黏度和 $f_q^\star$
 \State \code{\_collide\_phase()}：计算 $h_q^\star$
 \State \code{\_stream()}：流送/反弹/cut-link，并归约冰体水动力冲量
 \State \code{\_update\_streamed\_macroscopic\_fields()}：恢复 $\phi,\vect u$
@@ -473,7 +490,7 @@ $(\rho-\rho^H)\vect g$，而冰 cut-link 的动量交换补回同一 $p^H$ 的�
   \draw[arrow] (v)--(a);
 \end{tikzpicture}
 \caption{\code{step()} 的数据流。SLOW 分支只在累计步数达到阈值时执行；新温度在下一步
-\code{\_collide\_velocity()} 中进入热浮力，因此没有同一步内的隐式反馈。}
+\code{\_collide\_momentum()} 中进入热浮力，因此没有同一步内的隐式反馈。}
 \label{fig:step-flow}
 \end{figure}
 
@@ -481,7 +498,7 @@ $(\rho-\rho^H)\vect g$，而冰 cut-link 的动量交换补回同一 $p^H$ 的�
 
 \section{步骤一：压力--动量分布碰撞}
 
-\stepname{\_collide\_velocity()}
+\stepname{\_collide\_momentum()}
 输入为 $f_q,\phi,\vect u,p,p^H,\rho^H,T$、墙/冰掩膜与冰面速度；输出为本步格子加速度
 $\vect F$ 和碰撞后分布 $f_q^\star$。
 
@@ -663,8 +680,8 @@ cut-link 上统一使用 Tao 等人的 single-node 二阶曲壁条件
   +f_q^{\rm neq}(P,n)+\eta f_{\bar q}^\star(P,n)}{1+\eta}.
   \label{eq:single-node-cut-link}
 \end{equation}
-式中所有分布都来自 $P$，不读取后退点 $P-\vect c_q$；代码在碰撞时缓存
-$f_q^{\rm neq}(P,n)$，避免 push streaming 原地覆盖 $f_q(P,n)$。壁速已完整包含在
+式中所有分布都来自 $P$，不读取后退点 $P-\vect c_q$；代码在碰撞末尾、原分布仍可读时计算反射值，
+把它写入该 cut-link 不再用于直通流送的方向槽。无需缓存整张非平衡分布，且避免了流送读写竞争。壁速已完整包含在
 $f_{\bar q}^{\rm eq}(\vect u_b)$ 中，因此不再叠加额外的线性壁速修正。
 空气、自由液面弥散带和水中的冰面链接使用同一公式，不再按 $\phi$ 切换到简单反弹。相场分布
 始终采用
@@ -861,7 +878,7 @@ $x$ 分量：
   \label{eq:world-sdf}
 \end{equation}
 矩形外则使用旋转矩形的有向距离。这里 $d_P$ 的单位是米，并直接写入程序唯一的
-\code{sdf} 场；cut-link 只使用距离比，因此单位相消。
+\code{body\_signed\_distance\_m} 场；cut-link 只使用距离比，因此单位相消。
 
 \subsection{锐冰掩膜更新}
 
@@ -904,13 +921,13 @@ FAST 的职责只有三件事：检查热对流所读速度、对刚体位姿变
 
 热对流速度取活动格的 $\vect u^\star$，其他格为零。调试开关
 \code{\small\_thermal\_stability\_check\_enabled} 置为真时，程序拒绝 NaN/Inf，并要求全活动域
-$|u_x^\star|+|u_y^\star|\le1$；水侧 CFL 最大值只在 $\phi>\varepsilon_\phi$ 的合法格统计。
-该 LBM 状态扫描默认关闭，但对流所需的速度场和水侧 CFL 归约仍然每步执行。
+$|u_x^\star|+|u_y^\star|\le1$；水侧 CFL 在 $\phi>\varepsilon_\phi$ 的合法格统计各有效面的总流出速率。
+该 LBM 状态扫描默认关闭；半力速度按需计算，流出速率归约每步执行。
 物理对流子步上限与子步数为
 \begin{equation}
   \Delta t_{\rm adv,max}
   =Co_{\max}\frac{\Delta t_{\rm LBM}}
-  {\max_P(|u_x^\star|+|u_y^\star|)},
+  {\max_P\sum_{f\in\partial P}\max(0,\vect u_f^\star\cdot\vect n_{P,f})},
   \qquad
   N_{\rm adv}=\max\left(1,
   \left\lceil\frac{\Delta t_{\rm LBM}}{\Delta t_{\rm adv,max}}\right\rceil\right).
@@ -970,7 +987,7 @@ $\Delta t_{\rm S}=N_{\rm slow}\Delta t_{\rm LBM}$。进入前先同步 aperture�
   \left\lceil\frac{\Delta t_{\rm S}}{\Delta t_{\rm diff,max}}\right\rceil\right).
   \label{eq:diffusion-substeps}
 \end{equation}
-每个扩散子步先由式~\eqref{eq:body-thermal-state} 和~\eqref{eq:water-extensive-state} 恢复温度。
+扩散核按需由式~\eqref{eq:body-thermal-state} 和~\eqref{eq:water-extensive-state} 求温度，不保存重复温度数组。
 
 \subsection{冰内、水内与容器壁导热}
 
@@ -1278,11 +1295,10 @@ $T_{w,P}^{+}$，并记温度恢复所用的面积容差为 $V_{\rm tol}=10^{-30}
   \qquad V_P^{w,+}>V_{\rm tol}.
   \label{eq:water-temperature-recovery}
 \end{equation}
-该式只是由同步后仍守恒的液水面积与水显热恢复强度量温度，并未再次增加、移除或输运热量。
-对于不超过面积容差的同步后液水面积 $V_P^{w,+}\le V_{\rm tol}$，程序把水温恢复字段回退为初始
-空气温度；随后合成世界显示温度时，材料冰或墙还会按各自的显示优先级覆盖该回退值。最后一并
-合成世界液相率和式~\eqref{eq:diagnostic-enthalpy} 定义的诊断体积焓 $H_P$；其中世界显示温度在
-下一 LBM 步的步骤一才进入浮力。
+该式在设备读取温度时直接求值，不需要额外的恢复 kernel 或持久温度 field，也未再次增加、移除或输运热量。
+对于不超过面积容差的同步后液水面积 $V_P^{w,+}\le V_{\rm tol}$，温度读取回退为初始
+空气温度；在采样时，CPU 合成世界显示温度、液相率和诊断体积焓 $H_P$，材料冰与墙按显示优先级覆盖。
+下一 LBM 步的浮力核直接从水显热和液水面积计算水温。
 
 \section{多速率时序：FAST 与 SLOW 为什么不能互换}
 

@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from .config import IceFlowConfig
-from .thermal import LatticeScales
+from .config import LatticeScales
 
 
 DEFAULT_SCENARIO_LABEL = "falling-ice melting"
@@ -185,6 +185,7 @@ def _capture_snapshot(
     *,
     initial_total_enthalpy_j_m: float,
     initial_solid_volume_cells: float,
+    thermal_totals=None,
 ) -> CoupledSnapshot:
     """Synchronize diagnostics and copy Taichi's ``(nx, ny)`` fields to host."""
 
@@ -192,14 +193,18 @@ def _capture_snapshot(
     sharp_geometry_volume = float(simulation.phase_change_geometry_volume_cells())
     initial_solid = float(initial_solid_volume_cells)
     melted_solid = max(0.0, initial_solid - solid_volume)
-    density_ratio = float(simulation.cfg.rho_ice / simulation.cfg.rho_water)
+    density_ratio = float(simulation.config.rho_ice / simulation.config.rho_water)
     melted_fraction = 0.0 if initial_solid <= 0.0 else melted_solid / initial_solid
-    dx = float(simulation.cfg.dx)
+    dx = float(simulation.config.dx)
     solid_area = solid_volume * dx * dx
     initial_side = math.sqrt(initial_solid * dx * dx)
     equivalent_side = math.sqrt(max(0.0, solid_area))
 
-    total_enthalpy = float(simulation.thermal.total_enthalpy_j_m(simulation.wall))
+    total_enthalpy = (
+        float(thermal_totals.total_energy_j_m)
+        if thermal_totals is not None and hasattr(thermal_totals, "total_energy_j_m")
+        else float(simulation.thermal.total_enthalpy_j_m(simulation.wall_mask))
+    )
     boundary_heat = float(simulation.thermal.boundary_heat_input_j_m[None])
     energy_residual = total_enthalpy - float(initial_total_enthalpy_j_m) - boundary_heat
     target = float(simulation.water_volume_target[None])
@@ -210,8 +215,28 @@ def _capture_snapshot(
         values = np.asarray(field.to_numpy(), dtype=dtype)
         return np.ascontiguousarray(values.T)
 
-    momentum_velocity = np.asarray(simulation.u.to_numpy(), dtype=np.float32)
-    force = np.asarray(simulation.fluid_force.to_numpy(), dtype=np.float32)
+    sample_thermal = getattr(simulation, "sample_thermal_fields", None)
+    if sample_thermal is not None:
+        thermal_fields = {
+            name: np.ascontiguousarray(values.T)
+            for name, values in sample_thermal().items()
+        }
+    else:
+        thermal_fields = {
+            "temperature_c": scalar_host(simulation.temperature, np.float64),
+            "liquid_fraction": scalar_host(simulation.liquid_fraction, np.float32),
+            "enthalpy_j_m3": scalar_host(simulation.thermal_enthalpy, np.float64),
+            "phase_change_material": scalar_host(
+                simulation.phase_change_material, np.int8
+            ),
+        }
+
+    momentum_velocity = np.asarray(
+        simulation.momentum_velocity_lattice.to_numpy(), dtype=np.float32
+    )
+    force = np.asarray(
+        simulation.fluid_acceleration_lattice.to_numpy(), dtype=np.float32
+    )
     # The physical velocity in the forced LBM is the momentum velocity plus
     # the standard half-force correction.  Keep the legacy raw-u field while
     # storing this physical field for visualization and thermal postprocessing.
@@ -223,13 +248,13 @@ def _capture_snapshot(
         thermal_time_s=float(simulation.thermal.time_s),
         lbm_steps=int(simulation.steps),
         thermal_substeps=int(simulation.thermal.steps),
-        temperature_c=scalar_host(simulation.temperature, np.float64),
-        liquid_fraction=scalar_host(simulation.liquid_fraction, np.float32),
-        enthalpy_j_m3=scalar_host(simulation.thermal_enthalpy, np.float64),
-        water_phase=scalar_host(simulation.phi, np.float32),
-        solid=scalar_host(simulation.solid, np.int8),
-        sdf=scalar_host(simulation.sdf, np.float32),
-        phase_change_material=scalar_host(simulation.phase_change_material, np.int8),
+        temperature_c=thermal_fields["temperature_c"],
+        liquid_fraction=thermal_fields["liquid_fraction"],
+        enthalpy_j_m3=thermal_fields["enthalpy_j_m3"],
+        water_phase=scalar_host(simulation.water_phase, np.float32),
+        solid=scalar_host(simulation.solid_mask, np.int8),
+        sdf=scalar_host(simulation.body_signed_distance_m, np.float32),
+        phase_change_material=thermal_fields["phase_change_material"],
         velocity_lattice=momentum_velocity,
         physical_velocity_lattice=physical_velocity,
         solid_volume_cells=solid_volume,
@@ -294,13 +319,15 @@ def _history_row(item: CoupledSnapshot) -> tuple[object, ...]:
     )
 
 
-def write_fields_npz(
-    path: Path, config: IceFlowConfig, snapshots: list[CoupledSnapshot]
-) -> None:
+def snapshot_arrays(
+    config: IceFlowConfig, snapshots: list[CoupledSnapshot]
+) -> dict[str, np.ndarray]:
+    """Build an archive payload without an intermediate compressed file."""
+    if not snapshots:
+        raise ValueError("at least one snapshot is required")
     x_m = (np.arange(config.nx, dtype=np.float64) + 0.5) * config.dx
     y_m = (np.arange(config.ny, dtype=np.float64) + 0.5) * config.dx
-    np.savez_compressed(
-        path,
+    return dict(
         x_m=x_m,
         y_m=y_m,
         physical_time_s=np.asarray([item.physical_time_s for item in snapshots]),
@@ -355,6 +382,12 @@ def write_fields_npz(
             [item.energy_residual_j_m for item in snapshots], dtype=np.float64
         ),
     )
+
+
+def write_fields_npz(
+    path: Path, config: IceFlowConfig, snapshots: list[CoupledSnapshot]
+) -> None:
+    np.savez_compressed(path, **snapshot_arrays(config, snapshots))
 
 
 def _static_wall_mask(config: IceFlowConfig) -> np.ndarray:

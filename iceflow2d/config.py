@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass, field, fields
-from typing import TYPE_CHECKING, Literal
-
-if TYPE_CHECKING:
-    from .thermal import ThermalConfig
+from typing import Any, Literal
 
 DEFAULT_REFERENCE_VELOCITY_M_S = 4.0
 
 
 def _finite(name: str, value: float) -> float:
-    number = float(value)
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a finite real number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite real number") from exc
     if not math.isfinite(number):
         raise ValueError(f"{name} must be finite")
     return number
@@ -26,10 +28,311 @@ def _positive(name: str, value: float) -> float:
     return number
 
 
+ThermalBoundaryKind = Literal["adiabatic", "dirichlet"]
+WaterBuoyancyModel = Literal["linear"]
+MovingBodyThermalScheme = Literal["body_ale"]
+
+_ADIABATIC = 0
+_DIRICHLET = 1
+_BOUNDARY_CODE = {
+    "adiabatic": _ADIABATIC,
+    "dirichlet": _DIRICHLET,
+}
+
+
+def _non_negative(name: str, value: float) -> float:
+    number = _finite(name, value)
+    if number < 0.0:
+        raise ValueError(f"{name} must be non-negative")
+    return number
+
+
+@dataclass(frozen=True, slots=True)
+class PhaseChangeProperties:
+    """Specific heat, conductivity, and latent heat for air/water/ice.
+
+    Densities are intentionally not duplicated here.  A coupled solver gets
+    them from the hydrodynamic configuration so that momentum and energy
+    cannot silently use different material densities.
+    """
+
+    melting_temperature_c: float = 0.0
+    specific_heat_water_j_kg_k: float = 4186.0
+    specific_heat_ice_j_kg_k: float = 2100.0
+    specific_heat_air_j_kg_k: float = 1005.0
+    conductivity_water_w_m_k: float = 0.60
+    conductivity_ice_w_m_k: float = 2.20
+    conductivity_air_w_m_k: float = 0.026
+    latent_heat_j_kg: float = 334000.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "melting_temperature_c",
+            _finite("melting_temperature_c", self.melting_temperature_c),
+        )
+        for name in (
+            "specific_heat_water_j_kg_k",
+            "specific_heat_ice_j_kg_k",
+            "specific_heat_air_j_kg_k",
+            "conductivity_water_w_m_k",
+            "conductivity_ice_w_m_k",
+            "conductivity_air_w_m_k",
+            "latent_heat_j_kg",
+        ):
+            object.__setattr__(self, name, _positive(name, getattr(self, name)))
+
+
+@dataclass(frozen=True, slots=True)
+class ThermalBoundary:
+    """Thermal condition on one side of the active container.
+
+    ``value`` is a temperature in degrees Celsius for ``dirichlet``;
+    ``adiabatic`` requires a zero value.
+    """
+
+    kind: ThermalBoundaryKind = "adiabatic"
+    value: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.kind not in _BOUNDARY_CODE:
+            raise ValueError("thermal boundary kind must be 'adiabatic' or 'dirichlet'")
+        value = _finite("thermal boundary value", self.value)
+        if self.kind == "adiabatic" and value != 0.0:
+            raise ValueError("adiabatic thermal boundary value must be zero")
+        object.__setattr__(self, "value", value)
+
+    @classmethod
+    def adiabatic(cls) -> "ThermalBoundary":
+        return cls("adiabatic", 0.0)
+
+    @classmethod
+    def dirichlet(cls, temperature_c: float) -> "ThermalBoundary":
+        return cls("dirichlet", temperature_c)
+
+
+@dataclass(frozen=True, slots=True)
+class ThermalBoundarySet:
+    """Named thermal conditions for the four container sides."""
+
+    left: ThermalBoundary = field(default_factory=ThermalBoundary.adiabatic)
+    right: ThermalBoundary = field(default_factory=ThermalBoundary.adiabatic)
+    bottom: ThermalBoundary = field(default_factory=ThermalBoundary.adiabatic)
+    top: ThermalBoundary = field(default_factory=ThermalBoundary.adiabatic)
+
+    def __post_init__(self) -> None:
+        for side in ("left", "right", "bottom", "top"):
+            if not isinstance(getattr(self, side), ThermalBoundary):
+                raise TypeError(f"{side} must be a ThermalBoundary")
+
+
+@dataclass(frozen=True, slots=True)
+class ThermalConfig:
+    """Physical and numerical controls for coupled heat and phase change.
+
+    The ambient water is required to start at or above the melting
+    temperature and the initial ice at or below it.  Only original material
+    ice melts; melt water detaches and cannot refreeze onto the single rigid
+    remnant.
+    """
+
+    properties: PhaseChangeProperties = field(default_factory=PhaseChangeProperties)
+    boundaries: ThermalBoundarySet = field(default_factory=ThermalBoundarySet)
+    initial_water_temperature_c: float = 20.0
+    initial_ice_temperature_c: float = 0.0
+    initial_air_temperature_c: float = 20.0
+    advection_enabled: bool = True
+    water_air_interface_adiabatic: bool = True
+    update_interval_lbm_steps: int = 1
+    solid_liquid_threshold: float = 0.5
+    max_fourier_number: float = 0.15
+    max_courant_number: float = 0.50
+    max_substeps_per_update: int = 64
+    water_buoyancy_model: WaterBuoyancyModel = "linear"
+    thermal_expansion_water_1_k: float = 2.1e-4
+    buoyancy_reference_temperature_c: float | None = None
+    scheme: Literal["enthalpy_fv"] = "enthalpy_fv"
+    moving_body_scheme: MovingBodyThermalScheme = "body_ale"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.properties, PhaseChangeProperties):
+            raise TypeError("properties must be a PhaseChangeProperties")
+        if not isinstance(self.boundaries, ThermalBoundarySet):
+            raise TypeError("boundaries must be a ThermalBoundarySet")
+        if self.scheme != "enthalpy_fv":
+            raise ValueError("scheme must be 'enthalpy_fv'")
+        if self.moving_body_scheme != "body_ale":
+            raise ValueError("moving_body_scheme must be 'body_ale'")
+        if self.water_buoyancy_model != "linear":
+            raise ValueError("water_buoyancy_model must be 'linear'")
+        if not isinstance(self.advection_enabled, bool):
+            raise ValueError("advection_enabled must be a boolean")
+        if not isinstance(self.water_air_interface_adiabatic, bool):
+            raise ValueError("water_air_interface_adiabatic must be a boolean")
+        if (
+            isinstance(self.update_interval_lbm_steps, bool)
+            or int(self.update_interval_lbm_steps) != self.update_interval_lbm_steps
+            or int(self.update_interval_lbm_steps) < 1
+        ):
+            raise ValueError("update_interval_lbm_steps must be a positive integer")
+        object.__setattr__(
+            self, "update_interval_lbm_steps", int(self.update_interval_lbm_steps)
+        )
+        if (
+            self.moving_body_scheme == "body_ale"
+            and not self.water_air_interface_adiabatic
+        ):
+            raise ValueError(
+                "body_ale currently requires an adiabatic water/air thermal interface"
+            )
+        threshold = _finite("solid_liquid_threshold", self.solid_liquid_threshold)
+        if not 0.0 < threshold < 1.0:
+            raise ValueError("solid_liquid_threshold must be in (0, 1)")
+        object.__setattr__(self, "solid_liquid_threshold", threshold)
+
+        if self.buoyancy_reference_temperature_c is None:
+            object.__setattr__(
+                self,
+                "buoyancy_reference_temperature_c",
+                _finite(
+                    "initial_water_temperature_c",
+                    self.initial_water_temperature_c,
+                ),
+            )
+
+        for name in (
+            "initial_water_temperature_c",
+            "initial_ice_temperature_c",
+            "initial_air_temperature_c",
+            "buoyancy_reference_temperature_c",
+        ):
+            object.__setattr__(self, name, _finite(name, getattr(self, name)))
+
+        melting = self.properties.melting_temperature_c
+        if self.initial_water_temperature_c < melting:
+            raise ValueError(
+                "initial_water_temperature_c must not be below melting_temperature_c"
+            )
+        if self.initial_ice_temperature_c > melting:
+            raise ValueError(
+                "initial_ice_temperature_c must not exceed melting_temperature_c"
+            )
+
+        fourier = _positive("max_fourier_number", self.max_fourier_number)
+        # A half-cell Dirichlet boundary doubles that face coefficient.  At a
+        # square-grid corner this produces six diffusion contributions.
+        if fourier > 1.0 / 6.0:
+            raise ValueError("max_fourier_number must not exceed 1/6")
+        object.__setattr__(self, "max_fourier_number", fourier)
+
+        courant = _positive("max_courant_number", self.max_courant_number)
+        if courant > 1.0:
+            raise ValueError("max_courant_number must not exceed one")
+        object.__setattr__(self, "max_courant_number", courant)
+        if (
+            isinstance(self.max_substeps_per_update, bool)
+            or int(self.max_substeps_per_update) != self.max_substeps_per_update
+            or int(self.max_substeps_per_update) < 1
+        ):
+            raise ValueError("max_substeps_per_update must be a positive integer")
+        object.__setattr__(
+            self, "max_substeps_per_update", int(self.max_substeps_per_update)
+        )
+        object.__setattr__(
+            self,
+            "thermal_expansion_water_1_k",
+            _non_negative(
+                "thermal_expansion_water_1_k",
+                self.thermal_expansion_water_1_k,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LatticeScales:
+    """Physical units represented by one lattice cell and one LBM step."""
+
+    dx_m: float
+    dt_s: float
+    reference_density_kg_m3: float
+    reference_lattice_velocity: float = 0.1
+
+    def __post_init__(self) -> None:
+        for name in (
+            "dx_m",
+            "dt_s",
+            "reference_density_kg_m3",
+            "reference_lattice_velocity",
+        ):
+            object.__setattr__(self, name, _positive(name, getattr(self, name)))
+
+    @property
+    def velocity_scale_m_s(self) -> float:
+        """Physical m/s represented by one lattice cell per step."""
+
+        return self.dx_m / self.dt_s
+
+    @property
+    def reference_velocity_m_s(self) -> float:
+        return self.reference_lattice_velocity * self.velocity_scale_m_s
+
+    @classmethod
+    def from_reference_velocity(
+        cls,
+        *,
+        dx_m: float,
+        reference_velocity_m_s: float,
+        reference_density_kg_m3: float,
+        reference_lattice_velocity: float = 0.1,
+    ) -> "LatticeScales":
+        """Map a fixed physical reference speed to a lattice speed."""
+
+        spacing = _positive("dx_m", dx_m)
+        reference_velocity = _positive("reference_velocity_m_s", reference_velocity_m_s)
+        lattice_velocity = _positive(
+            "reference_lattice_velocity", reference_lattice_velocity
+        )
+        dt_s = lattice_velocity * spacing / reference_velocity
+        return cls(
+            dx_m=spacing,
+            dt_s=dt_s,
+            reference_density_kg_m3=reference_density_kg_m3,
+            reference_lattice_velocity=lattice_velocity,
+        )
+
+    @classmethod
+    def from_iceflow_config(cls, config: Any) -> "LatticeScales":
+        """Build scales from an IceFlowConfig-like object without importing it."""
+
+        try:
+            return cls.from_reference_velocity(
+                dx_m=config.dx,
+                reference_velocity_m_s=config.reference_velocity,
+                reference_density_kg_m3=config.rho_water,
+            )
+        except (AttributeError, TypeError) as exc:
+            raise TypeError(
+                "config must provide dx, reference_velocity, and rho_water"
+            ) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class MovingBodyThermalTotals:
+    """Mass and reference-energy reductions for moving-body phase change."""
+
+    initial_body_mass_kg_m: float
+    solid_body_mass_kg_m: float
+    melted_mass_kg_m: float
+    water_mass_kg_m: float
+    total_mass_kg_m: float
+    body_sensible_energy_j_m: float
+    water_sensible_energy_j_m: float
+    latent_energy_j_m: float
+    total_energy_j_m: float
+
+
 def _default_thermal_config() -> ThermalConfig:
     """Build the insulated-bath defaults without importing Taichi eagerly."""
-
-    from .thermal import ThermalBoundarySet, ThermalConfig
 
     return ThermalConfig(
         boundaries=ThermalBoundarySet(),
@@ -58,7 +361,7 @@ class IceFlowConfig:
     viscosity_air: float = 1.5e-5
     sigma: float = 0.072
     gravity: tuple[float, float] = (0.0, -9.8)
-    cd: float = 0.1
+    smagorinsky_constant: float = 0.1
     interface_width: float = 5.0
     mobility: float = 0.1
     phase_warmup_steps: int = 500
@@ -122,6 +425,15 @@ class IceFlowConfig:
     save_npz: bool = False
 
     def __post_init__(self) -> None:
+        # Store validated numeric values as numbers: accepting float-like inputs
+        # but retaining strings used to fail later in geometry and CUDA setup.
+        for descriptor in fields(self):
+            if descriptor.type == "float":
+                setattr(
+                    self,
+                    descriptor.name,
+                    _finite(descriptor.name, getattr(self, descriptor.name)),
+                )
         if self.rigid_boundary_scheme != "unified":
             raise ValueError("rigid_boundary_scheme must be 'unified'")
 
@@ -162,8 +474,6 @@ class IceFlowConfig:
             raise ValueError("phase_warmup_steps must be non-negative")
         if self.well_balanced_hydrostatics is not True:
             raise ValueError("well_balanced_hydrostatics must be True")
-        from .thermal import ThermalConfig
-
         if not isinstance(self.thermal, ThermalConfig):
             raise TypeError("thermal must be a ThermalConfig")
 
@@ -178,14 +488,16 @@ class IceFlowConfig:
         _positive("viscosity_air", self.viscosity_air)
         if _finite("sigma", self.sigma) < 0.0:
             raise ValueError("sigma must be non-negative")
-        if _finite("cd", self.cd) < 0.0:
-            raise ValueError("cd must be non-negative")
+        if _finite("smagorinsky_constant", self.smagorinsky_constant) < 0.0:
+            raise ValueError("smagorinsky_constant must be non-negative")
         _positive("interface_width", self.interface_width)
         _positive("mobility", self.mobility)
         if len(self.gravity) != 2:
             raise ValueError("gravity must contain exactly two components")
-        for index, component in enumerate(self.gravity):
+        self.gravity = tuple(
             _finite(f"gravity[{index}]", component)
+            for index, component in enumerate(self.gravity)
+        )
 
         for name in (
             "water_width_fraction",

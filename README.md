@@ -126,3 +126,12 @@ See [iceflow2d/README.md](iceflow2d/README.md) for the coupling sequence and
 conservation diagnostics.
 
 This project is released under the [MIT License](LICENSE).
+
+## GPU state and performance review
+
+All compute kernels now live in `iceflow2d/simulator.py`; configuration and unit
+conversions live in `iceflow2d/config.py`. Cheap derived quantities use read-only
+views instead of persistent GPU fields. See the
+[field audit and validation record](iceflow2d/docs/gpu_state_review.md) for each
+retained allocation, API name changes, numerical checks, and measured timings.
+Run `python benchmarks/benchmark_solver.py` to repeat the warmed step benchmark.

@@ -1,0 +1,61 @@
+{
+  "baseline_revision": "eff378035460721cb995115fcd951c82a1c79ace",
+  "comparison": "baseline checkout vs reviewed working tree",
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "driver": "570.211.01",
+  "taichi": "1.7.4",
+  "python": "3.13.9",
+  "warmup_steps": 32,
+  "steps_per_repeat": 128,
+  "repeats": 3,
+  "timing_excludes": "initialization, JIT warmup, and output I/O",
+  "note": "Short initial falling stage; not a full three-second trajectory or a cross-hardware speed guarantee.",
+  "cases": [
+    {
+      "grid": [
+        100,
+        200
+      ],
+      "baseline_seconds_per_step": [
+        0.002055928531262907,
+        0.0020126986405557545,
+        0.002134177640755297
+      ],
+      "reviewed_seconds_per_step": [
+        0.001593844054696092,
+        0.0015819741406630783,
+        0.001546458421898933
+      ],
+      "baseline_median_seconds_per_step": 0.002055928531262907,
+      "reviewed_median_seconds_per_step": 0.0015819741406630783,
+      "step_time_reduction_fraction": 0.2305305770082826,
+      "baseline_field_payload_bytes": 7556255,
+      "reviewed_field_payload_bytes": 4702165,
+      "baseline_field_count": 148,
+      "reviewed_field_count": 91
+    },
+    {
+      "grid": [
+        200,
+        400
+      ],
+      "baseline_seconds_per_step": [
+        0.0033818382264598768,
+        0.0034235469765917514,
+        0.0034498820311910094
+      ],
+      "reviewed_seconds_per_step": [
+        0.0022569834843579883,
+        0.002291724664019057,
+        0.002314716859245891
+      ],
+      "baseline_median_seconds_per_step": 0.0034235469765917514,
+      "reviewed_median_seconds_per_step": 0.002291724664019057,
+      "step_time_reduction_fraction": 0.33059932295699335,
+      "baseline_field_payload_bytes": 30211903,
+      "reviewed_field_payload_bytes": 18793589,
+      "baseline_field_count": 148,
+      "reviewed_field_count": 91
+    }
+  ]
+}

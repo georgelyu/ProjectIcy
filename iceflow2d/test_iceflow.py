@@ -1,15 +1,26 @@
 """Focused contracts for the retained falling-and-melting solver path."""
 
-from __future__ import annotations
-
 import math
 import unittest
 
 import numpy as np
+import taichi as ti
 
 from iceflow2d import IceFlow2D, create_iceflow_config
 from iceflow2d.simulator import ensure_taichi_cuda
-from iceflow2d.thermal import ThermalBoundary, ThermalBoundarySet, ThermalConfig
+from iceflow2d.config import ThermalBoundary, ThermalBoundarySet, ThermalConfig
+
+
+@ti.kernel
+def _prepare_test_cut_links(simulation: ti.template()):
+    for i, j in simulation.water_phase:
+        if simulation._is_fluid_cell(i, j):
+            raw = ti.Vector.zero(ti.f32, 9)
+            for direction in range(9):
+                raw[direction] = simulation.momentum_stream_buffer[i, j, direction]
+            prepared = simulation._prepare_momentum_cut_links(i, j, raw)
+            for direction in range(9):
+                simulation.momentum_stream_buffer[i, j, direction] = prepared[direction]
 
 
 def _thermal_config(*, update_interval: int = 2) -> ThermalConfig:
@@ -74,7 +85,7 @@ def _assert_body_inside(test: unittest.TestCase, simulation: IceFlow2D) -> None:
     extent_y = (
         sine * simulation._body_half_width + cosine * simulation._body_half_height
     )
-    boundary = simulation.cfg.boundary_cells
+    boundary = simulation.config.boundary_cells
     tolerance = 2.0e-5
     test.assertGreaterEqual(center[0] - extent_x, boundary - tolerance)
     test.assertLessEqual(center[0] + extent_x, simulation.nx - boundary + tolerance)
@@ -150,13 +161,12 @@ class IceFlowCudaTests(unittest.TestCase):
             simulation.physical_time_s, simulation.thermal.time_s, places=13
         )
         for name in (
-            "f",
-            "f_pre_collision_neq",
-            "h",
-            "phi",
-            "u",
-            "fluid_force",
-            "p",
+            "momentum_populations",
+            "phase_populations",
+            "water_phase",
+            "momentum_velocity_lattice",
+            "fluid_acceleration_lattice",
+            "pressure_lattice",
             "temperature",
             "liquid_fraction",
             "thermal_enthalpy",
@@ -166,7 +176,7 @@ class IceFlowCudaTests(unittest.TestCase):
 
         target = float(simulation.water_volume_target[None])
         current = float(simulation.water_volume_current[None])
-        tolerance = simulation.cfg.volume_projection_tolerance * max(1.0, target)
+        tolerance = simulation.config.volume_projection_tolerance * max(1.0, target)
         self.assertLessEqual(abs(current - target), tolerance)
         final_mass = simulation.thermal.mass_energy_totals().total_mass_kg_m
         self.assertAlmostEqual(final_mass, initial_mass, delta=2.0e-11)
@@ -194,8 +204,8 @@ class IceFlowCudaTests(unittest.TestCase):
             (1, -1),
         )
         opposites = (0, 3, 4, 1, 2, 7, 8, 5, 6)
-        solid = simulation.solid.to_numpy()
-        wall = simulation.wall.to_numpy()
+        solid = simulation.solid_mask.to_numpy()
+        wall = simulation.wall_mask.to_numpy()
         active = (solid == 0) & (wall == 0)
         cut_link = None
         for i in range(simulation.nx):
@@ -227,24 +237,26 @@ class IceFlowCudaTests(unittest.TestCase):
         boundary_velocity = np.asarray([0.012, -0.008], dtype=np.float64)
         simulation.body_velocity[None] = tuple(boundary_velocity)
         simulation.body_angular_velocity[None] = 0.0
-        simulation.u[i, j] = (0.0, 0.0)
-        simulation.fluid_force[i, j] = (0.0, 0.0)
-        simulation.p[i, j] = simulation.hydrostatic_reference_pressure[i, j]
-        simulation.phi[i, j] = 1.0
-        simulation.phi[back_i, back_j] = 1.0
+        simulation.momentum_velocity_lattice[i, j] = (0.0, 0.0)
+        simulation.fluid_acceleration_lattice[i, j] = (0.0, 0.0)
+        simulation.pressure_lattice[i, j] = simulation.hydrostatic_reference_pressure[
+            i, j
+        ]
+        simulation.water_phase[i, j] = 1.0
+        simulation.water_phase[back_i, back_j] = 1.0
         outgoing = 0.91
         incoming_post = 0.17
         outgoing_nonequilibrium = 0.31
         outgoing_phase = 0.43
-        simulation.f_post[i, j, q] = outgoing
-        simulation.f_post[i, j, opposite] = incoming_post
+        simulation.momentum_stream_buffer[i, j, q] = outgoing
+        simulation.momentum_stream_buffer[i, j, opposite] = incoming_post
         # Use a sentinel to prove that Tao's one-point formula does not read
         # the back-node population.
-        simulation.f_post[back_i, back_j, q] = -3.7
-        simulation.f_pre_collision_neq[i, j, q] = outgoing_nonequilibrium
-        simulation.h_post[i, j, q] = outgoing_phase
+        simulation.momentum_stream_buffer[back_i, back_j, q] = -3.7
+        simulation.momentum_populations[i, j, q] = outgoing_nonequilibrium
+        simulation.phase_stream_buffer[i, j, q] = outgoing_phase
 
-        sdf_fluid = max(float(simulation.sdf[i, j]), 1.0e-6)
+        sdf_fluid = max(float(simulation.body_signed_distance_m[i, j]), 1.0e-6)
         eta = min(
             0.95,
             max(
@@ -252,7 +264,11 @@ class IceFlowCudaTests(unittest.TestCase):
                 sdf_fluid
                 / (
                     sdf_fluid
-                    - float(simulation.sdf[i + directions[q][0], j + directions[q][1]])
+                    - float(
+                        simulation.body_signed_distance_m[
+                            i + directions[q][0], j + directions[q][1]
+                        ]
+                    )
                     + 1.0e-12
                 ),
             ),
@@ -262,7 +278,7 @@ class IceFlowCudaTests(unittest.TestCase):
         incoming_wall_speed = float(incoming_direction.dot(boundary_velocity))
         wall_equilibrium = (
             weight
-            * simulation._rho_water_l
+            * simulation._water_density_lattice
             * (
                 3.0 * incoming_wall_speed
                 + 4.5 * incoming_wall_speed * incoming_wall_speed
@@ -276,26 +292,32 @@ class IceFlowCudaTests(unittest.TestCase):
             np.asarray(directions[q], dtype=np.float64).dot(boundary_velocity)
         )
         moving_correction = 6.0 * weight * 1.0 * outgoing_wall_speed
+        _prepare_test_cut_links(simulation)
         simulation._stream()
         self.assertAlmostEqual(
-            float(simulation.f[i, j, opposite]), expected_single_node, places=6
+            float(simulation.momentum_populations[i, j, opposite]),
+            expected_single_node,
+            places=6,
         )
         self.assertAlmostEqual(
-            float(simulation.h[i, j, opposite]),
+            float(simulation.phase_populations[i, j, opposite]),
             outgoing_phase - moving_correction,
             places=6,
         )
 
         # The contact band and an inactive back node must use the same
         # single-node reconstruction.  Neither is an input to Tao's formula.
-        simulation.phi[i, j] = 0.5
-        simulation.wall[back_i, back_j] = 1
-        simulation.f_post[i, j, q] = outgoing
-        simulation.f_post[i, j, opposite] = incoming_post
-        simulation.f_pre_collision_neq[i, j, q] = outgoing_nonequilibrium
-        simulation.h_post[i, j, q] = outgoing_phase
+        simulation.water_phase[i, j] = 0.5
+        simulation.solid_mask[back_i, back_j] = 1
+        simulation.momentum_stream_buffer[i, j, q] = outgoing
+        simulation.momentum_stream_buffer[i, j, opposite] = incoming_post
+        simulation.momentum_populations[i, j, q] = outgoing_nonequilibrium
+        simulation.phase_stream_buffer[i, j, q] = outgoing_phase
+        _prepare_test_cut_links(simulation)
         simulation._stream()
-        contact_density = 0.5 * (simulation._rho_water_l + simulation._rho_air_l)
+        contact_density = 0.5 * (
+            simulation._water_density_lattice + simulation._air_density_lattice
+        )
         contact_wall_equilibrium = (
             weight
             * contact_density
@@ -309,7 +331,7 @@ class IceFlowCudaTests(unittest.TestCase):
             contact_wall_equilibrium + outgoing_nonequilibrium + eta * incoming_post
         ) / (1.0 + eta)
         self.assertAlmostEqual(
-            float(simulation.f[i, j, opposite]),
+            float(simulation.momentum_populations[i, j, opposite]),
             expected_contact_single_node,
             places=6,
         )
@@ -317,7 +339,9 @@ class IceFlowCudaTests(unittest.TestCase):
             outgoing_phase - 6.0 * weight * 0.5 * outgoing_wall_speed
         )
         self.assertAlmostEqual(
-            float(simulation.h[i, j, opposite]), expected_contact_phase, places=6
+            float(simulation.phase_populations[i, j, opposite]),
+            expected_contact_phase,
+            places=6,
         )
 
     def test_rigid_integration_uses_physical_mass_and_inertia(self):
@@ -368,19 +392,17 @@ class IceFlowCudaTests(unittest.TestCase):
         simulation.body_angle[None] = math.radians(31.0)
         simulation.body_center[None] = (16.0, 30.0)
         simulation.body_reference_origin[None] = (16.0, 30.0)
-        threshold = simulation.cfg.thermal.solid_liquid_threshold
+        threshold = simulation.config.thermal.solid_liquid_threshold
 
         # This above-threshold material cell is too small to produce any
         # thresholded node after the same bilinear world sampling used by the
         # sharp solver.  It must not create a several-cell "ghost" contact.
         isolated = np.zeros((16, 16), dtype=np.float32)
         isolated[0, 8] = 0.51
-        simulation.thermal.body_solid_fraction.from_numpy(isolated)
-        simulation.thermal.rasterize_world(
-            simulation.body_reference_origin,
-            simulation.body_angle,
-            simulation.wall,
+        simulation.thermal.body_solid_mass.from_numpy(
+            isolated.astype(np.float64) * simulation.thermal._initial_body_cell_mass
         )
+        simulation._solve_contact_and_rasterize(resolve_contact=False)
         sharp = simulation.thermal.world_body_solid_fraction.to_numpy() >= threshold
         self.assertFalse(bool(np.any(sharp)))
         simulation._prepare_moving_body_contact_support()
@@ -390,12 +412,10 @@ class IceFlowCudaTests(unittest.TestCase):
         # the contact bounds equal to the actual thresholded sharp-node bounds.
         material = isolated.copy()
         material[6:10, 6:10] = 1.0
-        simulation.thermal.body_solid_fraction.from_numpy(material)
-        simulation.thermal.rasterize_world(
-            simulation.body_reference_origin,
-            simulation.body_angle,
-            simulation.wall,
+        simulation.thermal.body_solid_mass.from_numpy(
+            material.astype(np.float64) * simulation.thermal._initial_body_cell_mass
         )
+        simulation._solve_contact_and_rasterize(resolve_contact=False)
         sharp = simulation.thermal.world_body_solid_fraction.to_numpy() >= threshold
         sharp_indices = np.argwhere(sharp)
         self.assertGreater(sharp_indices.shape[0], 0)
@@ -433,7 +453,7 @@ class IceFlowCudaTests(unittest.TestCase):
         origin = np.asarray(simulation.body_reference_origin[None], dtype=np.float64)
         center = np.asarray(simulation.body_center[None], dtype=np.float64)
         minimum_x = float(simulation._body_contact_support_extrema[0])
-        shift = simulation.cfg.boundary_cells - (origin[0] + minimum_x)
+        shift = simulation.config.boundary_cells - (origin[0] + minimum_x)
         origin[0] += shift
         center[0] += shift
         simulation.body_reference_origin[None] = tuple(origin)
@@ -471,7 +491,7 @@ class IceFlowCudaTests(unittest.TestCase):
         # The contact support follows thresholded world cells, so crossing one
         # complete lattice spacing guarantees a resolved support penetration.
         penetration = 1.02
-        boundary = simulation.cfg.boundary_cells
+        boundary = simulation.config.boundary_cells
         wall_cases = (
             ("left", 0, 0, boundary, -1.0, 1.0, (-1.0e-3, 2.0e-4)),
             (

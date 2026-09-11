@@ -9,7 +9,7 @@ import numpy as np
 
 from iceflow2d import IceFlow2D, create_iceflow_config
 from iceflow2d.simulator import ensure_taichi_cuda
-from iceflow2d.thermal import ThermalConfig
+from iceflow2d.config import ThermalConfig
 
 DIRECTIONS = np.asarray(
     (
@@ -71,9 +71,9 @@ def _projection_config(**overrides):
     return create_iceflow_config(**values)
 
 
-def _phase_equilibrium(phi: np.ndarray, velocity: np.ndarray) -> np.ndarray:
+def _phase_equilibrium(water_phase: np.ndarray, velocity: np.ndarray) -> np.ndarray:
     velocity64 = np.asarray(velocity, dtype=np.float64)
-    phase64 = np.asarray(phi, dtype=np.float64)
+    phase64 = np.asarray(water_phase, dtype=np.float64)
     cu = np.einsum("...d,qd->...q", velocity64, DIRECTIONS)
     speed_squared = np.einsum("...d,...d->...", velocity64, velocity64)
     factor = 1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * speed_squared[..., None]
@@ -81,19 +81,21 @@ def _phase_equilibrium(phi: np.ndarray, velocity: np.ndarray) -> np.ndarray:
 
 
 def _active_mask(simulation: IceFlow2D) -> np.ndarray:
-    return (simulation.wall.to_numpy() == 0) & (simulation.solid.to_numpy() == 0)
+    return (simulation.wall_mask.to_numpy() == 0) & (
+        simulation.solid_mask.to_numpy() == 0
+    )
 
 
 def _assert_strict_mass(test: unittest.TestCase, simulation: IceFlow2D) -> None:
     active = _active_mask(simulation)
-    phase = simulation.phi.to_numpy()
+    phase = simulation.water_phase.to_numpy()
     target = float(simulation.water_volume_target[None])
     current = float(simulation.water_volume_current[None])
     host_volume = float(np.sum(phase[active], dtype=np.float64))
     tolerance = max(5.0e-5, 5.0e-8 * max(1.0, abs(target)))
     test.assertAlmostEqual(current, host_volume, delta=1.0e-8)
     test.assertAlmostEqual(current, target, delta=tolerance)
-    cutoff = float(simulation.cfg.volume_projection_interface_cutoff)
+    cutoff = float(simulation.config.volume_projection_interface_cutoff)
     unresolved_air = active & (phase > 0.0) & (phase <= cutoff)
     unresolved_water = active & (phase >= 1.0 - cutoff) & (phase < 1.0)
     test.assertEqual(int(np.count_nonzero(unresolved_air)), 0)
@@ -141,9 +143,9 @@ class IceFlowVolumeProjectionCudaTests(unittest.TestCase):
     def test_projection_is_conservative_bounded_and_bulk_invariant(self):
         simulation = IceFlow2D(_projection_config())
         active = _active_mask(simulation)
-        phase_before = simulation.phi.to_numpy()
-        h_before = simulation.h.to_numpy()
-        velocity_before = simulation.u.to_numpy()
+        phase_before = simulation.water_phase.to_numpy()
+        h_before = simulation.phase_populations.to_numpy()
+        velocity_before = simulation.momentum_velocity_lattice.to_numpy()
 
         interface = active & (phase_before > 0.02) & (phase_before < 0.98)
         pure_air = active & (phase_before == 0.0)
@@ -159,17 +161,17 @@ class IceFlowVolumeProjectionCudaTests(unittest.TestCase):
         )
         phase_perturbed = phase_before + perturbation
         h_perturbed = h_before + perturbation[..., None] * WEIGHTS.astype(np.float32)
-        simulation.phi.from_numpy(phase_perturbed.astype(np.float32))
-        simulation.h.from_numpy(h_perturbed.astype(np.float32))
+        simulation.water_phase.from_numpy(phase_perturbed.astype(np.float32))
+        simulation.phase_populations.from_numpy(h_perturbed.astype(np.float32))
         simulation.water_volume_target[None] = target
 
         nonequilibrium_before = h_perturbed.astype(np.float64) - _phase_equilibrium(
             phase_perturbed, velocity_before
         )
         simulation._correct_water_volume()
-        phase_after = simulation.phi.to_numpy()
-        h_after = simulation.h.to_numpy()
-        velocity_after = simulation.u.to_numpy()
+        phase_after = simulation.water_phase.to_numpy()
+        h_after = simulation.phase_populations.to_numpy()
+        velocity_after = simulation.momentum_velocity_lattice.to_numpy()
 
         _assert_strict_mass(self, simulation)
         self.assertGreaterEqual(float(np.min(phase_after[active])), 0.0)
@@ -191,8 +193,8 @@ class IceFlowVolumeProjectionCudaTests(unittest.TestCase):
     def test_projection_clips_overshoot_without_seeding_bulk(self):
         simulation = IceFlow2D(_projection_config())
         active = _active_mask(simulation)
-        phase = simulation.phi.to_numpy()
-        h = simulation.h.to_numpy()
+        phase = simulation.water_phase.to_numpy()
+        phase_populations = simulation.phase_populations.to_numpy()
         target = float(np.sum(phase[active], dtype=np.float64))
         exact_air = active & (phase == 0.0)
         exact_water = active & (phase == 1.0)
@@ -205,13 +207,13 @@ class IceFlowVolumeProjectionCudaTests(unittest.TestCase):
         ):
             delta = np.float32(value - phase[index])
             phase[index] = np.float32(value)
-            h[index] += delta * WEIGHTS.astype(np.float32)
+            phase_populations[index] += delta * WEIGHTS.astype(np.float32)
 
-        simulation.phi.from_numpy(phase)
-        simulation.h.from_numpy(h)
+        simulation.water_phase.from_numpy(phase)
+        simulation.phase_populations.from_numpy(phase_populations)
         simulation.water_volume_target[None] = target
         simulation._correct_water_volume()
-        corrected = simulation.phi.to_numpy()
+        corrected = simulation.water_phase.to_numpy()
 
         _assert_strict_mass(self, simulation)
         self.assertGreaterEqual(float(np.min(corrected[active])), 0.0)

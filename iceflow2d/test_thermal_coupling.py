@@ -8,10 +8,9 @@ import numpy as np
 import taichi as ti
 
 from iceflow2d import IceFlow2D, create_iceflow_config
-from iceflow2d.simulator import ensure_taichi_cuda
-from iceflow2d.thermal import (
+from iceflow2d.simulator import ensure_taichi_cuda, MovingBodyThermal2D
+from iceflow2d.config import (
     LatticeScales,
-    MovingBodyThermal2D,
     PhaseChangeProperties,
     ThermalConfig,
 )
@@ -66,7 +65,7 @@ class ThermalCouplingCudaTests(unittest.TestCase):
     def test_moving_thermal_step_closes_energy_mass_and_melt_momentum(self):
         simulation = IceFlow2D(_moving_coupled_config())
         initial_body_mass = float(simulation.body_mass_lattice[None])
-        initial_energy = simulation.thermal.total_enthalpy_j_m(simulation.wall)
+        initial_energy = simulation.thermal.total_enthalpy_j_m(simulation.wall_mask)
         initial_total_mass = simulation.thermal.mass_energy_totals().total_mass_kg_m
 
         simulation.body_velocity[None] = (0.02, -0.01)
@@ -80,7 +79,7 @@ class ThermalCouplingCudaTests(unittest.TestCase):
         self.assertGreaterEqual(float(temperature.min()), -1.0e-9)
         self.assertLessEqual(float(temperature.max()), 90.0 + 1.0e-8)
 
-        final_energy = simulation.thermal.total_enthalpy_j_m(simulation.wall)
+        final_energy = simulation.thermal.total_enthalpy_j_m(simulation.wall_mask)
         boundary_heat = float(simulation.thermal.boundary_heat_input_j_m[None])
         self.assertAlmostEqual(
             final_energy - initial_energy, boundary_heat, delta=1.0e-8
@@ -89,8 +88,8 @@ class ThermalCouplingCudaTests(unittest.TestCase):
         self.assertAlmostEqual(final_total_mass, initial_total_mass, delta=2.0e-11)
         melted_volume = (
             (initial_body_mass - float(simulation.body_mass_lattice[None]))
-            * simulation.cfg.rho_water
-            / simulation.cfg.rho_ice
+            * simulation.config.rho_water
+            / simulation.config.rho_ice
         )
         added_water = float(simulation.water_volume_current[None]) - float(
             simulation.phase_change_initial_water_volume[None]
@@ -98,7 +97,7 @@ class ThermalCouplingCudaTests(unittest.TestCase):
         self.assertAlmostEqual(
             added_water,
             0.917 * melted_volume,
-            delta=simulation.cfg.volume_projection_tolerance
+            delta=simulation.config.volume_projection_tolerance
             * float(simulation.water_volume_target[None]),
         )
 
@@ -146,16 +145,16 @@ class ThermalCouplingCudaTests(unittest.TestCase):
     def test_water_aperture_transfer_is_volume_and_energy_conservative(self):
         simulation = IceFlow2D(_moving_coupled_config())
         thermal = simulation.thermal
-        phase = simulation.phi.to_numpy()
-        wall = simulation.wall.to_numpy()
-        solid = simulation.solid.to_numpy()
+        phase = simulation.water_phase.to_numpy()
+        wall = simulation.wall_mask.to_numpy()
+        solid = simulation.solid_mask.to_numpy()
         volume_before = thermal.water_volume_m2.to_numpy()
         energy_before = thermal.water_sensible_energy.to_numpy()
 
         donors = np.argwhere(
             (wall == 0) & (solid == 0) & (phase >= 0.99) & (volume_before > 0.0)
         )
-        cutoff = simulation.cfg.volume_projection_interface_cutoff
+        cutoff = simulation.config.volume_projection_interface_cutoff
         receivers = np.argwhere(
             (wall == 0) & (solid == 0) & (phase <= cutoff) & (volume_before == 0.0)
         )
@@ -165,10 +164,10 @@ class ThermalCouplingCudaTests(unittest.TestCase):
         receiver = tuple(int(value) for value in receivers[0])
         phase[donor] = 0.0
         phase[receiver] = 0.49
-        simulation.phi.from_numpy(phase.astype(np.float32))
+        simulation.water_phase.from_numpy(phase.astype(np.float32))
 
         thermal.synchronize_water_aperture(
-            simulation.phi, simulation.wall, simulation.solid
+            simulation.water_phase, simulation.wall_mask, simulation.solid_mask
         )
 
         volume_after = thermal.water_volume_m2.to_numpy()
@@ -218,13 +217,14 @@ class LocalThermalRemapCudaTests(unittest.TestCase):
         solid = ti.field(ti.i8, shape=(nx, ny))
         origin = ti.Vector.field(2, ti.f32, shape=())
         angle = ti.field(ti.f32, shape=())
+        origin[None] = (4.5, 4.5)
         mask = np.ones((nx, ny), dtype=np.int8)
         mask[1:-1, 1:-1] = 0
         wall.from_numpy(mask)
         phase.fill(0.8)  # Leave geometric capacity for the melt water.
         solid[4, 4] = 1
         thermal.initialize(phase, wall, solid)
-        thermal.world_body_indicator[4, 4] = 1.0
+        thermal.world_body_solid_fraction[4, 4] = 1.0
         return thermal, phase, wall, solid, origin, angle
 
     def test_cold_refill_and_rising_hot_surface_keep_their_local_temperatures(self):
@@ -328,9 +328,10 @@ class LocalThermalRemapCudaTests(unittest.TestCase):
             - initial.initial_body_mass_kg_m
             * (props.latent_heat_j_kg + 10.0 * props.specific_heat_ice_j_kg_k)
         ) / (initial.total_mass_kg_m * props.specific_heat_water_j_kg_k)
-        actual_temperature = np.sum(
-            thermal.water_temperature.to_numpy() * water_volume
-        ) / water_volume.sum()
+        actual_temperature = (
+            np.sum(thermal.water_temperature.to_numpy() * water_volume)
+            / water_volume.sum()
+        )
         self.assertAlmostEqual(actual_temperature, expected_temperature, delta=1.0e-7)
 
     def test_insulated_bath_cannot_melt_more_ice_than_its_available_heat(self):

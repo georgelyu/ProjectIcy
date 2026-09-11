@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
 
 from iceflow2d.config import IceFlowConfig, create_iceflow_config  # noqa: E402
 from iceflow2d import reporting  # noqa: E402
-from iceflow2d.thermal import (  # noqa: E402
+from iceflow2d.config import (  # noqa: E402
     LatticeScales,
     PhaseChangeProperties,
     ThermalBoundarySet,
@@ -497,21 +497,24 @@ def _capture_snapshot(
     synchronize = getattr(simulation, "synchronize_diagnostics", None)
     if callable(synchronize):
         synchronize()
+    reducer = getattr(simulation.thermal, "mass_energy_totals", None)
+    thermal_totals = reducer() if callable(reducer) else None
     coupled = reporting._capture_snapshot(
         simulation,
         initial_total_enthalpy_j_m=initial_total_enthalpy_j_m,
         initial_solid_volume_cells=initial_solid_volume_cells,
+        thermal_totals=thermal_totals,
     )
-    scales = LatticeScales.from_iceflow_config(simulation.cfg)
+    scales = LatticeScales.from_iceflow_config(simulation.config)
     center = _vector_diagnostic(
         simulation,
         "body_center",
-        default=tuple(float(value) for value in simulation.cfg.ice_initial_center),
+        default=tuple(float(value) for value in simulation.config.ice_initial_center),
     )
     velocity = _vector_diagnostic(
         simulation,
         "body_velocity",
-        default=tuple(float(value) for value in simulation.cfg.ice_initial_velocity),
+        default=tuple(float(value) for value in simulation.config.ice_initial_velocity),
     )
     solid_center_local = _vector_diagnostic(
         simulation,
@@ -538,7 +541,9 @@ def _capture_snapshot(
         default=(0.0, 0.0),
     )
     fallback_mass = (
-        coupled.solid_volume_cells * simulation.cfg.rho_ice / simulation.cfg.rho_water
+        coupled.solid_volume_cells
+        * simulation.config.rho_ice
+        / simulation.config.rho_water
     )
     body_mass_lattice = _scalar_diagnostic(
         simulation,
@@ -546,7 +551,7 @@ def _capture_snapshot(
         "body_mass",
         default=fallback_mass,
     )
-    initial_mass = float(simulation.cfg.ice_mass_lattice)
+    initial_mass = float(simulation.config.ice_mass_lattice)
     body_inertia_lattice = _scalar_diagnostic(
         simulation,
         "body_inertia_lattice",
@@ -554,7 +559,7 @@ def _capture_snapshot(
         default=(
             0.0
             if initial_mass <= 0.0
-            else simulation.cfg.ice_inertia_lattice
+            else simulation.config.ice_inertia_lattice
             * max(0.0, body_mass_lattice)
             / initial_mass
         ),
@@ -575,41 +580,39 @@ def _capture_snapshot(
     angle = _scalar_diagnostic(
         simulation,
         "body_angle",
-        default=float(simulation.cfg.ice_initial_angle),
+        default=float(simulation.config.ice_initial_angle),
     )
     angular_velocity_lattice = _scalar_diagnostic(
         simulation,
         "body_angular_velocity",
-        default=float(simulation.cfg.ice_initial_angular_velocity),
+        default=float(simulation.config.ice_initial_angular_velocity),
     )
-    dx = float(simulation.cfg.dx)
-    rho_water = float(simulation.cfg.rho_water)
+    dx = float(simulation.config.dx)
+    rho_water = float(simulation.config.rho_water)
     body_mass_kg_m = body_mass_lattice * rho_water * dx * dx
     fallback_total_mass = body_mass_kg_m + (
         max(0.0, coupled.water_volume_current_cells) * rho_water * dx * dx
     )
-    thermal_total_mass = _thermal_total_mass_kg_m(
-        simulation,
-        default=fallback_total_mass,
+    thermal_total_mass = (
+        float(thermal_totals.total_mass_kg_m)
+        if thermal_totals is not None
+        else _thermal_total_mass_kg_m(simulation, default=fallback_total_mass)
     )
     thermal_initial_total_mass = (
         thermal_total_mass
         if initial_total_mass_kg_m is None
         else float(initial_total_mass_kg_m)
     )
-    thermal = simulation.thermal
-    if hasattr(thermal, "water_volume_m2"):
-        water_volume = thermal.water_volume_m2.to_numpy()
-        water_energy = thermal.water_sensible_energy.to_numpy()
-        water_mass = float(np.sum(water_volume)) * rho_water
-        mean_temperature = simulation.cfg.thermal.properties.melting_temperature_c
-        if water_mass > 0.0:
-            mean_temperature += float(np.sum(water_energy)) / (
-                water_mass
-                * simulation.cfg.thermal.properties.specific_heat_water_j_kg_k
+    mean_temperature = simulation.config.thermal.initial_water_temperature_c
+    if thermal_totals is not None and hasattr(
+        thermal_totals, "water_sensible_energy_j_m"
+    ):
+        mean_temperature = simulation.config.thermal.properties.melting_temperature_c
+        if thermal_totals.water_mass_kg_m > 0.0:
+            mean_temperature += thermal_totals.water_sensible_energy_j_m / (
+                thermal_totals.water_mass_kg_m
+                * simulation.config.thermal.properties.specific_heat_water_j_kg_k
             )
-    else:
-        mean_temperature = simulation.cfg.thermal.initial_water_temperature_c
     return FallingMeltingSnapshot(
         coupled=coupled,
         body_active=body_active,
@@ -781,9 +784,7 @@ def write_fields_npz(
 ) -> None:
     """Write the common fields plus synchronized moving-body time series."""
 
-    reporting.write_fields_npz(path, config, snapshots)  # type: ignore[arg-type]
-    with np.load(path) as archive:
-        arrays = {name: archive[name] for name in archive.files}
+    arrays = reporting.snapshot_arrays(config, snapshots)
     arrays.update(
         body_active=np.asarray([item.body_active for item in snapshots], dtype=np.int8),
         body_center_m=np.asarray(
@@ -991,39 +992,48 @@ def _sequence_metadata(
     temperature: reporting.TemperatureSequenceSummary | None,
 ) -> dict[str, Any]:
     return {
-        "velocity": None
-        if velocity is None
-        else {
-            "directory": velocity.frame_directory,
-            "pattern": velocity.frame_pattern,
-            "frames": velocity.frame_count,
-            "animation": velocity.animation,
-            "units": "m/s",
-            "observed_max": velocity.observed_max_m_s,
-            "color_max": velocity.color_max_m_s,
-        },
-        "vorticity": None
-        if vorticity is None
-        else {
-            "directory": vorticity.frame_directory,
-            "pattern": vorticity.frame_pattern,
-            "frames": vorticity.frame_count,
-            "animation": vorticity.animation,
-            "units": "s^-1",
-            "observed_abs_max": vorticity.observed_abs_max_s_1,
-            "color_abs_max": vorticity.color_abs_max_s_1,
-        },
-        "temperature": None
-        if temperature is None
-        else {
-            "directory": temperature.frame_directory,
-            "pattern": temperature.frame_pattern,
-            "frames": temperature.frame_count,
-            "animation": temperature.animation,
-            "units": "degC",
-            "observed_range": [temperature.observed_min_c, temperature.observed_max_c],
-            "color_range": [temperature.color_min_c, temperature.color_max_c],
-        },
+        "velocity": (
+            None
+            if velocity is None
+            else {
+                "directory": velocity.frame_directory,
+                "pattern": velocity.frame_pattern,
+                "frames": velocity.frame_count,
+                "animation": velocity.animation,
+                "units": "m/s",
+                "observed_max": velocity.observed_max_m_s,
+                "color_max": velocity.color_max_m_s,
+            }
+        ),
+        "vorticity": (
+            None
+            if vorticity is None
+            else {
+                "directory": vorticity.frame_directory,
+                "pattern": vorticity.frame_pattern,
+                "frames": vorticity.frame_count,
+                "animation": vorticity.animation,
+                "units": "s^-1",
+                "observed_abs_max": vorticity.observed_abs_max_s_1,
+                "color_abs_max": vorticity.color_abs_max_s_1,
+            }
+        ),
+        "temperature": (
+            None
+            if temperature is None
+            else {
+                "directory": temperature.frame_directory,
+                "pattern": temperature.frame_pattern,
+                "frames": temperature.frame_count,
+                "animation": temperature.animation,
+                "units": "degC",
+                "observed_range": [
+                    temperature.observed_min_c,
+                    temperature.observed_max_c,
+                ],
+                "color_range": [temperature.color_min_c, temperature.color_max_c],
+            }
+        ),
     }
 
 
@@ -1271,7 +1281,7 @@ def _run_case(
     simulation = IceFlow2D(config)
     scales = LatticeScales.from_iceflow_config(config)
     initial_total_enthalpy = float(
-        simulation.thermal.total_enthalpy_j_m(simulation.wall)
+        simulation.thermal.total_enthalpy_j_m(simulation.wall_mask)
     )
     initial_solid_volume = float(simulation.phase_change_solid_volume_cells())
     initial = _capture_snapshot(

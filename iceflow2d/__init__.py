@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .config import IceFlowConfig, create_iceflow_config
-from .thermal import (
+from .config import (
     LatticeScales,
     MovingBodyThermalScheme,
     MovingBodyThermalTotals,

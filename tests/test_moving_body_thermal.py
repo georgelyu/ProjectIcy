@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 from iceflow2d.examples import coupled_falling_ice_melting_2d as example
 from iceflow2d.simulator import IceFlow2D
-from iceflow2d.thermal import (
+from iceflow2d.config import (
     LatticeScales,
     PhaseChangeProperties,
     ThermalBoundary,
@@ -36,13 +36,13 @@ class _ThermalAdvanceStub:
 class _FastThermalSimulatorStub:
     def __init__(self, stability_check_enabled):
         self._thermal_stability_check_enabled = stability_check_enabled
-        self._prepare_thermal_advection_velocity = Mock()
+        self._measure_water_outflow_rate = Mock()
         self._check_thermal_advection_stability = Mock()
-        self.thermal_max_velocity_l1 = _ScalarFieldStub(0.25)
-        self.thermal_advection_velocity = object()
-        self.phi = object()
-        self.wall = object()
-        self.solid = object()
+        self.maximum_water_outflow_rate_lattice = _ScalarFieldStub(0.25)
+        self.physical_velocity_lattice = object()
+        self.water_phase = object()
+        self.wall_mask = object()
+        self.solid_mask = object()
         self._time_step_s = 0.1
         self.thermal = _ThermalAdvanceStub()
 
@@ -87,13 +87,13 @@ class ThermalStabilitySwitchTests(unittest.TestCase):
 
         IceFlow2D._advance_moving_thermal_fast(simulation, target_step=7)
 
-        simulation._prepare_thermal_advection_velocity.assert_called_once_with()
+        simulation._measure_water_outflow_rate.assert_called_once_with()
         simulation._check_thermal_advection_stability.assert_not_called()
         self.assertEqual(len(simulation.thermal.calls), 1)
         args, kwargs = simulation.thermal.calls[0]
         self.assertEqual(args[0], 0.1)
-        self.assertIs(args[1], simulation.thermal_advection_velocity)
-        self.assertEqual(kwargs["max_velocity_lattice_l1"], 0.25)
+        self.assertIs(args[1], simulation.physical_velocity_lattice)
+        self.assertEqual(kwargs["maximum_outflow_rate_lattice"], 0.25)
 
     def test_fast_path_runs_stability_scan_when_self_flag_is_enabled(self):
         simulation = _FastThermalSimulatorStub(stability_check_enabled=True)
