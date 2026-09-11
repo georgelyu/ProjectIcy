@@ -1,16 +1,15 @@
-"""Configuration for the 2D ice--two-phase-flow and optional thermal model."""
+"""Configuration for coupled falling-ice melting."""
 
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .thermal import ThermalConfig
 
-RigidBoundaryScheme = Literal["unified", "halfway"]
-DEFAULT_REFERENCE_VELOCITY_M_S = 1.0e-1
+DEFAULT_REFERENCE_VELOCITY_M_S = 4.0
 
 
 def _finite(name: str, value: float) -> float:
@@ -27,17 +26,33 @@ def _positive(name: str, value: float) -> float:
     return number
 
 
+def _default_thermal_config() -> ThermalConfig:
+    """Build the hot-bath body-ALE defaults without importing Taichi eagerly."""
+
+    from .thermal import ThermalBoundary, ThermalBoundarySet, ThermalConfig
+
+    hot_wall = ThermalBoundary.dirichlet(90.0)
+    return ThermalConfig(
+        boundaries=ThermalBoundarySet(
+            left=hot_wall,
+            right=hot_wall,
+            bottom=hot_wall,
+            top=ThermalBoundary.adiabatic(),
+        ),
+        initial_water_temperature_c=90.0,
+        initial_ice_temperature_c=0.0,
+        initial_air_temperature_c=20.0,
+        update_interval_lbm_steps=8,
+        buoyancy_reference_temperature_c=90.0,
+    )
+
+
 @dataclass(slots=True)
 class IceFlowConfig:
-    """Validated inputs for a sharp-boundary rigid-ice dam-break run.
+    """Validated inputs for one body-ALE falling-and-melting ice run."""
 
-    The model contains no MPM or porosity/epsilon.  Thermal phase change is an
-    optional fixed-body coupling; leaving ``thermal=None`` preserves the
-    original non-thermal solver path.
-    """
-
-    resolution: tuple[int, int] = (600, 300)
-    dx: float = 0.01
+    resolution: tuple[int, int] = (200, 400)
+    dx: float = 1.25e-4
     # Fixed physical speed represented by 0.1 lattice cells per LBM step.
     reference_velocity: float = DEFAULT_REFERENCE_VELOCITY_M_S
 
@@ -45,58 +60,47 @@ class IceFlowConfig:
     rho_water: float = 1000.0
     rho_air: float = 1.25
     rho_ice: float = 917.0
-    viscosity_water: float = 1.0e-4
-    viscosity_air: float = 1.0e-2
+    viscosity_water: float = 1.0e-6
+    viscosity_air: float = 1.5e-5
     sigma: float = 0.072
     gravity: tuple[float, float] = (0.0, -9.8)
     cd: float = 0.1
     interface_width: float = 5.0
     mobility: float = 0.1
     phase_warmup_steps: int = 500
-    thermal: ThermalConfig | None = None
+    thermal: ThermalConfig = field(default_factory=_default_thermal_config)
     # Build a frozen hydrostatic reference, initialize the fluid at rest, and
     # complete dynamic momentum exchange with the matching equilibrium
     # traction.  This is one well-balanced formulation, not an independently
     # added Archimedes force.  No sub-grid quadrature is used.
-    well_balanced_hydrostatics: bool = False
+    well_balanced_hydrostatics: bool = True
     # Liang et al.'s pressure--momentum distribution is used for the
     # large-density-ratio phase-field flow.  Material density remains rho(phi);
     # the populations carry rho*u and pressure rather than imposing the
     # isothermal relation p=cs^2*rho across the air--water jump.
 
-    # Dam-break and rigid-body geometry, in lattice-cell coordinates.
-    water_width_fraction: float = 0.25
-    water_height_fraction: float = 2.0 / 3.0
-    ice_width_fraction: float = 0.15
-    ice_height_fraction: float = 0.30
-    ice_base_y_cells: float = 3.0
+    # Falling-ice geometry in lattice-cell coordinates.
+    water_width_fraction: float = 0.9875
+    water_height_fraction: float = 0.60125
+    ice_width_fraction: float = 0.3225
+    ice_height_fraction: float = 0.16125
+    ice_base_y_cells: float = 254.6672141068609
     boundary_cells: int = 3
 
-    # One rigid ice rectangle, either freely moving or held at its initial pose.
+    # Initial state of the freely moving rigid ice rectangle.
     ice_initial_velocity: tuple[float, float] = (0.0, 0.0)
-    ice_initial_angle: float = 0.0
+    ice_initial_angle: float = math.radians(5.0)
     ice_initial_angular_velocity: float = 0.0
+    # Kept in serialized metadata for compatibility; alternate values are no
+    # longer accepted by the specialized solver.
     ice_fixed: bool = False
-    rigid_boundary_scheme: RigidBoundaryScheme = "unified"
+    rigid_boundary_scheme: Literal["unified"] = "unified"
 
-    # Rigid-wall collision controls.  Speeds are lattice speeds per LBM step;
-    # the caps preserve the low-Mach operating range.
-    # Hydrodynamic drag is already resolved by cut-link momentum exchange.
-    # Avoid artificial per-step loss of rigid translational momentum by
-    # default; values below one remain available only as an explicitly
-    # requested numerical stabilizer.
+    # Hydrodynamic drag is resolved by cut-link momentum exchange.  Damping
+    # remains an optional, explicitly configured numerical model for the
+    # rigid-body state.
     linear_damping: float = 1.0
     angular_damping: float = 0.9990
-    max_ice_speed: float = 0.08
-    max_ice_angular_speed: float = 1.0e-3
-    wall_restitution: float = 0.10
-    wall_friction: float = 0.10
-    # Coulomb coefficient for the smooth/wet floor.  This deliberately small
-    # baseline adds measurable contact friction while allowing dam-break flow
-    # to make the ice slide.  It is a scenario parameter, not a universal
-    # ice--substrate material constant.
-    bottom_wall_friction: float = 0.03
-
     # The conservative phase projection is an all-or-nothing constraint, not
     # a relaxation.  The tolerance is relative to max(1, target volume).  A
     # correction that would move the diffuse interface farther than the
@@ -105,21 +109,27 @@ class IceFlowConfig:
     # f64 is used for all global reductions and root arithmetic, while phi
     # itself remains f32; this relative tolerance covers that final storage
     # quantization (about 1e-6 cells in the small regression lattice).
-    volume_projection_tolerance: float = 1.0e-9
+    volume_projection_tolerance: float = 1.0e-8
     # Outside this resolved diffuse-interface range, values are numerical
     # bulk tails and are canonicalized to the exact pure phases before the
     # global constraint is solved.
     volume_projection_interface_cutoff: float = 1.0e-3
     volume_projection_max_shift: float = 0.50
     volume_projection_max_iterations: int = 64
+    # Optional endpoint of a conservative shear-relaxation envelope.  The
+    # effective floor is interpolated linearly from tau=1/2 in pure water to
+    # this value in pure air, and reaches the same endpoint in the one-cell
+    # neighborhood of sharp ice cut links.  Only deviatoric stress modes are
+    # affected; ``None`` disables the floor.
+    air_interface_relaxation_time: float | None = 0.8
 
-    output_dir: str = "outputs/iceflow2d/coupled_ice"
+    output_dir: str = "outputs/iceflow2d/coupled_falling_ice_melting_2d"
     show_gui: bool = False
     save_npz: bool = False
 
     def __post_init__(self) -> None:
-        if self.rigid_boundary_scheme not in ("unified", "halfway"):
-            raise ValueError("rigid_boundary_scheme must be 'unified' or 'halfway'")
+        if self.rigid_boundary_scheme != "unified":
+            raise ValueError("rigid_boundary_scheme must be 'unified'")
 
         try:
             nx, ny = self.resolution
@@ -156,16 +166,12 @@ class IceFlowConfig:
         self.phase_warmup_steps = int(self.phase_warmup_steps)
         if self.phase_warmup_steps < 0:
             raise ValueError("phase_warmup_steps must be non-negative")
-        if not isinstance(self.well_balanced_hydrostatics, bool):
-            raise ValueError("well_balanced_hydrostatics must be a boolean")
-        if self.thermal is not None:
-            # Keep config.py loadable as a standalone file for the existing
-            # geometry-only examples; the package-relative thermal module is
-            # needed only when thermal coupling is actually requested.
-            from .thermal import ThermalConfig
+        if self.well_balanced_hydrostatics is not True:
+            raise ValueError("well_balanced_hydrostatics must be True")
+        from .thermal import ThermalConfig
 
-            if not isinstance(self.thermal, ThermalConfig):
-                raise TypeError("thermal must be a ThermalConfig or None")
+        if not isinstance(self.thermal, ThermalConfig):
+            raise TypeError("thermal must be a ThermalConfig")
 
         _positive("dx", self.dx)
         self.reference_velocity = _positive(
@@ -208,41 +214,14 @@ class IceFlowConfig:
         )
         self.ice_initial_velocity = initial_velocity
         _finite("ice_initial_angle", self.ice_initial_angle)
-        initial_omega = _finite(
-            "ice_initial_angular_velocity", self.ice_initial_angular_velocity
-        )
-        if not isinstance(self.ice_fixed, bool):
-            raise ValueError("ice_fixed must be a boolean")
-        if self.ice_fixed and (
-            math.hypot(*initial_velocity) > 0.0 or abs(initial_omega) > 0.0
-        ):
-            raise ValueError(
-                "fixed ice must have zero initial linear and angular velocity"
-            )
+        _finite("ice_initial_angular_velocity", self.ice_initial_angular_velocity)
+        if self.ice_fixed is not False:
+            raise ValueError("ice_fixed must be False")
 
         for name in ("linear_damping", "angular_damping"):
             value = _finite(name, getattr(self, name))
             if not 0.0 < value <= 1.0:
                 raise ValueError(f"{name} must be in (0, 1]")
-        max_speed = _positive("max_ice_speed", self.max_ice_speed)
-        max_omega = _positive("max_ice_angular_speed", self.max_ice_angular_speed)
-        if max_speed > 0.20:
-            raise ValueError("max_ice_speed must not exceed 0.20 lattice cells/step")
-        if math.hypot(*initial_velocity) > max_speed:
-            raise ValueError("ice_initial_velocity exceeds max_ice_speed")
-        if abs(initial_omega) > max_omega:
-            raise ValueError(
-                "ice_initial_angular_velocity exceeds max_ice_angular_speed"
-            )
-        restitution = _finite("wall_restitution", self.wall_restitution)
-        friction = _finite("wall_friction", self.wall_friction)
-        bottom_friction = _finite("bottom_wall_friction", self.bottom_wall_friction)
-        if not 0.0 <= restitution <= 1.0:
-            raise ValueError("wall_restitution must be in [0, 1]")
-        if not 0.0 <= friction <= 1.0:
-            raise ValueError("wall_friction must be in [0, 1]")
-        if not 0.0 <= bottom_friction <= 1.0:
-            raise ValueError("bottom_wall_friction must be in [0, 1]")
         _positive("volume_projection_tolerance", self.volume_projection_tolerance)
         interface_cutoff = _finite(
             "volume_projection_interface_cutoff",
@@ -262,6 +241,16 @@ class IceFlowConfig:
         )
         if self.volume_projection_max_iterations < 1:
             raise ValueError("volume_projection_max_iterations must be positive")
+        if self.air_interface_relaxation_time is not None:
+            if isinstance(self.air_interface_relaxation_time, bool):
+                raise ValueError("air_interface_relaxation_time must be a real number")
+            air_interface_tau = _finite(
+                "air_interface_relaxation_time",
+                self.air_interface_relaxation_time,
+            )
+            if not 0.5 < air_interface_tau <= 2.0:
+                raise ValueError("air_interface_relaxation_time must be in (0.5, 2]")
+            self.air_interface_relaxation_time = air_interface_tau
 
         if (
             self.water_width <= self.boundary_cells
@@ -287,64 +276,50 @@ class IceFlowConfig:
                 raise ValueError(
                     "a two-phase hydrostatic reference requires vertical gravity"
                 )
-        # Check the initially rotated rectangle against the container.  The
-        # default bottom is exactly y=3, matching the standard scenario.
+        # Check the initially rotated rectangle against the physical walls.
         c = abs(math.cos(float(self.ice_initial_angle)))
         s = abs(math.sin(float(self.ice_initial_angle)))
         extent_x = c * self.ice_width * 0.5 + s * self.ice_height * 0.5
         extent_y = s * self.ice_width * 0.5 + c * self.ice_height * 0.5
         cx, cy = self.ice_initial_center
-        if (
-            cx - extent_x < self.boundary_cells
-            or cx + extent_x > nx - self.boundary_cells
-        ):
-            raise ValueError("initial ice rectangle overlaps a side wall")
-        if (
-            cy - extent_y < self.boundary_cells - 1.0e-9
-            or cy + extent_y > ny - self.boundary_cells
-        ):
-            raise ValueError("initial ice rectangle overlaps the bottom or top wall")
+        lower_contact = float(self.boundary_cells)
+        upper_x_contact = float(nx - self.boundary_cells)
+        upper_y_contact = float(ny - self.boundary_cells)
+        if cx - extent_x < lower_contact or cx + extent_x > upper_x_contact:
+            raise ValueError(
+                "initial ice rectangle overlaps a side wall"
+            )
+        if cy - extent_y < lower_contact - 1.0e-9 or cy + extent_y > upper_y_contact:
+            raise ValueError(
+                "initial ice rectangle overlaps the bottom or top wall"
+            )
 
-        if self.thermal is not None:
-            if not self.ice_fixed:
-                raise ValueError(
-                    "the first thermal coupling requires ice_fixed=True; "
-                    "moving melting ice needs conservative thermal remapping"
-                )
-            if not self.thermal.water_air_interface_adiabatic:
-                raise ValueError(
-                    "the first LBM thermal coupling requires an adiabatic "
-                    "water/air thermal interface"
-                )
-            if self.water_height >= ny - self.boundary_cells:
-                raise ValueError(
-                    "thermal phase change requires a water/air free surface for "
-                    "continuous phase-volume projection"
-                )
+        if self.thermal.moving_body_scheme != "body_ale":
+            raise ValueError("thermal moving_body_scheme must be 'body_ale'")
+        if not self.thermal.water_air_interface_adiabatic:
+            raise ValueError("thermal water/air interface must be adiabatic")
+        if self.water_height >= ny - self.boundary_cells:
+            raise ValueError(
+                "thermal phase change requires a water/air free surface for "
+                "continuous phase-volume projection"
+            )
 
         # Central-moment collision requires finite tau > 0.5.  Large physical
         # viscosities can legitimately map to tau > 2 when a deliberately low
-        # fixed reference velocity is used, so no arbitrary upper cap is
-        # imposed here.  The body-surface Mach cap remains independent.
+        # fixed reference velocity is used, so no arbitrary upper bound on
+        # tau is imposed here.
         for name, viscosity in (
             ("viscosity_water", float(self.viscosity_water)),
             ("viscosity_air", float(self.viscosity_air)),
         ):
             nu_lattice = (
-                viscosity
-                * 0.1
-                / (float(self.dx) * float(self.reference_velocity))
+                viscosity * 0.1 / (float(self.dx) * float(self.reference_velocity))
             )
             tau = 0.5 + 3.0 * nu_lattice
             if not math.isfinite(tau) or tau <= 0.5:
                 raise ValueError(
                     f"{name} gives an unstable lattice relaxation time ({tau})"
                 )
-        radius = math.hypot(self.ice_width * 0.5, self.ice_height * 0.5)
-        if max_speed + max_omega * radius > 0.25:
-            raise ValueError(
-                "rigid-body caps permit a boundary speed above 0.25 lattice cells/step"
-            )
         if not isinstance(self.output_dir, str) or not self.output_dir.strip():
             raise ValueError("output_dir must be a non-empty string")
 
@@ -374,9 +349,8 @@ class IceFlowConfig:
 
     @property
     def ice_initial_center(self) -> tuple[float, float]:
-        # Align the analytic rectangle with cell centers.  This equals
-        # (300, 48) for the default 90x90 body, and avoids an extra raster
-        # column when a custom resolution produces an odd ice width.
+        # Align the analytic rectangle with cell centers and avoid an extra
+        # raster column when a custom resolution produces an odd ice width.
         left_cell = (self.nx - self.ice_width) // 2
         return (
             left_cell + 0.5 * self.ice_width,

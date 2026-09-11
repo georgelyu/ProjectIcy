@@ -1,6 +1,6 @@
-"""Package entry point for the rigid-ice dam-break example."""
+"""Package entry point for coupled falling-ice melting."""
 
-from .examples.dam_break_2d import main, parse_args
+from .examples.coupled_falling_ice_melting_2d import main, parse_args
 
 __all__ = ["main", "parse_args"]
 

@@ -1,24 +1,18 @@
-"""IceFlow2D flow solver and CPU thermal validation utilities."""
+"""Coupled falling-ice melting solver."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .config import IceFlowConfig, RigidBoundaryScheme, create_iceflow_config
-from .stefan2d import Stefan2DConfig, Stefan2DSnapshot, Stefan2DSolver
+from .config import IceFlowConfig, create_iceflow_config
 from .thermal import (
     LatticeScales,
+    MovingBodyThermalScheme,
+    MovingBodyThermalTotals,
     PhaseChangeProperties,
     ThermalBoundary,
     ThermalBoundarySet,
     ThermalConfig,
-    WaterBuoyancyModel,
-    phase_change_active_water_target_cells,
-    phase_change_enthalpy_numpy,
-    phase_change_water_target_cells,
-    recover_temperature_and_liquid_fraction_numpy,
-    water_density_anomaly_ratio_to_reference,
-    water_density_ratio_to_reference,
 )
 
 if TYPE_CHECKING:
@@ -27,32 +21,19 @@ if TYPE_CHECKING:
 __all__ = [
     "IceFlowConfig",
     "LatticeScales",
+    "MovingBodyThermalScheme",
+    "MovingBodyThermalTotals",
     "PhaseChangeProperties",
-    "RigidBoundaryScheme",
     "IceFlow2D",
-    "Stefan2DConfig",
-    "Stefan2DSnapshot",
-    "Stefan2DSolver",
     "ThermalBoundary",
     "ThermalBoundarySet",
     "ThermalConfig",
-    "WaterBuoyancyModel",
     "create_iceflow_config",
-    "phase_change_active_water_target_cells",
-    "phase_change_enthalpy_numpy",
-    "phase_change_water_target_cells",
-    "recover_temperature_and_liquid_fraction_numpy",
-    "water_density_anomaly_ratio_to_reference",
-    "water_density_ratio_to_reference",
 ]
 
 
 def __getattr__(name: str):
-    """Load the CUDA solver only when it is actually requested.
-
-    This keeps the NumPy-only Stefan validation usable on machines without a
-    Taichi/CUDA runtime while preserving ``from iceflow2d import IceFlow2D``.
-    """
+    """Load Taichi kernels only when the CUDA solver is requested."""
 
     if name == "IceFlow2D":
         from .simulator import IceFlow2D

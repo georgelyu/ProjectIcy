@@ -1,22 +1,18 @@
-"""2D air--water LBM coupled to a sharp rigid ice body and optional heat.
+"""2D air--water LBM coupled to a falling, melting rigid ice body.
 
 The two distribution functions use pressure--momentum and conservative phase
 central-moment collision operators.  An oriented-box signed-distance field
 excludes ice nodes from the fluid domain, and cut lattice links enforce an
 impermeable rigid boundary.  Link momentum exchange drives the freely moving
-ice body or reports the load on a fixed one.
+ice body.
 
-When ``IceFlowConfig.thermal`` is present, a Taichi finite-volume enthalpy
-component advances temperature and phase change on the same CUDA lattice.
-The first coupled model keeps the ice pose fixed while its phase-fraction
-zero contour changes the sharp LBM boundary.
+A material-frame ALE enthalpy solver keeps ice mass and sensible energy in
+body coordinates, advects world-water volume and sensible energy with paired
+fluxes, and feeds melt mass, energy, and momentum back to the flow and dynamic
+rigid-body mass properties.
 """
 
-import json
 import math
-import sys
-import time
-from pathlib import Path
 
 import numpy as np
 import taichi as ti
@@ -34,70 +30,11 @@ from .lattice import (
     _rho_mix,
     _w,
 )
-from .thermal import EnthalpyFV2D, LatticeScales
+from .thermal import LatticeScales, MovingBodyThermal2D
 
 
-def _format_duration(seconds):
-    if seconds is None or not math.isfinite(seconds):
-        return "--:--"
-    total_seconds = max(0, int(seconds + 0.5))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
-
-
-class _TerminalProgress:
-    """Small dependency-free progress display, matching the existing demo."""
-
-    def __init__(self, total, *, enabled, stream=None, width=24):
-        self.total = max(0, int(total))
-        self.enabled = bool(enabled) and self.total > 0
-        self.stream = stream if stream is not None else sys.stderr
-        self.width = max(1, int(width))
-        self.completed = 0
-        self._started_at = None
-        self._last_line_length = 0
-        self._closed = False
-
-    def __enter__(self):
-        if self.enabled:
-            self._started_at = time.monotonic()
-            self._render(self._started_at)
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-
-    def advance(self):
-        self.completed = min(self.total, self.completed + 1)
-        if self.enabled:
-            self._render(time.monotonic())
-
-    def close(self):
-        if self.enabled and not self._closed:
-            self.stream.write("\n")
-            self.stream.flush()
-        self._closed = True
-
-    def _render(self, now):
-        started_at = self._started_at if self._started_at is not None else now
-        elapsed = max(0.0, now - started_at)
-        fraction = self.completed / self.total
-        filled = min(self.width, int(fraction * self.width))
-        bar = "#" * filled + "-" * (self.width - filled)
-        rate = self.completed / elapsed if self.completed > 0 and elapsed > 0 else 0.0
-        eta = (self.total - self.completed) / rate if rate > 0 else None
-        line = (
-            f"Simulating rigid ice [{bar}] {fraction:6.1%} | "
-            f"{self.completed}/{self.total} frames | elapsed {_format_duration(elapsed)} | "
-            f"ETA {_format_duration(eta)}"
-        )
-        padding = " " * max(0, self._last_line_length - len(line))
-        self.stream.write(f"\r{line}{padding}")
-        self.stream.flush()
-        self._last_line_length = len(line)
+_MAX_D2Q9_LATTICE_VELOCITY_L1 = 1.0
+_MAX_D2Q9_BULK_PHASE_POPULATION_L1 = 2.0
 
 
 def ensure_taichi_cuda():
@@ -117,19 +54,26 @@ def ensure_taichi_cuda():
 
 @ti.data_oriented
 class IceFlow2D:
-    """Air--water phase-field LBM with optional fixed-ice phase change."""
+    """CUDA solver for the coupled falling-ice melting scenario."""
 
     def __init__(self, config):
         if not isinstance(config, IceFlowConfig):
             raise TypeError("config must be an IceFlowConfig")
+        if config.thermal is None:
+            raise ValueError("IceFlow2D requires thermal body-ALE coupling")
+        if config.ice_fixed or config.thermal.moving_body_scheme != "body_ale":
+            raise ValueError("IceFlow2D supports only freely moving body-ALE ice")
+        if config.rigid_boundary_scheme != "unified":
+            raise ValueError("IceFlow2D supports only unified cut-link boundaries")
+        if not config.well_balanced_hydrostatics:
+            raise ValueError("IceFlow2D requires well-balanced hydrostatics")
+        if config.thermal.water_buoyancy_model != "linear":
+            raise ValueError("IceFlow2D supports only the linear buoyancy model")
         ensure_taichi_cuda()
         self.cfg = config
         self.nx = int(config.nx)
         self.ny = int(config.ny)
-        self.frame = 0
         self.steps = 0
-        self._use_unified_boundary = config.rigid_boundary_scheme == "unified"
-        self._thermal_enabled = config.thermal is not None
         self.scales = LatticeScales.from_iceflow_config(config)
 
         # Dimensional-to-lattice conversion.
@@ -157,6 +101,10 @@ class IceFlow2D:
             / config.dx
             / config.rho_water
         )
+        configured_interface_tau = config.air_interface_relaxation_time
+        self._air_interface_relaxation_time = (
+            0.5 if configured_interface_tau is None else float(configured_interface_tau)
+        )
         self._body_half_width = 0.5 * float(config.ice_width)
         self._body_half_height = 0.5 * float(config.ice_height)
         self._body_mass = float(config.ice_mass_lattice)
@@ -181,6 +129,11 @@ class IceFlow2D:
         # Allen--Cahn phase distribution.
         self.f = ti.field(ti.f32, shape=shape_q)
         self.f_post = ti.field(ti.f32, shape=shape_q)
+        # Tao et al.'s one-point curved boundary condition needs the
+        # pre-collision non-equilibrium population.  Keep it separate from f:
+        # push streaming overwrites f in place, so reading f from _stream
+        # would otherwise race with a neighboring fluid cell.
+        self.f_pre_collision_neq = ti.field(ti.f32, shape=shape_q)
         self.h = ti.field(ti.f32, shape=shape_q)
         # After phase streaming, h_post is dead until the next phase
         # collision.  Its q=0 and q=1 planes are reused as the two projection
@@ -193,38 +146,101 @@ class IceFlow2D:
         # half-force velocity at the next time level.
         self.fluid_force = ti.Vector.field(2, ti.f32, shape=shape_xy)
         self.p = ti.field(ti.f32, shape=shape_xy)
-        # Hydrostatic fields are absent from configurations that never read
-        # them, so ordinary runs do not reserve their device memory.
-        self.hydrostatic_reference_pressure = None
-        if config.well_balanced_hydrostatics:
-            self.hydrostatic_reference_pressure = ti.field(ti.f32, shape=shape_xy)
-        self.hydrostatic_reference_density = None
-        if config.well_balanced_hydrostatics:
-            self.hydrostatic_reference_density = ti.field(ti.f32, shape=shape_xy)
+        self.hydrostatic_reference_pressure = ti.field(ti.f32, shape=shape_xy)
+        self.hydrostatic_reference_density = ti.field(ti.f32, shape=shape_xy)
 
-        # Static container and dynamic sharp ice geometry.
+        # Static container and the single world signed-distance field.  The
+        # rasterizer fills this field with the current candidate pose; after
+        # the contact transaction, the LBM kernels consume the same field.
         self.wall = ti.field(ti.i8, shape=shape_xy)
         self.solid = ti.field(ti.i8, shape=shape_xy)
         self.sdf = ti.field(ti.f32, shape=shape_xy)
-        self.solid_prev = None
-        if not config.ice_fixed or self._thermal_enabled:
-            self.solid_prev = ti.field(ti.i8, shape=shape_xy)
+        self.solid_prev = ti.field(ti.i8, shape=shape_xy)
 
         # Rigid state and the only load accumulator consumed by integration.
         self.body_center = ti.Vector.field(2, ti.f32, shape=())
         self.body_velocity = ti.Vector.field(2, ti.f32, shape=())
         self.body_angle = ti.field(ti.f32, shape=())
         self.body_angular_velocity = ti.field(ti.f32, shape=())
-        self.hydrodynamic_impulse = None
-        self.hydrodynamic_torque = None
-        if not config.ice_fixed:
-            # Cut-link loads are signed sums with strong cancellation.  CUDA
-            # is free to order global atomics differently as block scheduling
-            # changes, so accumulate these two scalars in f64 and round only
-            # once when the rigid integrator consumes them.  This costs just
-            # twelve extra bytes compared with f32 scalar storage.
-            self.hydrodynamic_impulse = ti.Vector.field(2, ti.f64, shape=())
-            self.hydrodynamic_torque = ti.field(ti.f64, shape=())
+        # Dynamic mass properties let the material-frame thermal path erode
+        # the rigid remnant.
+        self.body_initial_mass_lattice = ti.field(ti.f64, shape=())
+        self.body_mass_lattice = ti.field(ti.f64, shape=())
+        self.body_inertia_lattice = ti.field(ti.f64, shape=())
+        self.body_local_center_of_mass = ti.Vector.field(2, ti.f64, shape=())
+        self.body_reference_origin = ti.Vector.field(2, ti.f32, shape=())
+        self.body_active = ti.field(ti.i8, shape=())
+        self.cumulative_melted_mass_lattice = ti.field(ti.f64, shape=())
+        self.cumulative_melted_momentum_lattice = ti.Vector.field(2, ti.f64, shape=())
+        self.cumulative_fluid_melt_momentum_lattice = ti.Vector.field(
+            2, ti.f64, shape=()
+        )
+        self.cumulative_fluid_melt_carrier_momentum_lattice = ti.Vector.field(
+            2, ti.f64, shape=()
+        )
+        self.cumulative_fluid_melt_correction_momentum_lattice = ti.Vector.field(
+            2, ti.f64, shape=()
+        )
+        self.melt_momentum_residual_lattice = ti.Vector.field(2, ti.f64, shape=())
+        self.cumulative_melted_angular_momentum_lattice = ti.field(ti.f64, shape=())
+        self.cumulative_fluid_melt_angular_momentum_lattice = ti.field(ti.f64, shape=())
+        self.cumulative_fluid_melt_carrier_angular_momentum_lattice = ti.field(
+            ti.f64, shape=()
+        )
+        self.cumulative_fluid_melt_correction_angular_momentum_lattice = ti.field(
+            ti.f64, shape=()
+        )
+        self.melt_angular_momentum_residual_lattice = ti.field(ti.f64, shape=())
+        self.ale_water_residual_cells = ti.field(ti.f64, shape=())
+        self.ale_energy_residual_j_m = ti.field(ti.f64, shape=())
+        self.phase_aperture_water_residual_cells = ti.field(ti.f64, shape=())
+        self.phase_aperture_energy_residual_j_m = ti.field(ti.f64, shape=())
+        self.phase_aperture_capacity_margin_cells = ti.field(ti.f64, shape=())
+        self._body_reduced_mass = ti.field(ti.f64, shape=())
+        self._body_reduced_first_moment = ti.Vector.field(2, ti.f64, shape=())
+        self._body_reduced_inertia_origin = ti.field(ti.f64, shape=())
+        # End-to-end first-moment audit for one moving thermal interval.  The
+        # provisional change includes sharp-node refill and phase-density
+        # lifting; a zero-mass D2Q9 correction then closes it to the momentum
+        # lost by the eroding rigid body.
+        self._thermal_fluid_momentum_before = ti.Vector.field(2, ti.f64, shape=())
+        self._thermal_fluid_momentum_provisional = ti.Vector.field(2, ti.f64, shape=())
+        self._thermal_fluid_momentum_after = ti.Vector.field(2, ti.f64, shape=())
+        self._thermal_body_momentum_before = ti.Vector.field(2, ti.f64, shape=())
+        self._thermal_fluid_angular_momentum_before = ti.field(ti.f64, shape=())
+        self._thermal_fluid_angular_momentum_provisional = ti.field(ti.f64, shape=())
+        self._thermal_fluid_angular_momentum_after = ti.field(ti.f64, shape=())
+        self._thermal_body_angular_momentum_before = ti.field(ti.f64, shape=())
+        self._melt_momentum_correction = ti.Vector.field(2, ti.f64, shape=())
+        self._melt_angular_momentum_correction = ti.field(ti.f64, shape=())
+        self._melt_momentum_source_weight = ti.field(ti.f64, shape=())
+        self._melt_momentum_wet_weight = ti.field(ti.f64, shape=())
+        self._melt_momentum_source_target = ti.field(ti.i32, shape=())
+        self._melt_momentum_wet_target = ti.field(ti.i32, shape=())
+        self._melt_momentum_source_target_max = ti.field(ti.i32, shape=())
+        self._melt_momentum_wet_target_max = ti.field(ti.i32, shape=())
+        self._melt_momentum_weight_first_moment = ti.Vector.field(2, ti.f64, shape=())
+        self._melt_momentum_weight_second_moment = ti.field(ti.f64, shape=())
+        self._melt_momentum_weight_centroid = ti.Vector.field(2, ti.f64, shape=())
+        self._melt_momentum_weight_polar_moment = ti.field(ti.f64, shape=())
+        # For an eroding body, container contact is reconstructed from the
+        # current unclipped sharp world raster rather than the initial rectangle.
+        # The four entries are min-x, max-x, min-y and max-y in the world
+        # orientation but relative to ``body_reference_origin``.
+        self._body_contact_support_extrema = ti.field(ti.f32, shape=4)
+        self._body_contact_geometry_active = ti.field(ti.i8, shape=())
+        # The continuous body coverage is first evaluated without applying
+        # the container mask.  Contact reduction consumes this scratch field
+        # so the same fraction evaluation can be reused by the world
+        # rasterizer; a second evaluation is needed only when projection
+        # changes the accepted pose.
+        self._moving_body_fraction = ti.field(ti.f32, shape=shape_xy)
+        self._body_contact_projection_changed = ti.field(ti.i8, shape=())
+        # Cut-link loads are signed sums with strong cancellation.  CUDA is
+        # free to order global atomics differently as block scheduling
+        # changes, so reduce in f64 and round only at rigid integration.
+        self.hydrodynamic_impulse = ti.Vector.field(2, ti.f64, shape=())
+        self.hydrodynamic_torque = ti.field(ti.f64, shape=())
         # Water-volume constraint and interface-projection state.  It remains
         # constant in the mechanical model and becomes a density-aware target
         # when thermal phase change is enabled.
@@ -232,43 +248,51 @@ class IceFlow2D:
         self.water_volume_current = ti.field(ti.f64, shape=())
         self.water_projection_derivative = ti.field(ti.f64, shape=())
 
-        self.thermal = None
-        self.thermal_enthalpy = None
-        self.temperature = None
-        self.liquid_fraction = None
-        self.phase_change_material = None
-        self.thermal_advection_velocity = None
-        self.thermal_max_velocity_l1 = None
-        self.phase_change_initial_water_volume = None
-        self.phase_change_initial_solid_volume = None
-        self.phase_change_current_solid_volume = None
-        self.phase_change_initial_geometry_volume = None
-        self.phase_change_current_geometry_volume = None
         self._thermal_lbm_steps_pending = 0
-        if self._thermal_enabled:
-            self.thermal = EnthalpyFV2D(
-                self.nx,
-                self.ny,
-                config.thermal,
-                self.scales,
-                density_water_kg_m3=config.rho_water,
-                density_air_kg_m3=config.rho_air,
-                density_ice_kg_m3=config.rho_ice,
-            )
-            self.thermal_enthalpy = self.thermal.enthalpy_j_m3
-            self.temperature = self.thermal.temperature_c
-            self.liquid_fraction = self.thermal.liquid_fraction
-            self.phase_change_material = self.thermal.ice_material
-            self.thermal_advection_velocity = ti.Vector.field(2, ti.f32, shape=shape_xy)
-            self.thermal_max_velocity_l1 = ti.field(ti.f32, shape=())
-            self.phase_change_initial_water_volume = ti.field(ti.f64, shape=())
-            self.phase_change_initial_solid_volume = ti.field(ti.f64, shape=())
-            self.phase_change_current_solid_volume = ti.field(ti.f64, shape=())
-            self.phase_change_initial_geometry_volume = ti.field(ti.f64, shape=())
-            self.phase_change_current_geometry_volume = ti.field(ti.f64, shape=())
+        self._moving_melt_momentum_pending = False
+        # The full thermal/LBM stability scan is useful while debugging, but
+        # it can require a device-to-host field copy on the error path.  Keep
+        # it opt-in and do not expose it as a per-call argument; the fast
+        # coupling still prepares its velocity field and CFL reduction every
+        # step when this is disabled.
+        self._thermal_stability_check_enabled = False
+        self.thermal = MovingBodyThermal2D(
+            self.nx,
+            self.ny,
+            config.ice_width,
+            config.ice_height,
+            config.thermal,
+            self.scales,
+            density_water_kg_m3=config.rho_water,
+            density_ice_kg_m3=config.rho_ice,
+            water_phase_cutoff=config.volume_projection_interface_cutoff,
+        )
+        # ``MovingBodyThermal2D`` no longer owns world rasterization.  Keep a
+        # narrow delegate for older callers while making the simulator the
+        # single implementation of the geometry/contact transaction.
+        self.thermal._rasterize_world_callback = self._solve_contact_and_rasterize
+        self.thermal_enthalpy = self.thermal.enthalpy_j_m3
+        self.temperature = self.thermal.temperature_c
+        self.liquid_fraction = self.thermal.liquid_fraction
+        self.phase_change_material = self.thermal.ice_material
+        self.thermal_advection_velocity = ti.Vector.field(2, ti.f32, shape=shape_xy)
+        self.thermal_max_velocity_l1 = ti.field(ti.f32, shape=())
+        self.thermal_max_fluid_velocity_l1 = ti.field(ti.f32, shape=())
+        self.thermal_state_invalid = ti.field(ti.i32, shape=())
+        self.phase_change_initial_water_volume = ti.field(ti.f64, shape=())
+        self.phase_change_initial_solid_volume = ti.field(ti.f64, shape=())
+        self.phase_change_current_solid_volume = ti.field(ti.f64, shape=())
+        self.phase_change_current_geometry_volume = ti.field(ti.f64, shape=())
 
         self._initialize_body()
         self._initialize_geometry()
+        # Seed the material fractions before the first world raster so the
+        # canonical SDF and the initial sharp mask are derived from the same
+        # geometry.  The full thermal state is initialized later, after the
+        # diffuse phase warm-up has reached its final composition.
+        self.thermal._initialize_body_state()
+        self._solve_contact_and_rasterize(initialize_previous=True)
+        self._initialize_moving_body_geometry()
         self._initialize_fluid()
         # The no-melting invariant is the sharp initial water volume.  Phase
         # warm-up is a numerical preparation step and must not redefine it.
@@ -281,14 +305,12 @@ class IceFlow2D:
         # reached its projected initial state.  Otherwise the first thermal
         # recovery would combine pre-warm-up composition energy with the
         # post-warm-up phase fraction.
-        if self._thermal_enabled:
-            self.thermal.initialize(self.phi, self.wall, self.solid)
-            self._initialize_phase_change_reference()
-        if config.well_balanced_hydrostatics:
-            self._build_hydrostatic_reference()
-            self._initialize_hydrostatic_equilibrium()
-        else:
-            self._update_pressure()
+        self.thermal.initialize(self.phi, self.wall, self.solid)
+        self.thermal._compose_world_temperature(self.wall)
+        self._update_moving_body_mass_properties(initialize=True)
+        self._initialize_phase_change_reference()
+        self._build_hydrostatic_reference()
+        self._initialize_hydrostatic_equilibrium()
 
     def step(self, num_steps=1):
         for _ in range(int(num_steps)):
@@ -297,253 +319,94 @@ class IceFlow2D:
             self._stream()
             self._update_streamed_macroscopic_fields()
             self._update_pressure()
-            if not self.cfg.ice_fixed:
-                self._integrate_rigid_ice()
-                self._update_ice_geometry()
-                self._refill_changed_nodes()
-            if self._thermal_enabled:
-                self._thermal_lbm_steps_pending += 1
-                interval = self.cfg.thermal.update_interval_lbm_steps
-                if self._thermal_lbm_steps_pending >= interval:
-                    self._advance_thermal_coupling(self._thermal_lbm_steps_pending)
-                    self._thermal_lbm_steps_pending = 0
+            self._integrate_rigid_ice()
+            # Rasterization and the whole-body wall projection form one
+            # geometry transaction.  The fraction pass is shared by contact
+            # reduction and the final shared SDF/thermal coverage fields.
+            self._solve_contact_and_rasterize()
+            self._update_solid_mask()
+            self._refill_changed_nodes()
+            self._advance_moving_thermal_fast(target_step=self.steps + 1)
+            self._thermal_lbm_steps_pending += 1
+            if self._thermal_lbm_steps_pending >= self.cfg.thermal.update_interval_lbm_steps:
+                self._advance_moving_thermal_slow(
+                    self._thermal_lbm_steps_pending,
+                )
+                self._thermal_lbm_steps_pending = 0
             self._correct_water_volume()
+            self._finalize_melt_momentum_coupling()
+            self._synchronize_moving_water_aperture()
             self.steps += 1
 
     @property
     def physical_time_s(self):
         return self.steps * self._time_step_s
 
-    def _advance_thermal_coupling(self, lbm_steps):
-        """Advance heat, synchronize the phase boundary, and exchange water."""
+    def _advance_moving_thermal_fast(self, *, target_step):
+        """Advance pose ALE and paired water advection at every LBM step."""
 
-        if not self._thermal_enabled:
-            raise RuntimeError("thermal coupling is disabled")
-        count = int(lbm_steps)
-        if count <= 0:
-            raise ValueError("lbm_steps must be positive")
         self._prepare_thermal_advection_velocity()
         maximum_velocity_l1 = float(self.thermal_max_velocity_l1[None])
-        self.thermal.advance(
-            count * self._time_step_s,
+        if self._thermal_stability_check_enabled:
+            self._check_thermal_advection_stability(target_step=target_step)
+        self.thermal.advance_fast(
+            self._time_step_s,
             self.thermal_advection_velocity,
             self.phi,
             self.wall,
             self.solid,
             max_velocity_lattice_l1=maximum_velocity_l1,
         )
-        self._update_phase_change_geometry()
-        self._refill_phase_change_nodes()
-        self._update_phase_change_water_target()
 
-    def synchronize_thermal(self):
-        """Advance a pending partial thermal interval to the LBM time."""
+    def _advance_moving_thermal_slow(self, lbm_steps):
+        """Commit accumulated conduction, melting, and melt momentum."""
 
-        if not self._thermal_enabled or self._thermal_lbm_steps_pending == 0:
-            return
-        self._advance_thermal_coupling(self._thermal_lbm_steps_pending)
-        self._thermal_lbm_steps_pending = 0
-        self._correct_water_volume()
-
-    def run(self, frames, steps_per_frame, output_dir=None, *, show_progress=False):
-        total_frames = int(frames)
-        if total_frames < 0:
-            raise ValueError("frames must be non-negative")
-        if int(steps_per_frame) <= 0:
-            raise ValueError("steps_per_frame must be positive")
-        out = Path(output_dir or self.cfg.output_dir)
-        out.mkdir(parents=True, exist_ok=True)
-        self.write_metadata(out)
-        gui = None
-        if self.cfg.show_gui:
-            gui = ti.GUI(
-                "IceFlow2D rigid ice / two-phase flow",
-                res=(self.nx, self.ny),
-                show_gui=True,
+        count = int(lbm_steps)
+        if count <= 0:
+            raise ValueError("lbm_steps must be positive")
+        if self._moving_melt_momentum_pending:
+            raise RuntimeError(
+                "a moving thermal momentum interval is still pending phase projection"
             )
-        with _TerminalProgress(total_frames, enabled=show_progress) as progress:
-            for _ in range(total_frames):
-                self.step(steps_per_frame)
-                self.synchronize_thermal()
-                self.save_frame(out / f"frame_{self.frame:05d}.png", gui=gui)
-                if self.cfg.save_npz:
-                    self.save_state_npz(out / f"state_{self.frame:05d}.npz")
-                self.frame += 1
-                progress.advance()
-        self.write_metadata(out)
-
-    def save_frame(self, path, gui=None):
-        phase = np.clip(self.phi.to_numpy(), 0.0, 1.0)[..., np.newaxis]
-        air = np.asarray([0.97, 0.98, 0.99], dtype=np.float32)
-        water = np.asarray([0.06, 0.38, 0.88], dtype=np.float32)
-        native = air * (1.0 - phase) + water * phase
-        solid = self.solid.to_numpy() == 1
-        if np.any(solid):
-            center_y = float(self.body_center[None].y)
-            local_height = (
-                np.arange(self.ny, dtype=np.float32)[np.newaxis, :] - center_y
-            ) / (2.0 * self._body_half_height + 1.0e-6)
-            tint = np.clip(0.55 + 0.25 * local_height, 0.0, 1.0)[..., np.newaxis]
-            ice = (
-                np.asarray([0.62, 0.84, 0.96], dtype=np.float32) * (1.0 - tint)
-                + np.asarray([0.92, 0.98, 1.0], dtype=np.float32) * tint
-            )
-            native[solid] = np.broadcast_to(ice, native.shape)[solid]
-        native[self.wall.to_numpy() == 1] = np.asarray(
-            [0.12, 0.13, 0.14], dtype=np.float32
+        # FAST deliberately defers its final aperture reconciliation to the
+        # post-projection synchronization on ordinary LBM steps.  SLOW needs
+        # an admissible extensive water state before evaluating conduction
+        # and interface heat, so reconcile once here only on SLOW steps.
+        self.thermal.synchronize_water_aperture(
+            self.phi, self.wall, self.solid, refresh_derived=False
         )
-        file_image = np.flip(np.transpose(native, (1, 0, 2)), axis=0)
-        file_image = np.clip(file_image * 255.0, 0.0, 255.0).astype(np.uint8)
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            import imageio.v2 as imageio
+        self._snapshot_melt_momentum_coupling()
+        self.thermal.advance_slow(
+            count * self._time_step_s,
+            self.phi,
+            self.wall,
+            self.solid,
+            self.body_reference_origin,
+            self.body_angle,
+            rasterize_world_callback=self._solve_contact_and_rasterize,
+        )
+        self._update_moving_body_mass_properties()
+        self._update_solid_mask()
+        # A node exposed by erosion is not necessarily liquid: the falling
+        # body can melt on its air-facing side as well as below the free
+        # surface.  Reuse the schedule-independent moving-boundary
+        # extrapolation so the released node inherits the surrounding phase,
+        # pressure, and velocity.  The melt volume itself has already been
+        # injected conservatively by ``advance_slow`` and the following
+        # global projection restores its exact target volume.
+        self._refill_changed_nodes()
+        self._update_phase_change_water_target()
+        self._moving_melt_momentum_pending = True
 
-            imageio.imwrite(path, file_image)
-        except Exception:
-            import matplotlib.pyplot as plt
+    def _synchronize_moving_water_aperture(self):
+        """Align thermal extensive water after the LBM phase projection."""
 
-            plt.imsave(path, file_image)
-        if gui is not None:
-            # Taichi GUI expects its native (nx, ny, channels) layout.  File
-            # output above deliberately uses the conventional (ny, nx, 3).
-            gui.set_image(native)
-            gui.show()
+        self.thermal.synchronize_water_aperture(self.phi, self.wall, self.solid)
 
-    def save_state_npz(self, path):
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        phi = self.phi.to_numpy()
-        pressure = self.p.to_numpy()
-        solid = self.solid.to_numpy()
-        # Moving-solid cells use phi/p themselves as refill reservoirs.  They
-        # are masked here because those values are not part of the fluid state.
-        phi = np.where(solid == 1, 0.0, phi)
-        pressure = np.where(solid == 1, 0.0, pressure)
-        state = {
-            "phi": phi,
-            "rho": self._rho_air_l
-            + (self._rho_water_l - self._rho_air_l) * np.clip(phi, 0.0, 1.0),
-            "u": self.u.to_numpy(),
-            "p": pressure,
-            "solid": solid,
-            "sdf": self.sdf.to_numpy(),
-            "body_center": np.asarray(self.body_center[None]),
-            "body_velocity": np.asarray(self.body_velocity[None]),
-            "body_angle": float(self.body_angle[None]),
-            "body_angular_velocity": float(self.body_angular_velocity[None]),
-            "physical_time_s": float(self.physical_time_s),
-        }
-        if self._thermal_enabled:
-            state.update(
-                {
-                    "thermal_enthalpy_j_m3": self.thermal_enthalpy.to_numpy(),
-                    "temperature_c": self.temperature.to_numpy(),
-                    "liquid_fraction": self.liquid_fraction.to_numpy(),
-                    "phase_change_material": self.phase_change_material.to_numpy(),
-                }
-            )
-        if self.hydrostatic_reference_density is not None:
-            state["hydrostatic_reference_density"] = (
-                self.hydrostatic_reference_density.to_numpy()
-            )
-        if self.hydrostatic_reference_pressure is not None:
-            state["hydrostatic_reference_pressure"] = (
-                self.hydrostatic_reference_pressure.to_numpy()
-            )
-        np.savez_compressed(path, **state)
+    def synchronize_diagnostics(self):
+        """Refresh output-only ALE diagnostics at a snapshot boundary."""
 
-    def write_metadata(self, output_dir):
-        out = Path(output_dir)
-        out.mkdir(parents=True, exist_ok=True)
-        thermal_results = None
-        if self._thermal_enabled:
-            initial_solid = float(self.phase_change_initial_solid_volume[None])
-            current_solid = self.phase_change_solid_volume_cells()
-            current_geometry = self.phase_change_geometry_volume_cells()
-            melted_solid = initial_solid - current_solid
-            density_ratio = float(self.cfg.rho_ice / self.cfg.rho_water)
-            thermal_results = {
-                "physical_time_s": float(self.physical_time_s),
-                "thermal_time_s": float(self.thermal.time_s),
-                "thermal_substeps": int(self.thermal.steps),
-                "initial_solid_volume_cells": initial_solid,
-                "current_solid_volume_cells": current_solid,
-                "initial_sharp_geometry_volume_cells": float(
-                    self.phase_change_initial_geometry_volume[None]
-                ),
-                "current_sharp_geometry_volume_cells": current_geometry,
-                "melted_fraction": self.phase_change_melted_fraction,
-                "generated_water_volume_cells": density_ratio * melted_solid,
-                "total_liquid_water_volume_cells": float(
-                    self.phase_change_initial_water_volume[None]
-                )
-                + density_ratio * melted_solid,
-                "phase_change_volume_contraction_cells": (1.0 - density_ratio)
-                * melted_solid,
-                "active_lbm_water_volume_target_cells": float(
-                    self.water_volume_target[None]
-                ),
-                "water_volume_current_cells": float(self.water_volume_current[None]),
-                "total_enthalpy_j_m": self.thermal.total_enthalpy_j_m(self.wall),
-                "boundary_heat_input_j_m": float(
-                    self.thermal.boundary_heat_input_j_m[None]
-                ),
-            }
-
-        data = {
-            "model": (
-                "thermal fixed-ice/two-phase flow"
-                if self._thermal_enabled
-                else "non-thermal rigid-ice/two-phase flow"
-            ),
-            "hydrodynamic_population_moments": (
-                "Liang P-rho*u: zeroth=0, first=rho(phi)*u, second=rho*u*u+p_dyn*I"
-            ),
-            "mechanics": (
-                "fixed pose with phase-changing shape"
-                if self._thermal_enabled
-                else ("fixed rigid body" if self.cfg.ice_fixed else "moving rigid body")
-            ),
-            "coupling": (
-                "liquid-fraction zero-contour cut links with density-aware mass exchange"
-                if self._thermal_enabled
-                else (
-                    "sharp SDF cut-link bounce-back with pressure-completed GIMEM"
-                    if self.cfg.well_balanced_hydrostatics
-                    else "sharp SDF cut-link bounce-back with dynamic GIMEM"
-                )
-            ),
-            "well_balanced_hydrostatics": bool(self.cfg.well_balanced_hydrostatics),
-            "thermal_model": (
-                "conservative finite-volume enthalpy with LBM velocity advection"
-                if self._thermal_enabled
-                else None
-            ),
-            "phase_change": bool(self._thermal_enabled),
-            "thermal_results": thermal_results,
-            "backend": "cuda",
-            "taichi_version": ".".join(map(str, ti.__version__)),
-            "steps": self.steps,
-            "frame": self.frame,
-            "lattice_scaling": {
-                "rho_water": self._rho_water_l,
-                "rho_air": self._rho_air_l,
-                "nu_water": self._nu_water_l,
-                "nu_air": self._nu_air_l,
-                "gravity": self._gravity_l,
-                "sigma": self._sigma_l,
-                "dx_m": self.scales.dx_m,
-                "dt_s": self.scales.dt_s,
-                "velocity_scale_m_s": self.scales.velocity_scale_m_s,
-                "reference_lattice_velocity": (
-                    self.scales.reference_lattice_velocity
-                ),
-                "reference_velocity_m_s": self.scales.reference_velocity_m_s,
-            },
-            "config": self.cfg.to_dict(),
-        }
-        (out / "metadata.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+        self._synchronize_moving_thermal_diagnostics()
 
     # Geometry and initialization
 
@@ -553,7 +416,13 @@ class IceFlow2D:
 
     @ti.kernel
     def _prepare_thermal_advection_velocity(self):
-        """Store the same half-force velocity used by the LBM equilibria."""
+        """Store the half-force velocity and water-side CFL maximum.
+
+        Stability diagnostics are deliberately collected by a separate,
+        opt-in pass.  This kernel is still required by the fast thermal
+        solver: it supplies the velocity field used by water advection and
+        the water-side maximum used to choose its Courant substeps.
+        """
 
         self.thermal_max_velocity_l1[None] = 0.0
         for i, j in self.u:
@@ -561,10 +430,124 @@ class IceFlow2D:
             if self._active(i, j):
                 velocity = self.u[i, j] + 0.5 * self.fluid_force[i, j]
             self.thermal_advection_velocity[i, j] = velocity
-            ti.atomic_max(
-                self.thermal_max_velocity_l1[None],
-                ti.abs(velocity.x) + ti.abs(velocity.y),
+            include_in_cfl = self._active(i, j)
+            include_in_cfl = include_in_cfl and self.phi[i, j] > ti.static(
+                self.cfg.volume_projection_interface_cutoff
             )
+            if include_in_cfl:
+                ti.atomic_max(
+                    self.thermal_max_velocity_l1[None],
+                    ti.abs(velocity.x) + ti.abs(velocity.y),
+                )
+
+    @ti.kernel
+    def _collect_thermal_stability_metrics(self):
+        """Collect optional finite-state and full-fluid speed diagnostics."""
+
+        self.thermal_max_fluid_velocity_l1[None] = 0.0
+        self.thermal_state_invalid[None] = 0
+        for i, j in self.u:
+            if self._active(i, j):
+                velocity = self.thermal_advection_velocity[i, j]
+                state_invalid = (
+                    ti.math.isnan(velocity.x)
+                    or ti.math.isinf(velocity.x)
+                    or ti.math.isnan(velocity.y)
+                    or ti.math.isinf(velocity.y)
+                    or ti.math.isnan(self.phi[i, j])
+                    or ti.math.isinf(self.phi[i, j])
+                )
+                for q in range(Q):
+                    state_invalid = (
+                        state_invalid
+                        or ti.math.isnan(self.h[i, j, q])
+                        or ti.math.isinf(self.h[i, j, q])
+                    )
+                if state_invalid:
+                    ti.atomic_max(self.thermal_state_invalid[None], 1)
+                ti.atomic_max(
+                    self.thermal_max_fluid_velocity_l1[None],
+                    ti.abs(velocity.x) + ti.abs(velocity.y),
+                )
+
+    def _check_thermal_advection_stability(self, *, target_step):
+        """Run the opt-in LBM sanity scan before thermal subcycling."""
+
+        self._collect_thermal_stability_metrics()
+        maximum_water_velocity_l1 = float(self.thermal_max_velocity_l1[None])
+        maximum_fluid_velocity_l1 = float(self.thermal_max_fluid_velocity_l1[None])
+        self._validate_thermal_advection_velocity(
+            maximum_water_velocity_l1,
+            maximum_fluid_velocity_l1,
+            target_step=target_step,
+        )
+
+    def _validate_thermal_advection_velocity(
+        self,
+        maximum_water_velocity_l1,
+        maximum_fluid_velocity_l1,
+        *,
+        target_step,
+    ):
+        """Reject a failed LBM state after the optional metrics scan."""
+
+        maximum_water = float(maximum_water_velocity_l1)
+        maximum_fluid = float(maximum_fluid_velocity_l1)
+        invalid = int(self.thermal_state_invalid[None]) != 0
+        if (
+            not invalid
+            and math.isfinite(maximum_fluid)
+            and maximum_fluid <= _MAX_D2Q9_LATTICE_VELOCITY_L1
+        ):
+            return
+
+        velocity = self.thermal_advection_velocity.to_numpy()
+        phase = self.phi.to_numpy()
+        populations = self.h.to_numpy()
+        active = (self.wall.to_numpy() == 0) & (self.solid.to_numpy() == 0)
+        speed_l1 = np.abs(velocity[..., 0]) + np.abs(velocity[..., 1])
+        invalid_velocity = ~np.isfinite(speed_l1)
+        invalid_phase = ~np.isfinite(phase)
+        invalid_populations = ~np.all(np.isfinite(populations), axis=-1)
+        invalid_state = active & (
+            invalid_velocity | invalid_phase | invalid_populations
+        )
+        step_number = int(target_step)
+        if np.any(invalid_state):
+            flat_index = int(np.flatnonzero(invalid_state)[0])
+            i, j = np.unravel_index(flat_index, invalid_state.shape)
+            invalid_fields = []
+            if invalid_velocity[i, j]:
+                invalid_fields.append("velocity")
+            if invalid_phase[i, j]:
+                invalid_fields.append("phase")
+            if invalid_populations[i, j]:
+                invalid_fields.append("phase populations")
+            raise RuntimeError(
+                "LBM state became non-finite before thermal coupling at step "
+                f"{step_number}: invalid_fields={','.join(invalid_fields)}, "
+                f"cell=({i},{j}), cell_speed={float(speed_l1[i, j]):.9g}, "
+                f"phi={float(phase[i, j]):.9g}. This is a hydrodynamic "
+                "instability, not a thermal workload; rescale the lattice "
+                "units and check the Mach number, relaxation times, and "
+                "forcing."
+            )
+        ranking = np.where(active & np.isfinite(speed_l1), speed_l1, -np.inf)
+        flat_index = int(np.argmax(ranking))
+        i, j = np.unravel_index(flat_index, ranking.shape)
+        local_speed = float(speed_l1[i, j])
+        local_phase = float(phase[i, j])
+        raise RuntimeError(
+            "LBM velocity left the D2Q9 stability envelope before thermal "
+            f"coupling at step {step_number}: full-domain max "
+            f"|u_x|+|u_y|={maximum_fluid:.9g} (cell=({i},{j}), "
+            f"cell_speed={local_speed:.9g}, phi={local_phase:.9g}), "
+            f"water-side max={maximum_water:.9g}, permitted full-domain "
+            f"maximum={_MAX_D2Q9_LATTICE_VELOCITY_L1:.9g}. This is a "
+            "hydrodynamic instability, not a thermal workload; rescale the "
+            "lattice units and check the Mach number, relaxation times, "
+            "forcing, and flow discretization."
+        )
 
     @ti.func
     def _box_sdf(self, point):
@@ -618,6 +601,140 @@ class IceFlow2D:
                     value = self.phi[i, j]
         return value
 
+    # ------------------------------------------------------------------
+    # Moving-body world rasterization
+
+    @ti.func
+    def _body_local_coordinates(self, point):
+        """Transform a world cell centre into material-frame coordinates."""
+
+        center = self.body_reference_origin[None]
+        angle = self.body_angle[None]
+        cosine = ti.cos(angle)
+        sine = ti.sin(angle)
+        relative = point - center
+        return ti.Vector(
+            [
+                cosine * relative.x + sine * relative.y,
+                -sine * relative.x + cosine * relative.y,
+            ]
+        )
+
+    @ti.func
+    def _nearest_body_index(self, local):
+        body_i = ti.cast(
+            ti.floor(local.x + ti.static(0.5 * self.cfg.ice_width)), ti.i32
+        )
+        body_j = ti.cast(
+            ti.floor(local.y + ti.static(0.5 * self.cfg.ice_height)), ti.i32
+        )
+        return ti.Vector([body_i, body_j])
+
+    @ti.func
+    def _sample_body_fraction(self, local):
+        """Bilinearly sample the eroded material grid without wall clipping."""
+
+        grid_x = local.x + ti.static(0.5 * self.cfg.ice_width - 0.5)
+        grid_y = local.y + ti.static(0.5 * self.cfg.ice_height - 0.5)
+        base_i = ti.cast(ti.floor(grid_x), ti.i32)
+        base_j = ti.cast(ti.floor(grid_y), ti.i32)
+        fraction = ti.cast(0.0, ti.f32)
+        for di, dj in ti.static(ti.ndrange(2, 2)):
+            body_i = base_i + di
+            body_j = base_j + dj
+            if 0 <= body_i < ti.static(self.cfg.ice_width) and 0 <= body_j < ti.static(
+                self.cfg.ice_height
+            ):
+                weight_x = 1.0 - ti.abs(grid_x - ti.cast(body_i, ti.f32))
+                weight_y = 1.0 - ti.abs(grid_y - ti.cast(body_j, ti.f32))
+                fraction += (
+                    ti.max(0.0, weight_x)
+                    * ti.max(0.0, weight_y)
+                    * ti.cast(self.thermal.body_solid_fraction[body_i, body_j], ti.f32)
+                )
+        return ti.min(1.0, ti.max(0.0, fraction))
+
+    @ti.kernel
+    def _calculate_moving_body_fraction(self):
+        """Evaluate the unclipped coverage and pose-dependent interpolation data.
+
+        This pass deliberately ignores ``wall``.  The contact reduction must
+        see a candidate body even when its predicted pose crosses a container
+        plane.  The result is kept in ``_moving_body_fraction`` and the single
+        simulator SDF is populated with the corresponding candidate geometry;
+        the sharp ``solid`` mask is committed only after contact projection
+        has accepted the pose.
+        """
+
+        half_x = ti.static(0.5 * self.cfg.ice_width)
+        half_y = ti.static(0.5 * self.cfg.ice_height)
+        dx = ti.static(self.cfg.dx)
+        threshold = ti.static(self.cfg.thermal.solid_liquid_threshold)
+        for i, j in self._moving_body_fraction:
+            point = self._cell_point(i, j)
+            local = self._body_local_coordinates(point)
+            fraction = self._sample_body_fraction(local)
+
+            # index of body_solid_fraction[body_i, body_j]
+            index = self._nearest_body_index(local)
+            grid_x = local.x + half_x - 0.5
+            grid_y = local.y + half_y - 0.5
+            base_i = ti.cast(ti.floor(grid_x), ti.i32)
+            base_j = ti.cast(ti.floor(grid_y), ti.i32)
+            valid = 0 <= index.x < ti.static(self.cfg.ice_width) and 0 <= index.y < ti.static(
+                self.cfg.ice_height
+            )
+            self._moving_body_fraction[i, j] = fraction
+            self.thermal.world_body_local_i[i, j] = index.x if valid else -1
+            self.thermal.world_body_local_j[i, j] = index.y if valid else -1
+            self.thermal.world_body_interp_base_i[i, j] = base_i
+            self.thermal.world_body_interp_base_j[i, j] = base_j
+            self.thermal.world_body_interp_fraction_x[i, j] = ti.cast(
+                grid_x - ti.cast(base_i, ti.f32), ti.f32
+            )
+            self.thermal.world_body_interp_fraction_y[i, j] = ti.cast(
+                grid_y - ti.cast(base_j, ti.f32), ti.f32
+            )
+
+            delta_x = ti.abs(local.x) - half_x
+            delta_y = ti.abs(local.y) - half_y
+            outside_x = ti.max(delta_x, 0.0)
+            outside_y = ti.max(delta_y, 0.0)
+            rectangle_distance = ti.sqrt(
+                outside_x * outside_x + outside_y * outside_y
+            ) + ti.min(ti.max(delta_x, delta_y), 0.0)
+            distance = rectangle_distance * dx
+            if valid:
+                distance = (threshold - fraction) * dx
+            self.sdf[i, j] = ti.cast(distance, ti.f32)
+
+    @ti.kernel
+    def _commit_moving_body_raster(self, previous_mode: ti.i32):
+        """Commit a calculated coverage after contact has chosen the pose.
+
+        ``previous_mode`` is 2 during initialization (old and new are the
+        same), and 1 for a normal accepted time-level transition.
+        """
+
+        dx = ti.static(self.cfg.dx)
+        threshold = ti.static(self.cfg.thermal.solid_liquid_threshold)
+        for i, j in self._moving_body_fraction:
+            fraction = self._moving_body_fraction[i, j]
+            if self.wall[i, j] != 0:
+                fraction = 0.0
+            if previous_mode == 2:
+                self.thermal.world_body_indicator_prev[i, j] = fraction
+            elif previous_mode == 1:
+                self.thermal.world_body_indicator_prev[i, j] = (
+                    self.thermal.world_body_indicator[i, j]
+                )
+            self.thermal.world_body_indicator[i, j] = fraction
+            if (
+                self.thermal.world_body_local_i[i, j] >= 0
+                and self.thermal.world_body_local_j[i, j] >= 0
+            ):
+                self.sdf[i, j] = (threshold - fraction) * dx
+
     @ti.kernel
     def _initialize_body(self):
         center_x = ti.static(float(self.cfg.ice_initial_center[0]))
@@ -630,26 +747,76 @@ class IceFlow2D:
         initial_omega = ti.static(float(self.cfg.ice_initial_angular_velocity))
         self.body_angle[None] = initial_angle
         self.body_angular_velocity[None] = initial_omega
-        if ti.static(not self.cfg.ice_fixed):
-            self.hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
-            self.hydrodynamic_torque[None] = 0.0
+        initial_mass = ti.cast(ti.static(self._body_mass), ti.f64)
+        initial_inertia = ti.cast(ti.static(self._body_inertia), ti.f64)
+        self.body_initial_mass_lattice[None] = initial_mass
+        self.body_mass_lattice[None] = initial_mass
+        self.body_inertia_lattice[None] = initial_inertia
+        self.body_local_center_of_mass[None] = ti.Vector([0.0, 0.0])
+        self.body_reference_origin[None] = ti.Vector([center_x, center_y])
+        self.body_active[None] = ti.cast(1, ti.i8)
+        self.cumulative_melted_mass_lattice[None] = 0.0
+        self.cumulative_melted_momentum_lattice[None] = ti.Vector([0.0, 0.0])
+        self.cumulative_fluid_melt_momentum_lattice[None] = ti.Vector([0.0, 0.0])
+        self.cumulative_fluid_melt_carrier_momentum_lattice[None] = ti.Vector(
+            [0.0, 0.0]
+        )
+        self.cumulative_fluid_melt_correction_momentum_lattice[None] = ti.Vector(
+            [0.0, 0.0]
+        )
+        self.melt_momentum_residual_lattice[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_momentum_before[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_momentum_provisional[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_momentum_after[None] = ti.Vector([0.0, 0.0])
+        self._thermal_body_momentum_before[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_angular_momentum_before[None] = 0.0
+        self._thermal_fluid_angular_momentum_provisional[None] = 0.0
+        self._thermal_fluid_angular_momentum_after[None] = 0.0
+        self._thermal_body_angular_momentum_before[None] = 0.0
+        self._melt_momentum_correction[None] = ti.Vector([0.0, 0.0])
+        self._melt_angular_momentum_correction[None] = 0.0
+        self._melt_momentum_source_weight[None] = 0.0
+        self._melt_momentum_wet_weight[None] = 0.0
+        self._melt_momentum_source_target[None] = -1
+        self._melt_momentum_wet_target[None] = -1
+        self._melt_momentum_source_target_max[None] = -1
+        self._melt_momentum_wet_target_max[None] = -1
+        self._melt_momentum_weight_first_moment[None] = ti.Vector([0.0, 0.0])
+        self._melt_momentum_weight_second_moment[None] = 0.0
+        self._melt_momentum_weight_centroid[None] = ti.Vector([0.0, 0.0])
+        self._melt_momentum_weight_polar_moment[None] = 0.0
+        self.cumulative_melted_angular_momentum_lattice[None] = 0.0
+        self.cumulative_fluid_melt_angular_momentum_lattice[None] = 0.0
+        self.cumulative_fluid_melt_carrier_angular_momentum_lattice[None] = 0.0
+        self.cumulative_fluid_melt_correction_angular_momentum_lattice[None] = 0.0
+        self.melt_angular_momentum_residual_lattice[None] = 0.0
+        self.ale_water_residual_cells[None] = 0.0
+        self.ale_energy_residual_j_m[None] = 0.0
+        self.phase_aperture_water_residual_cells[None] = 0.0
+        self.phase_aperture_energy_residual_j_m[None] = 0.0
+        self.phase_aperture_capacity_margin_cells[None] = 0.0
+        self.hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
+        self.hydrodynamic_torque[None] = 0.0
+        self._body_contact_projection_changed[None] = ti.cast(0, ti.i8)
 
     @ti.kernel
     def _initialize_geometry(self):
         nx = ti.static(self.nx)
         ny = ti.static(self.ny)
         boundary = ti.static(self.cfg.boundary_cells)
+        dx = ti.static(self.cfg.dx)
         for i, j in self.wall:
             is_wall = (
                 i < boundary or i >= nx - boundary or j < boundary or j >= ny - boundary
             )
             self.wall[i, j] = ti.cast(1 if is_wall else 0, ti.i8)
-            distance = self._box_sdf(self._cell_point(i, j))
+            # Keep the canonical SDF in physical-length units, matching the
+            # moving-body rasterizer and the public diagnostic field.
+            distance = self._box_sdf(self._cell_point(i, j)) * dx
             is_solid = not is_wall and distance <= 0.0
             self.sdf[i, j] = distance
             self.solid[i, j] = ti.cast(1 if is_solid else 0, ti.i8)
-            if ti.static(not self.cfg.ice_fixed):
-                self.solid_prev[i, j] = self.solid[i, j]
+            self.solid_prev[i, j] = self.solid[i, j]
 
     @ti.kernel
     def _initialize_fluid(self):
@@ -667,9 +834,8 @@ class IceFlow2D:
             # In moving-body runs, inactive solid cells retain the covered
             # phase directly in phi until that cell is exposed again.
             reservoir_phase = phi0
-            if ti.static(not self.cfg.ice_fixed):
-                if self.solid[i, j] == 1:
-                    reservoir_phase = water_indicator
+            if self.solid[i, j] == 1:
+                reservoir_phase = water_indicator
             self.phi[i, j] = reservoir_phase
             self.u[i, j] = velocity
             self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
@@ -792,100 +958,605 @@ class IceFlow2D:
                 self.p[i, j] = 0.0
 
     @ti.kernel
-    def _update_ice_geometry(self):
+    def _initialize_moving_body_geometry(self):
+        """Seed the sharp mask from the initial rasterized canonical SDF."""
+
         for i, j in self.solid:
-            self.solid_prev[i, j] = self.solid[i, j]
-            distance = self._box_sdf(self._cell_point(i, j))
-            is_solid = self.wall[i, j] == 0 and distance <= 0.0
-            self.sdf[i, j] = distance
+            active_body = self.body_active[None] != 0
+            is_solid = active_body and self.wall[i, j] == 0 and self.sdf[i, j] <= 0.0
             self.solid[i, j] = ti.cast(1 if is_solid else 0, ti.i8)
+            self.solid_prev[i, j] = self.solid[i, j]
 
     @ti.kernel
-    def _update_phase_change_geometry(self):
-        """Use the thermal liquid-fraction zero contour as the cut-link field.
+    def _update_solid_mask(self):
+        """Commit the already-rasterized SDF to the sharp solid mask.
 
-        ``sdf`` only needs a signed, linearly interpolable zero crossing for
-        the fixed-body cut-link formula.  ``lambda-threshold`` supplies that
-        crossing directly and avoids converting the diffuse thermal interface
-        to a stair-step rectangle.
+        ``_solve_contact_and_rasterize`` has already evaluated the accepted
+        pose into the simulator-owned SDF.  This pass records the previous
+        sharp mask and derives the new mask from that same field; no second
+        SDF storage or copy is needed.
         """
 
-        threshold = ti.static(float(self.cfg.thermal.solid_liquid_threshold))
         for i, j in self.solid:
             self.solid_prev[i, j] = self.solid[i, j]
-            indicator = 0.5
-            is_solid = False
-            if self.wall[i, j] == 0 and self.phase_change_material[i, j] != 0:
-                indicator = self.liquid_fraction[i, j] - threshold
-                is_solid = indicator <= 0.0
-            self.sdf[i, j] = indicator
+            distance = self.sdf[i, j]
+            active_body = self.body_active[None] != 0
+            is_solid = active_body and self.wall[i, j] == 0 and distance <= 0.0
             self.solid[i, j] = ti.cast(1 if is_solid else 0, ti.i8)
 
-    @ti.kernel
-    def _refill_phase_change_nodes(self):
-        """Rebuild LBM state on melted nodes and absorb frozen-node momentum."""
+    def _update_moving_body_mass_properties(self, *, initialize: bool = False):
+        """Reduce the eroding material grid and update the rigid COM state."""
 
-        nx = ti.static(self.nx)
-        ny = ti.static(self.ny)
-        rho_water = ti.static(self._rho_water_l)
+        self._reduce_moving_body_mass_properties()
+        self._apply_moving_body_mass_properties(1 if initialize else 0)
+
+    @ti.kernel
+    def _synchronize_moving_thermal_diagnostics(self):
+        """Expose the current conservative ALE residuals to common output."""
+
+        inverse_cell_area = ti.static(1.0 / (self.cfg.dx * self.cfg.dx))
+        self.ale_water_residual_cells[None] = (
+            self.thermal.ale_water_volume_residual_m2[None] * inverse_cell_area
+        )
+        self.ale_energy_residual_j_m[None] = self.thermal.ale_water_energy_residual_j_m[
+            None
+        ]
+        self.phase_aperture_water_residual_cells[None] = (
+            self.thermal.phase_aperture_volume_residual_m2[None] * inverse_cell_area
+        )
+        self.phase_aperture_energy_residual_j_m[None] = (
+            self.thermal.phase_aperture_energy_residual_j_m[None]
+        )
+        self.phase_aperture_capacity_margin_cells[None] = (
+            self.thermal.phase_aperture_capacity_margin_m2[None] * inverse_cell_area
+        )
+
+    @ti.kernel
+    def _snapshot_melt_momentum_coupling(self):
+        """Record fluid/body linear and angular momenta before thermal work."""
+
+        self._thermal_fluid_momentum_before[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_angular_momentum_before[None] = 0.0
+        self._thermal_body_momentum_before[None] = (
+            self.cumulative_melted_momentum_lattice[None]
+        )
+        self._thermal_body_angular_momentum_before[None] = (
+            self.cumulative_melted_angular_momentum_lattice[None]
+        )
         for i, j in self.phi:
-            became_solid = (
-                self.solid_prev[i, j] == 0
-                and self.solid[i, j] == 1
-                and self.wall[i, j] == 0
-            )
-            became_fluid = (
-                self.solid_prev[i, j] == 1
-                and self.solid[i, j] == 0
-                and self.wall[i, j] == 0
-            )
-            if became_solid:
-                reservoir_pressure = self.p[i, j]
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    reservoir_pressure -= self.hydrostatic_reference_pressure[i, j]
-                self.phi[i, j] = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
-                self.u[i, j] = self._body_velocity_at(self._cell_point(i, j))
-                self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
-                # In well-balanced mode an inactive phase-change cell stores
-                # only p_dyn, just like a covered moving-body reservoir.
-                self.p[i, j] = reservoir_pressure
-            elif became_fluid:
-                pressure_sum = 0.0
-                count = 0.0
-                for di, dj in ti.static(ti.ndrange((-1, 2), (-1, 2))):
-                    ni = i + di
-                    nj = j + dj
-                    if (
-                        (di != 0 or dj != 0)
-                        and _inside(ni, nj, nx, ny)
-                        and self.wall[ni, nj] == 0
-                        and self._active(ni, nj)
-                        and self.solid_prev[ni, nj] == 0
-                    ):
-                        neighbor_pressure = self.p[ni, nj]
-                        if ti.static(self.cfg.well_balanced_hydrostatics):
-                            neighbor_pressure -= self.hydrostatic_reference_pressure[
-                                ni, nj
-                            ]
-                        pressure_sum += neighbor_pressure
-                        count += 1.0
-                # An inactive thermal cell carries a pressure reservoir.  It
-                # is p_dyn in well-balanced mode and ordinary pressure
-                # otherwise, so the same value initializes the populations.
-                pressure0 = self.p[i, j]
-                if count > 0.0:
-                    pressure0 = pressure_sum / count
-                velocity0 = self._body_velocity_at(self._cell_point(i, j))
-                self.phi[i, j] = 1.0
-                self.u[i, j] = velocity0
-                self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
-                total_pressure0 = pressure0
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    total_pressure0 += self.hydrostatic_reference_pressure[i, j]
-                self.p[i, j] = total_pressure0
+            if self._active(i, j):
+                momentum = ti.Vector([0.0, 0.0], dt=ti.f64)
                 for q in range(Q):
-                    self.f[i, j, q] = _pressure_eq(q, pressure0, rho_water, velocity0)
-                    self.h[i, j, q] = _heq(q, 1.0, velocity0)
+                    momentum += ti.cast(_c(q), ti.f64) * ti.cast(
+                        self.f[i, j, q], ti.f64
+                    )
+                ti.atomic_add(self._thermal_fluid_momentum_before[None].x, momentum.x)
+                ti.atomic_add(self._thermal_fluid_momentum_before[None].y, momentum.y)
+                point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])
+                ti.atomic_add(
+                    self._thermal_fluid_angular_momentum_before[None],
+                    point.x * momentum.y - point.y * momentum.x,
+                )
+
+    @ti.kernel
+    def _reduce_provisional_melt_momentum(self):
+        """Reduce carrier/topology momentum and correction weights."""
+
+        self._thermal_fluid_momentum_provisional[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_angular_momentum_provisional[None] = 0.0
+        self._melt_momentum_source_weight[None] = 0.0
+        self._melt_momentum_wet_weight[None] = 0.0
+        self._melt_momentum_source_target[None] = self.nx * self.ny
+        self._melt_momentum_wet_target[None] = self.nx * self.ny
+        self._melt_momentum_source_target_max[None] = -1
+        self._melt_momentum_wet_target_max[None] = -1
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
+        ny = ti.static(self.ny)
+        for i, j in self.phi:
+            if self._active(i, j):
+                momentum = ti.Vector([0.0, 0.0], dt=ti.f64)
+                for q in range(Q):
+                    momentum += ti.cast(_c(q), ti.f64) * ti.cast(
+                        self.f[i, j, q], ti.f64
+                    )
+                ti.atomic_add(
+                    self._thermal_fluid_momentum_provisional[None].x,
+                    momentum.x,
+                )
+                ti.atomic_add(
+                    self._thermal_fluid_momentum_provisional[None].y,
+                    momentum.y,
+                )
+                point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])
+                ti.atomic_add(
+                    self._thermal_fluid_angular_momentum_provisional[None],
+                    point.x * momentum.y - point.y * momentum.x,
+                )
+                phase = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
+                if phase > cutoff:
+                    encoded = i * ny + j
+                    source_weight = ti.max(
+                        0.0, self.thermal.water_melt_mass_source[i, j]
+                    )
+                    ti.atomic_add(
+                        self._melt_momentum_source_weight[None], source_weight
+                    )
+                    ti.atomic_add(
+                        self._melt_momentum_wet_weight[None],
+                        ti.cast(phase, ti.f64),
+                    )
+                    ti.atomic_min(self._melt_momentum_wet_target[None], encoded)
+                    ti.atomic_max(self._melt_momentum_wet_target_max[None], encoded)
+                    if source_weight > 0.0:
+                        ti.atomic_min(self._melt_momentum_source_target[None], encoded)
+                        ti.atomic_max(
+                            self._melt_momentum_source_target_max[None], encoded
+                        )
+
+    @ti.kernel
+    def _reduce_melt_momentum_weight_geometry(self, use_source: ti.i32):
+        self._melt_momentum_weight_first_moment[None] = ti.Vector([0.0, 0.0])
+        self._melt_momentum_weight_second_moment[None] = 0.0
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
+        for i, j in self.phi:
+            phase = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
+            weight = ti.cast(0.0, ti.f64)
+            if self._active(i, j) and phase > cutoff:
+                if use_source != 0:
+                    weight = ti.max(0.0, self.thermal.water_melt_mass_source[i, j])
+                else:
+                    weight = ti.cast(phase, ti.f64)
+            if weight > 0.0:
+                point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])
+                ti.atomic_add(
+                    self._melt_momentum_weight_first_moment[None].x,
+                    weight * point.x,
+                )
+                ti.atomic_add(
+                    self._melt_momentum_weight_first_moment[None].y,
+                    weight * point.y,
+                )
+                ti.atomic_add(
+                    self._melt_momentum_weight_second_moment[None],
+                    weight * point.dot(point),
+                )
+
+    @ti.kernel
+    def _finish_melt_momentum_weight_geometry(self, use_source: ti.i32):
+        weight = self._melt_momentum_wet_weight[None]
+        if use_source != 0:
+            weight = self._melt_momentum_source_weight[None]
+        centroid = ti.Vector([0.0, 0.0], dt=ti.f64)
+        polar = ti.cast(0.0, ti.f64)
+        if weight > 1.0e-30:
+            centroid = self._melt_momentum_weight_first_moment[None] / weight
+            polar = self._melt_momentum_weight_second_moment[None] - weight * (
+                centroid.dot(centroid)
+            )
+        self._melt_momentum_weight_centroid[None] = centroid
+        self._melt_momentum_weight_polar_moment[None] = ti.max(0.0, polar)
+
+    @ti.kernel
+    def _prepare_melt_momentum_correction(self):
+        carrier_change = (
+            self._thermal_fluid_momentum_provisional[None]
+            - self._thermal_fluid_momentum_before[None]
+        )
+        expected_change = (
+            self.cumulative_melted_momentum_lattice[None]
+            - self._thermal_body_momentum_before[None]
+        )
+        self._melt_momentum_correction[None] = expected_change - carrier_change
+        carrier_angular_change = (
+            self._thermal_fluid_angular_momentum_provisional[None]
+            - self._thermal_fluid_angular_momentum_before[None]
+        )
+        expected_angular_change = (
+            self.cumulative_melted_angular_momentum_lattice[None]
+            - self._thermal_body_angular_momentum_before[None]
+        )
+        self._melt_angular_momentum_correction[None] = (
+            expected_angular_change - carrier_angular_change
+        )
+
+    @ti.kernel
+    def _apply_melt_momentum_correction(self, use_source: ti.i32):
+        """Apply a zero-mass D2Q9 lift satisfying three moment constraints."""
+
+        rho_water = ti.static(self._rho_water_l)
+        rho_air = ti.static(self._rho_air_l)
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
+        denominator = self._melt_momentum_wet_weight[None]
+        if use_source != 0:
+            denominator = self._melt_momentum_source_weight[None]
+        correction = self._melt_momentum_correction[None]
+        angular_correction = self._melt_angular_momentum_correction[None]
+        centroid = self._melt_momentum_weight_centroid[None]
+        polar = self._melt_momentum_weight_polar_moment[None]
+        rotational_scale = ti.cast(0.0, ti.f64)
+        if polar > 1.0e-30:
+            translation_angular = centroid.x * correction.y - centroid.y * correction.x
+            rotational_scale = (angular_correction - translation_angular) / polar
+        for i, j in self.phi:
+            phase = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
+            eligible = self._active(i, j) and phase > cutoff
+            weight = ti.cast(0.0, ti.f64)
+            if eligible:
+                if use_source != 0:
+                    weight = ti.max(0.0, self.thermal.water_melt_mass_source[i, j])
+                else:
+                    weight = ti.cast(phase, ti.f64)
+            if weight > 0.0 and denominator > 1.0e-30:
+                point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])
+                relative = point - centroid
+                rotational_direction = ti.Vector([-relative.y, relative.x])
+                delta_momentum_f64 = weight * (
+                    correction / denominator + rotational_scale * rotational_direction
+                )
+                delta_momentum = ti.cast(delta_momentum_f64, ti.f32)
+                density = _rho_mix(phase, rho_water, rho_air)
+                self.u[i, j] += delta_momentum / ti.max(density, 1.0e-12)
+                for q in range(Q):
+                    direction = ti.cast(_c(q), ti.f32)
+                    self.f[i, j, q] += 3.0 * _w(q) * direction.dot(delta_momentum)
+
+    @ti.kernel
+    def _reduce_final_melt_momentum(self):
+        self._thermal_fluid_momentum_after[None] = ti.Vector([0.0, 0.0])
+        self._thermal_fluid_angular_momentum_after[None] = 0.0
+        for i, j in self.phi:
+            if self._active(i, j):
+                momentum = ti.Vector([0.0, 0.0], dt=ti.f64)
+                for q in range(Q):
+                    momentum += ti.cast(_c(q), ti.f64) * ti.cast(
+                        self.f[i, j, q], ti.f64
+                    )
+                ti.atomic_add(self._thermal_fluid_momentum_after[None].x, momentum.x)
+                ti.atomic_add(self._thermal_fluid_momentum_after[None].y, momentum.y)
+                point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])
+                ti.atomic_add(
+                    self._thermal_fluid_angular_momentum_after[None],
+                    point.x * momentum.y - point.y * momentum.x,
+                )
+
+    @ti.kernel
+    def _prepare_remaining_melt_momentum_correction(self):
+        expected_change = (
+            self.cumulative_melted_momentum_lattice[None]
+            - self._thermal_body_momentum_before[None]
+        )
+        actual_change = (
+            self._thermal_fluid_momentum_after[None]
+            - self._thermal_fluid_momentum_before[None]
+        )
+        self._melt_momentum_correction[None] = expected_change - actual_change
+        expected_angular_change = (
+            self.cumulative_melted_angular_momentum_lattice[None]
+            - self._thermal_body_angular_momentum_before[None]
+        )
+        actual_angular_change = (
+            self._thermal_fluid_angular_momentum_after[None]
+            - self._thermal_fluid_angular_momentum_before[None]
+        )
+        self._melt_angular_momentum_correction[None] = (
+            expected_angular_change - actual_angular_change
+        )
+
+    @ti.kernel
+    def _apply_local_melt_momentum_correction(self, use_source: ti.i32):
+        """Close f32 remainders with a two-cell force/couple pair."""
+
+        rho_water = ti.static(self._rho_water_l)
+        rho_air = ti.static(self._rho_air_l)
+        ny = ti.static(self.ny)
+        encoded_1 = self._melt_momentum_wet_target[None]
+        encoded_2 = self._melt_momentum_wet_target_max[None]
+        if use_source != 0:
+            encoded_1 = self._melt_momentum_source_target[None]
+            encoded_2 = self._melt_momentum_source_target_max[None]
+        if (
+            0 <= encoded_1 < ti.static(self.nx * self.ny)
+            and 0 <= encoded_2 < ti.static(self.nx * self.ny)
+            and encoded_1 != encoded_2
+        ):
+            i1 = encoded_1 // ny
+            j1 = encoded_1 - i1 * ny
+            i2 = encoded_2 // ny
+            j2 = encoded_2 - i2 * ny
+            point_1 = ti.Vector([ti.cast(i1, ti.f64) + 0.5, ti.cast(j1, ti.f64) + 0.5])
+            point_2 = ti.Vector([ti.cast(i2, ti.f64) + 0.5, ti.cast(j2, ti.f64) + 0.5])
+            correction = self._melt_momentum_correction[None]
+            angular_correction = self._melt_angular_momentum_correction[None]
+            difference = point_1 - point_2
+            midpoint = 0.5 * (point_1 + point_2)
+            couple = angular_correction - (
+                midpoint.x * correction.y - midpoint.y * correction.x
+            )
+            difference_norm2 = difference.dot(difference)
+            q_couple = (
+                couple
+                * ti.Vector([-difference.y, difference.x])
+                / ti.max(difference_norm2, 1.0e-30)
+            )
+            delta_1 = 0.5 * correction + q_couple
+            delta_2 = 0.5 * correction - q_couple
+            for target in ti.static(range(2)):
+                i = i1
+                j = j1
+                delta_momentum_f64 = delta_1
+                if ti.static(target == 1):
+                    i = i2
+                    j = j2
+                    delta_momentum_f64 = delta_2
+                delta_momentum = ti.cast(delta_momentum_f64, ti.f32)
+                phase = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
+                density = _rho_mix(phase, rho_water, rho_air)
+                self.u[i, j] += delta_momentum / ti.max(density, 1.0e-12)
+                for q in range(Q):
+                    direction = ti.cast(_c(q), ti.f32)
+                    self.f[i, j, q] += 3.0 * _w(q) * direction.dot(delta_momentum)
+
+    @ti.kernel
+    def _finish_melt_momentum_coupling(self):
+        carrier_change = (
+            self._thermal_fluid_momentum_provisional[None]
+            - self._thermal_fluid_momentum_before[None]
+        )
+        actual_change = (
+            self._thermal_fluid_momentum_after[None]
+            - self._thermal_fluid_momentum_before[None]
+        )
+        correction_change = (
+            self._thermal_fluid_momentum_after[None]
+            - self._thermal_fluid_momentum_provisional[None]
+        )
+        self.cumulative_fluid_melt_carrier_momentum_lattice[None] += carrier_change
+        self.cumulative_fluid_melt_correction_momentum_lattice[None] += (
+            correction_change
+        )
+        self.cumulative_fluid_melt_momentum_lattice[None] += actual_change
+        self.melt_momentum_residual_lattice[None] = (
+            self.cumulative_fluid_melt_momentum_lattice[None]
+            - self.cumulative_melted_momentum_lattice[None]
+        )
+        carrier_angular_change = (
+            self._thermal_fluid_angular_momentum_provisional[None]
+            - self._thermal_fluid_angular_momentum_before[None]
+        )
+        actual_angular_change = (
+            self._thermal_fluid_angular_momentum_after[None]
+            - self._thermal_fluid_angular_momentum_before[None]
+        )
+        correction_angular_change = (
+            self._thermal_fluid_angular_momentum_after[None]
+            - self._thermal_fluid_angular_momentum_provisional[None]
+        )
+        self.cumulative_fluid_melt_carrier_angular_momentum_lattice[None] += (
+            carrier_angular_change
+        )
+        self.cumulative_fluid_melt_correction_angular_momentum_lattice[None] += (
+            correction_angular_change
+        )
+        self.cumulative_fluid_melt_angular_momentum_lattice[None] += (
+            actual_angular_change
+        )
+        self.melt_angular_momentum_residual_lattice[None] = (
+            self.cumulative_fluid_melt_angular_momentum_lattice[None]
+            - self.cumulative_melted_angular_momentum_lattice[None]
+        )
+
+    def _finalize_melt_momentum_coupling(self):
+        """Close all thermal/refill/projection first-moment changes to the body."""
+
+        if not self._moving_melt_momentum_pending:
+            return
+        self._reduce_provisional_melt_momentum()
+        wet_weight = float(self._melt_momentum_wet_weight[None])
+        # The residual closed here is not only the physical momentum of the
+        # newly melted mass.  It also contains carrier changes introduced by
+        # moving-node refill and the global phase-volume projection.  Forcing
+        # that global residual through the few instantaneous melt-source
+        # cells can create an arbitrarily large couple when one source lies in
+        # the dilute contact line.  The phase-weighted wet support is the
+        # minimum-energy admissible linear/angular-momentum projection and
+        # remains well conditioned as the local melt stencil changes.
+        use_source = 0
+        self._reduce_melt_momentum_weight_geometry(use_source)
+        self._finish_melt_momentum_weight_geometry(use_source)
+        self._prepare_melt_momentum_correction()
+        correction = np.asarray(self._melt_momentum_correction[None], dtype=np.float64)
+        angular_correction = float(self._melt_angular_momentum_correction[None])
+        if wet_weight <= 1.0e-30:
+            if (
+                float(np.linalg.norm(correction)) > 1.0e-12
+                or abs(angular_correction) > 1.0e-12
+            ):
+                raise RuntimeError(
+                    "melt momentum has no legal wet LBM cell for conservative "
+                    "linear/angular-momentum closure"
+                )
+        else:
+            centroid = np.asarray(
+                self._melt_momentum_weight_centroid[None], dtype=np.float64
+            )
+            independent_couple = angular_correction - (
+                centroid[0] * correction[1] - centroid[1] * correction[0]
+            )
+            polar = float(self._melt_momentum_weight_polar_moment[None])
+            if polar <= 1.0e-30 and abs(independent_couple) > 1.0e-12:
+                raise RuntimeError(
+                    "melt momentum correction requires two distinct wet cells"
+                )
+            if (
+                float(np.linalg.norm(correction)) > 1.0e-14
+                or abs(angular_correction) > 1.0e-14
+            ):
+                self._apply_melt_momentum_correction(use_source)
+        self._reduce_final_melt_momentum()
+        # A distributed f32 lift leaves a few ulps after the f64 reduction.
+        # Two localized remainder passes make the reported residual an actual
+        # end-to-end first-moment audit rather than an arithmetic artifact.
+        for _ in range(2):
+            self._prepare_remaining_melt_momentum_correction()
+            self._apply_local_melt_momentum_correction(use_source)
+            self._reduce_final_melt_momentum()
+        self._finish_melt_momentum_coupling()
+        self._moving_melt_momentum_pending = False
+
+    @ti.kernel
+    def _reduce_moving_body_mass_properties(self):
+        self._body_reduced_mass[None] = 0.0
+        self._body_reduced_first_moment[None] = ti.Vector([0.0, 0.0])
+        self._body_reduced_inertia_origin[None] = 0.0
+        inverse_reference_cell_mass = ti.cast(
+            ti.static(1.0 / (self.cfg.rho_water * self.cfg.dx * self.cfg.dx)),
+            ti.f64,
+        )
+        half_x = ti.static(0.5 * self.cfg.ice_width)
+        half_y = ti.static(0.5 * self.cfg.ice_height)
+        for i, j in self.thermal.body_solid_mass:
+            mass = self.thermal.body_solid_mass[i, j] * inverse_reference_cell_mass
+            fraction = ti.cast(self.thermal.body_solid_fraction[i, j], ti.f64)
+            local = ti.Vector(
+                [
+                    ti.cast(i, ti.f64) + 0.5 - half_x,
+                    ti.cast(j, ti.f64) + 0.5 - half_y,
+                ]
+            )
+            ti.atomic_add(self._body_reduced_mass[None], mass)
+            ti.atomic_add(self._body_reduced_first_moment[None].x, mass * local.x)
+            ti.atomic_add(self._body_reduced_first_moment[None].y, mass * local.y)
+            # A partial finite volume is represented by the equal-area square
+            # of side sqrt(f) used by contact and thermal rasterization.  Its
+            # intrinsic polar moment is therefore m*f/6; the parallel-axis
+            # contribution remains m*|x|^2.
+            ti.atomic_add(
+                self._body_reduced_inertia_origin[None],
+                mass * (local.dot(local) + fraction / 6.0),
+            )
+
+    @ti.kernel
+    def _apply_moving_body_mass_properties(self, initialize: ti.i32):
+        reduced_mass = self._body_reduced_mass[None]
+        old_mass = self.body_mass_lattice[None]
+        initial_mass = self.body_initial_mass_lattice[None]
+        # Material-frame phase change is monotone.  A parallel f64 reduction
+        # can nevertheless move by a few ulps when its atomic order changes;
+        # project that numerically unresolved change onto the previous rigid
+        # mass properties.  A genuine terminal zero is always accepted.
+        mass_change_tolerance = 1.0e-12 * ti.max(initial_mass, 1.0)
+        new_mass = reduced_mass
+        hold_previous_properties = False
+        if initialize == 0 and reduced_mass > 0.0:
+            unresolved_change = ti.abs(reduced_mass - old_mass) <= (
+                mass_change_tolerance
+            )
+            nonphysical_increase = reduced_mass > old_mass
+            if unresolved_change or nonphysical_increase:
+                new_mass = old_mass
+                hold_previous_properties = True
+        inactive_mass_threshold = ti.max(1.0e-12, 1.0e-14 * ti.max(initial_mass, 1.0))
+        inactive_inertia_threshold = 1.0e-14 * ti.max(
+            ti.static(self._body_inertia), 1.0
+        )
+        has_resolved_mass = new_mass > inactive_mass_threshold
+        was_active = self.body_active[None] != 0
+        old_local_com = self.body_local_center_of_mass[None]
+        new_local_com = old_local_com
+        raw_inertia = ti.cast(0.0, ti.f64)
+        if has_resolved_mass:
+            if hold_previous_properties:
+                raw_inertia = self.body_inertia_lattice[None]
+            else:
+                new_local_com = self._body_reduced_first_moment[None] / new_mass
+                raw_inertia = self._body_reduced_inertia_origin[None] - new_mass * (
+                    new_local_com.dot(new_local_com)
+                )
+            raw_inertia = ti.max(raw_inertia, 0.0)
+        mechanically_resolved = (
+            has_resolved_mass
+            and raw_inertia > inactive_inertia_threshold
+            and (initialize != 0 or was_active)
+        )
+        # Thermal mass can outlive the mechanically resolved remnant.  Once
+        # inertia falls below the grid-scaled threshold, freeze that sub-grid
+        # parcel at its last pose and transfer its stored momentum exactly;
+        # mass and sensible/latent energy remain in the thermal material grid.
+        new_inertia = raw_inertia if mechanically_resolved else 0.0
+
+        angle = self.body_angle[None]
+        cosine = ti.cos(angle)
+        sine = ti.sin(angle)
+        old_local_world = ti.Vector(
+            [
+                cosine * old_local_com.x - sine * old_local_com.y,
+                sine * old_local_com.x + cosine * old_local_com.y,
+            ]
+        )
+        # The material-frame origin is the authoritative ALE pose.  Rebuilding
+        # it from the f32 COM would accumulate a quantization walk at every
+        # thermal interval, even when no material was lost.
+        origin = ti.cast(self.body_reference_origin[None], ti.f64)
+        new_local_world = ti.Vector(
+            [
+                cosine * new_local_com.x - sine * new_local_com.y,
+                sine * new_local_com.x + cosine * new_local_com.y,
+            ]
+        )
+
+        retiring = was_active and not mechanically_resolved
+        if initialize == 0 and (new_mass < old_mass or retiring):
+            lost_mass = ti.max(old_mass - new_mass, 0.0)
+            old_velocity = ti.cast(self.body_velocity[None], ti.f64)
+            omega = ti.cast(self.body_angular_velocity[None], ti.f64)
+            # The remaining material keeps the rigid velocity evaluated at
+            # its new COM; this is the no-ejection-recoil limit.
+            com_shift = new_local_world - old_local_world
+            shifted_velocity = ti.Vector([0.0, 0.0], dt=ti.f64)
+            if mechanically_resolved:
+                shifted_velocity = old_velocity + omega * ti.Vector(
+                    [-com_shift.y, com_shift.x]
+                )
+            # Momentum diagnostics close the actually stored discrete rigid
+            # state, including its f32 position/velocity quantization.
+            shifted_velocity_stored_f32 = ti.cast(shifted_velocity, ti.f32)
+            shifted_velocity_stored = ti.cast(shifted_velocity_stored_f32, ti.f64)
+            new_center_stored_f32 = ti.cast(origin + new_local_world, ti.f32)
+            new_center_stored = ti.cast(new_center_stored_f32, ti.f64)
+            old_center_stored = ti.cast(self.body_center[None], ti.f64)
+            lost_momentum = old_mass * old_velocity - new_mass * shifted_velocity_stored
+            self.cumulative_melted_mass_lattice[None] += lost_mass
+            self.cumulative_melted_momentum_lattice[None] += lost_momentum
+            old_body_momentum = old_mass * old_velocity
+            new_body_momentum = new_mass * shifted_velocity_stored
+            old_angular_momentum = (
+                old_center_stored.x * old_body_momentum.y
+                - old_center_stored.y * old_body_momentum.x
+                + self.body_inertia_lattice[None] * omega
+            )
+            new_angular_momentum = (
+                new_center_stored.x * new_body_momentum.y
+                - new_center_stored.y * new_body_momentum.x
+                + new_inertia * omega
+            )
+            self.cumulative_melted_angular_momentum_lattice[None] += (
+                old_angular_momentum - new_angular_momentum
+            )
+            self.body_velocity[None] = shifted_velocity_stored_f32
+
+        self.body_local_center_of_mass[None] = new_local_com
+        self.body_center[None] = ti.cast(origin + new_local_world, ti.f32)
+        self.body_mass_lattice[None] = new_mass
+        self.body_inertia_lattice[None] = new_inertia
+        if mechanically_resolved:
+            self.body_active[None] = ti.cast(1, ti.i8)
+        else:
+            self.body_active[None] = ti.cast(0, ti.i8)
+            self.body_velocity[None] = ti.Vector([0.0, 0.0])
+            self.body_angular_velocity[None] = 0.0
+            self._body_contact_geometry_active[None] = ti.cast(0, ti.i8)
+            for index in ti.static(range(4)):
+                self._body_contact_support_extrema[index] = 0.0
 
     @ti.kernel
     def _refill_changed_nodes(self):
@@ -906,9 +1577,9 @@ class IceFlow2D:
             )
             if became_solid:
                 covered_phase = ti.min(1.0, ti.max(0.0, self.phi[i, j]))
-                reservoir_pressure = self.p[i, j]
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    reservoir_pressure -= self.hydrostatic_reference_pressure[i, j]
+                reservoir_pressure = (
+                    self.p[i, j] - self.hydrostatic_reference_pressure[i, j]
+                )
                 velocity = self._body_velocity_at(self._cell_point(i, j))
                 self.phi[i, j] = covered_phase
                 self.u[i, j] = velocity
@@ -932,11 +1603,9 @@ class IceFlow2D:
                         and self.solid_prev[ni, nj] == 0
                     ):
                         phi_sum += ti.min(1.0, ti.max(0.0, self.phi[ni, nj]))
-                        neighbor_pressure = self.p[ni, nj]
-                        if ti.static(self.cfg.well_balanced_hydrostatics):
-                            neighbor_pressure -= self.hydrostatic_reference_pressure[
-                                ni, nj
-                            ]
+                        neighbor_pressure = (
+                            self.p[ni, nj] - self.hydrostatic_reference_pressure[ni, nj]
+                        )
                         pressure_sum += neighbor_pressure
                         velocity_sum += self.u[ni, nj]
                         count += 1.0
@@ -947,16 +1616,13 @@ class IceFlow2D:
                     phi0 = phi_sum / count
                     pressure0 = pressure_sum / count
                     velocity0 = velocity_sum / count
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    pressure0 += self.hydrostatic_reference_pressure[i, j]
+                pressure0 += self.hydrostatic_reference_pressure[i, j]
                 fresh_density = _rho_mix(phi0, rho_water, rho_air)
                 self.phi[i, j] = phi0
                 self.u[i, j] = velocity0
                 self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
                 self.p[i, j] = pressure0
-                dynamic_pressure = pressure0
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    dynamic_pressure -= self.hydrostatic_reference_pressure[i, j]
+                dynamic_pressure = pressure0 - self.hydrostatic_reference_pressure[i, j]
                 for q in range(Q):
                     self.f[i, j, q] = _pressure_eq(
                         q, dynamic_pressure, fresh_density, velocity0
@@ -1001,67 +1667,23 @@ class IceFlow2D:
         # Assemble gravity sources as force densities.  The frozen
         # hydrostatic reference removes only the base far-field load; the
         # temperature-dependent density anomaly must remain additive.
-        gravity_force_density = density * gravity
-        if ti.static(self.cfg.well_balanced_hydrostatics):
-            reference_density = self.hydrostatic_reference_density[i, j]
-            gravity_force_density = (density - reference_density) * gravity
-        if ti.static(self._thermal_enabled):
-            reference_temperature = ti.static(
-                float(self.cfg.thermal.buoyancy_reference_temperature_c)
-            )
-            temperature = ti.cast(self.temperature[i, j], ti.f32)
-            density_anomaly_ratio = 0.0
-            if ti.static(self.cfg.thermal.water_buoyancy_model == "linear"):
-                expansion = ti.static(
-                    float(self.cfg.thermal.thermal_expansion_water_1_k)
-                )
-                density_anomaly_ratio = -expansion * (
-                    temperature - reference_temperature
-                )
-            else:
-                density_beta = ti.static(
-                    float(
-                        self.cfg.thermal.freshwater_density_quadratic_coefficient_1_k2
-                    )
-                )
-                maximum_density_temperature = ti.static(
-                    float(
-                        self.cfg.thermal.freshwater_density_max_temperature_c
-                    )
-                )
-                reference_offset = (
-                    reference_temperature - maximum_density_temperature
-                )
-                local_offset = temperature - maximum_density_temperature
-                reference_factor = ti.static(
-                    1.0
-                    - float(
-                        self.cfg.thermal.freshwater_density_quadratic_coefficient_1_k2
-                    )
-                    * (
-                        float(self.cfg.thermal.buoyancy_reference_temperature_c)
-                        - float(
-                            self.cfg.thermal.freshwater_density_max_temperature_c
-                        )
-                    )
-                    ** 2
-                )
-                density_anomaly_ratio = density_beta * (
-                    reference_offset * reference_offset
-                    - local_offset * local_offset
-                ) / reference_factor
+        reference_density = self.hydrostatic_reference_density[i, j]
+        gravity_force_density = (density - reference_density) * gravity
+        reference_temperature = ti.static(
+            float(self.cfg.thermal.buoyancy_reference_temperature_c)
+        )
+        temperature = ti.cast(self.temperature[i, j], ti.f32)
+        expansion = ti.static(float(self.cfg.thermal.thermal_expansion_water_1_k))
+        density_anomaly_ratio = -expansion * (temperature - reference_temperature)
 
-            # The thermal field deliberately treats the water/air interface
-            # as adiabatic and stores the air temperature on phi < 0.5.  A
-            # smooth water-side gate prevents that unrelated air value from
-            # producing an anomalous freshwater force in the diffuse layer.
-            water_weight = ti.min(1.0, ti.max(0.0, 2.0 * bounded_phi - 1.0))
-            gravity_force_density += (
-                water_weight
-                * rho_water
-                * density_anomaly_ratio
-                * gravity
-            )
+        # The thermal field deliberately treats the water/air interface as
+        # adiabatic and stores the air temperature on phi < 0.5.  A smooth
+        # water-side gate prevents that unrelated air value from forcing the
+        # diffuse layer.
+        water_weight = ti.min(1.0, ti.max(0.0, 2.0 * bounded_phi - 1.0))
+        gravity_force_density += (
+            water_weight * rho_water * density_anomaly_ratio * gravity
+        )
         force = gravity_force_density / density
         chemical = (
             4.0 * beta * bounded_phi * (bounded_phi - 1.0) * (bounded_phi - 0.5)
@@ -1123,12 +1745,30 @@ class IceFlow2D:
                     + (1.0 - phase_fraction) * nu_air
                     + artificial_vis
                 )
-                tau_local = 0.5 + 3.0 * nu_local
+                physical_tau = 0.5 + 3.0 * nu_local
+                # A low-density gas and sharp moving cut links amplify
+                # unresolved shear modes near the ice/free-surface contact
+                # line.  Extend the same non-conserved shear envelope by one
+                # lattice cell around the sharp ice geometry; mass, momentum,
+                # the pressure trace, and pure-water cells away from the ice
+                # retain their original relaxation rates.
+                interface_tau = ti.static(self._air_interface_relaxation_time)
+                sharp_solid_neighbor = 0.0
+                for q in ti.static(range(1, Q)):
+                    direction = _c(q)
+                    ni = i + direction.x
+                    nj = j + direction.y
+                    if _inside(ni, nj, self.nx, self.ny):
+                        if self.solid[ni, nj] == 1:
+                            sharp_solid_neighbor = 1.0
+                shear_indicator = ti.max(1.0 - phase_fraction, sharp_solid_neighbor)
+                tau_floor = 0.5 + (interface_tau - 0.5) * shear_indicator
+                shear_tau = ti.max(physical_tau, tau_floor)
                 # Liang et al. PRE 97, 033309 (2018), Eqs. (15)--(23).
                 material_density = _rho_mix(phi, rho_water, rho_air)
-                dynamic_pressure = self.p[i, j]
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    dynamic_pressure -= self.hydrostatic_reference_pressure[i, j]
+                dynamic_pressure = (
+                    self.p[i, j] - self.hydrostatic_reference_pressure[i, j]
+                )
                 force_density = material_density * force
                 delta_rho = rho_water - rho_air
                 m00 = 0.0
@@ -1169,6 +1809,7 @@ class IceFlow2D:
                         material_density,
                         velocity,
                     )
+                    self.f_pre_collision_neq[i, j, q] = value - equilibrium
                     base_source = (
                         _w(q)
                         * 3.0
@@ -1205,15 +1846,18 @@ class IceFlow2D:
                     src12 += cx * cy * cy * base_source
                     src22 += cx * cx * cy * cy * base_source
 
-                # MRT extension of Liang's BGK equation.  Hydrodynamic
-                # shear modes retain omega=1/tau (and therefore the target
-                # viscosity); bulk and ghost modes relax in one step.  The
-                # trapezoidal source prefactor is applied per moment.
-                omega = 1.0 / tau_local
-                source_shear = 1.0 - 0.5 * omega
-                post00 = m00 - omega * (m00 - meq00) + source_shear * src00
-                post10 = m10 - omega * (m10 - meq10) + source_shear * src10
-                post01 = m01 - omega * (m01 - meq01) + source_shear * src01
+                # MRT extension of Liang's BGK equation.  The two deviatoric
+                # stresses use the shear envelope; lower-order hydrodynamic
+                # moments retain the physical BGK rate, while the trace and
+                # ghost modes relax in one step.  The trapezoidal source
+                # prefactor is applied per moment.
+                physical_omega = 1.0 / physical_tau
+                shear_omega = 1.0 / shear_tau
+                source_physical = 1.0 - 0.5 * physical_omega
+                source_shear = 1.0 - 0.5 * shear_omega
+                post00 = m00 - physical_omega * (m00 - meq00) + source_physical * src00
+                post10 = m10 - physical_omega * (m10 - meq10) + source_physical * src10
+                post01 = m01 - physical_omega * (m01 - meq01) + source_physical * src01
                 trace_eq = meq20 + meq02
                 trace_src = src20 + src02
                 post_trace = trace_eq + 0.5 * trace_src
@@ -1222,12 +1866,12 @@ class IceFlow2D:
                 difference_src = src20 - src02
                 post_difference = (
                     difference
-                    - omega * (difference - difference_eq)
+                    - shear_omega * (difference - difference_eq)
                     + source_shear * difference_src
                 )
                 post20 = 0.5 * (post_trace + post_difference)
                 post02 = 0.5 * (post_trace - post_difference)
-                post11 = m11 - omega * (m11 - meq11) + source_shear * src11
+                post11 = m11 - shear_omega * (m11 - meq11) + source_shear * src11
                 post21 = meq21 + 0.5 * src21
                 post12 = meq12 + 0.5 * src12
                 post22 = meq22 + 0.5 * src22
@@ -1408,23 +2052,26 @@ class IceFlow2D:
                             rho_water,
                             rho_air,
                         )
-                        wall_correction = (
-                            6.0 * _w(q) * density * direction_f.dot(boundary_velocity)
-                        )
-                        reflected_f = outgoing_f - wall_correction
-                        if ti.static(self._use_unified_boundary):
-                            back_i = i - direction.x
-                            back_j = j - direction.y
-                            if _inside(back_i, back_j, nx, ny) and self._active(
-                                back_i, back_j
-                            ):
-                                reflected_f = (
-                                    eta * self.f_post[i, j, _opp(q)]
-                                    + (1.0 - eta) * self.f_post[back_i, back_j, q]
-                                    + eta * outgoing_f
-                                    - wall_correction
-                                ) / (1.0 + eta)
+                        # Tao et al. (2018), Eqs. (13)--(16), is a true
+                        # single-node rule: every population term comes from
+                        # the fluid node that owns this cut link; no back-node
+                        # population is read.  Apply it uniformly, including
+                        # links in the air--water--ice contact band.
                         opposite = _opp(q)
+                        dynamic_pressure = (
+                            self.p[i, j] - self.hydrostatic_reference_pressure[i, j]
+                        )
+                        wall_equilibrium = _pressure_eq(
+                            opposite,
+                            dynamic_pressure,
+                            density,
+                            boundary_velocity,
+                        )
+                        reflected_f = (
+                            wall_equilibrium
+                            + self.f_pre_collision_neq[i, j, q]
+                            + eta * self.f_post[i, j, opposite]
+                        ) / (1.0 + eta)
                         self.f[i, j, opposite] = reflected_f
                         self.h[i, j, opposite] = outgoing_h - (
                             6.0
@@ -1433,35 +2080,30 @@ class IceFlow2D:
                             * direction_f.dot(boundary_velocity)
                         )
 
-                        if ti.static(not self.cfg.ice_fixed):
-                            opposite_direction = -direction_f
-                            impulse = (direction_f - boundary_velocity) * outgoing_f - (
-                                opposite_direction - boundary_velocity
-                            ) * reflected_f
-                            if ti.static(self.cfg.well_balanced_hydrostatics):
-                                hydrostatic_pressure = (
-                                    1.0 - eta
-                                ) * self.hydrostatic_reference_pressure[
-                                    i, j
-                                ] + eta * self.hydrostatic_reference_pressure[ni, nj]
-                                impulse += (
-                                    6.0 * _w(q) * hydrostatic_pressure * direction_f
-                                )
-                            relative = boundary_point - self.body_center[None]
-                            impulse64 = ti.cast(impulse, ti.f64)
-                            relative64 = ti.cast(relative, ti.f64)
-                            cell_impulse += impulse64
-                            cell_torque += _cross2(relative64, impulse64)
-                            has_cut_link = 1
+                        opposite_direction = -direction_f
+                        impulse = (direction_f - boundary_velocity) * outgoing_f - (
+                            opposite_direction - boundary_velocity
+                        ) * reflected_f
+                        hydrostatic_pressure = (
+                            1.0 - eta
+                        ) * self.hydrostatic_reference_pressure[
+                            i, j
+                        ] + eta * self.hydrostatic_reference_pressure[ni, nj]
+                        impulse += 6.0 * _w(q) * hydrostatic_pressure * direction_f
+                        relative = boundary_point - self.body_center[None]
+                        impulse64 = ti.cast(impulse, ti.f64)
+                        relative64 = ti.cast(relative, ti.f64)
+                        cell_impulse += impulse64
+                        cell_torque += _cross2(relative64, impulse64)
+                        has_cut_link = 1
                     else:
                         opposite = _opp(q)
                         self.f[i, j, opposite] = outgoing_f
                         self.h[i, j, opposite] = outgoing_h
-                if ti.static(not self.cfg.ice_fixed):
-                    if has_cut_link == 1:
-                        ti.atomic_add(self.hydrodynamic_impulse[None].x, cell_impulse.x)
-                        ti.atomic_add(self.hydrodynamic_impulse[None].y, cell_impulse.y)
-                        ti.atomic_add(self.hydrodynamic_torque[None], cell_torque)
+                if has_cut_link == 1:
+                    ti.atomic_add(self.hydrodynamic_impulse[None].x, cell_impulse.x)
+                    ti.atomic_add(self.hydrodynamic_impulse[None].y, cell_impulse.y)
+                    ti.atomic_add(self.hydrodynamic_torque[None], cell_torque)
 
     @ti.kernel
     def _stream_phase_only(self):
@@ -1518,9 +2160,7 @@ class IceFlow2D:
                 velocity = ti.Vector([0.0, 0.0])
                 if self.solid[i, j] == 1:
                     velocity = self._body_velocity_at(self._cell_point(i, j))
-                if ti.static(self.cfg.ice_fixed):
-                    self.phi[i, j] = 0.0
-                elif self.wall[i, j] == 1:
+                if self.wall[i, j] == 1:
                     self.phi[i, j] = 0.0
                 self.u[i, j] = velocity
                 self.fluid_force[i, j] = ti.Vector([0.0, 0.0])
@@ -1534,9 +2174,7 @@ class IceFlow2D:
                     phi += self.h[i, j, q]
                 self.phi[i, j] = phi
             else:
-                if ti.static(self.cfg.ice_fixed):
-                    self.phi[i, j] = 0.0
-                elif self.wall[i, j] == 1:
+                if self.wall[i, j] == 1:
                     self.phi[i, j] = 0.0
 
     def _warm_start_phase(self, steps):
@@ -1560,8 +2198,6 @@ class IceFlow2D:
                 material_density = _rho_mix(phi, rho_water, rho_air)
                 self.u[i, j] = momentum / ti.max(material_density, 1.0e-12)
             elif self.solid[i, j] == 1:
-                if ti.static(self.cfg.ice_fixed):
-                    self.phi[i, j] = 0.0
                 self.u[i, j] = self._body_velocity_at(self._cell_point(i, j))
             else:
                 self.phi[i, j] = 0.0
@@ -1593,214 +2229,258 @@ class IceFlow2D:
                     + 0.5 * velocity.dot(grad_rho)
                     + material_density * s0
                 )
-                reference_pressure = 0.0
-                if ti.static(self.cfg.well_balanced_hydrostatics):
-                    reference_pressure = self.hydrostatic_reference_pressure[i, j]
+                reference_pressure = self.hydrostatic_reference_pressure[i, j]
                 self.p[i, j] = reference_pressure + dynamic_pressure
             else:
-                if ti.static(self.cfg.ice_fixed):
-                    if ti.static(self._thermal_enabled):
-                        # Preserve the dynamic-pressure reservoir stored when
-                        # a phase-change node freezes.  Static container walls
-                        # do not need such a reservoir.
-                        if self.wall[i, j] == 1:
-                            self.p[i, j] = 0.0
-                    else:
-                        self.p[i, j] = 0.0
-                elif self.wall[i, j] == 1:
+                if self.wall[i, j] == 1:
                     self.p[i, j] = 0.0
 
     # Rigid-body forcing and integration
 
+    def _prepare_moving_body_contact_support(self):
+        """Refresh the candidate SDF and reduce its wall support.
+
+        Keep this small compatibility wrapper for callers that need to query
+        contact support outside ``_solve_contact_and_rasterize``.  The
+        rasterizer itself already has a current candidate pass and calls the
+        device kernel directly; standalone callers must populate the shared
+        SDF first.
+        """
+
+        self._calculate_moving_body_fraction()
+        self._prepare_moving_body_contact_support_kernel(True)
+
     @ti.kernel
+    def _prepare_moving_body_contact_support_kernel(self, reduce_support: ti.template()):
+        """Run the contact-support transaction in one device launch.
+
+        ``reduce_support`` is a compile-time template flag.  Keeping the
+        choice static lets CUDA lower the reduction loop as a top-level
+        ``struct_for`` while allowing fixed-pose refreshes to clear the
+        previous support state without rebuilding contact extrema.
+        """
+
+        self._reset_moving_body_contact_support()
+        if ti.static(reduce_support):
+            for i, j in self._moving_body_fraction:
+                self._reduce_moving_body_contact_extrema(i, j)
+            self._finalize_moving_body_contact_support()
+
+    @ti.func
+    def _reset_moving_body_contact_support(self):
+        self._body_contact_support_extrema[0] = 1.0e30
+        self._body_contact_support_extrema[1] = -1.0e30
+        self._body_contact_support_extrema[2] = 1.0e30
+        self._body_contact_support_extrema[3] = -1.0e30
+        self._body_contact_geometry_active[None] = ti.cast(0, ti.i8)
+
+    @ti.func
+    def _reduce_moving_body_contact_extrema(self, i, j):
+        """Find supports of the unclipped sharp LBM raster at this pose."""
+
+        threshold = ti.static(float(self.cfg.thermal.solid_liquid_threshold))
+        origin = self.body_reference_origin[None]
+        fraction = self._moving_body_fraction[i, j]
+        # The fraction pass has already produced the same raw SDF used
+        # by ``_update_solid_mask``.  Reusing its sign
+        # and the thresholded coverage keeps contact consistent with the
+        # sharp mask, including a legitimate rectangle-edge node whose
+        # SDF is zero, while excluding an outside bilinear contributor or
+        # an empty rectangle boundary at lower thresholds.
+        if fraction >= threshold and self.sdf[i, j] <= 0.0:
+            # The sharp solver treats a thresholded world node as one
+            # cell-centred finite volume.  Its cell faces therefore give
+            # the collision support, with the same one-cell topology as
+            # ``solid`` and the cut-link boundary.
+            minimum_x = ti.cast(i, ti.f32) - origin.x
+            maximum_x = ti.cast(i + 1, ti.f32) - origin.x
+            minimum_y = ti.cast(j, ti.f32) - origin.y
+            maximum_y = ti.cast(j + 1, ti.f32) - origin.y
+            ti.atomic_min(self._body_contact_support_extrema[0], minimum_x)
+            ti.atomic_max(self._body_contact_support_extrema[1], maximum_x)
+            ti.atomic_min(self._body_contact_support_extrema[2], minimum_y)
+            ti.atomic_max(self._body_contact_support_extrema[3], maximum_y)
+
+    @ti.func
+    def _finalize_moving_body_contact_support(self):
+        active = self._body_contact_support_extrema[2] < 1.0e20
+        self._body_contact_geometry_active[None] = ti.cast(active, ti.i8)
+        if not active:
+            for index in ti.static(range(4)):
+                self._body_contact_support_extrema[index] = 0.0
+
     def _integrate_rigid_ice(self):
-        mass = ti.static(self._body_mass)
-        inertia = ti.static(self._body_inertia)
+        """Advance the rigid state by one LBM step.
+
+        World rasterization owns the subsequent contact transaction.  Keeping
+        this method limited to the dynamic update ensures that its fraction
+        pass can be shared with contact support reduction.
+        """
+
+        if int(self.body_active[None]) == 0:
+            # Preserve the last finite pose of a completely melted body.
+            # Cut-link loads are empty once its geometry vanishes, but clear
+            # their accumulators explicitly so an inactive body cannot retain
+            # or integrate a stale impulse.
+            self.body_velocity[None] = (0.0, 0.0)
+            self.body_angular_velocity[None] = 0.0
+            self.hydrodynamic_impulse[None] = (0.0, 0.0)
+            self.hydrodynamic_torque[None] = 0.0
+            return
+        self._integrate_rigid_ice_kernel()
+
+    @ti.kernel
+    def _integrate_rigid_ice_kernel(self):
+        mass = ti.cast(self.body_mass_lattice[None], ti.f32)
+        inertia = ti.cast(self.body_inertia_lattice[None], ti.f32)
+        # The wrapper admits only a mechanically resolved body, so these are
+        # the same stored mass and inertia audited by the thermal transition.
         gravity = ti.Vector(
             [ti.static(self._gravity_l[0]), ti.static(self._gravity_l[1])]
         )
         total_impulse = (
-            ti.cast(self.hydrodynamic_impulse[None], ti.f32) + mass * gravity
+            ti.cast(self.hydrodynamic_impulse[None], ti.f32)
+            + mass * gravity
         )
         total_torque = ti.cast(self.hydrodynamic_torque[None], ti.f32)
 
         velocity = ti.static(self.cfg.linear_damping) * (
             self.body_velocity[None] + total_impulse / mass
         )
-        speed = velocity.norm()
-        max_speed = ti.static(self.cfg.max_ice_speed)
-        if speed > max_speed:
-            velocity *= max_speed / speed
         omega = ti.static(self.cfg.angular_damping) * (
             self.body_angular_velocity[None] + total_torque / inertia
         )
-        max_omega = ti.static(self.cfg.max_ice_angular_speed)
-        omega = ti.min(max_omega, ti.max(-max_omega, omega))
-
-        # Bottom contact is an impulse constraint, not component-wise velocity
-        # damping.  Solve the four rectangle corners as a projected
-        # Gauss--Seidel contact manifold.  Each accumulated tangential impulse
-        # is projected onto the Coulomb cone |J_t| <= mu J_n, so weak forcing
-        # can stick while stronger dam-break forcing produces sliding.
-        old_center = self.body_center[None]
-        old_angle = self.body_angle[None]
-        cosine_old = ti.cos(old_angle)
-        sine_old = ti.sin(old_angle)
-        floor_y = ti.static(float(self.cfg.boundary_cells))
-        inv_mass = 1.0 / mass
-        inv_inertia = 1.0 / inertia
-        contact_slop = ti.static(1.0e-3)
-        restitution_threshold = ti.static(1.0e-4)
-        bottom_friction = ti.static(self.cfg.bottom_wall_friction)
-        lever_x = ti.Vector([0.0, 0.0, 0.0, 0.0])
-        lever_y = ti.Vector([0.0, 0.0, 0.0, 0.0])
-        normal_target = ti.Vector([0.0, 0.0, 0.0, 0.0])
-        normal_impulse = ti.Vector([0.0, 0.0, 0.0, 0.0])
-        tangent_impulse = ti.Vector([0.0, 0.0, 0.0, 0.0])
-        active_contact = ti.Vector([0, 0, 0, 0])
-        for corner in ti.static(range(4)):
-            local_x = ti.static(self._body_half_width) * (
-                -1.0 if ti.static(corner % 2 == 0) else 1.0
-            )
-            local_y = ti.static(self._body_half_height) * (
-                -1.0 if ti.static(corner < 2) else 1.0
-            )
-            relative = ti.Vector(
-                [
-                    cosine_old * local_x - sine_old * local_y,
-                    sine_old * local_x + cosine_old * local_y,
-                ]
-            )
-            lever_x[corner] = relative.x
-            lever_y[corner] = relative.y
-            gap = old_center.y + relative.y - floor_y
-            normal_velocity = velocity.y + omega * relative.x
-            if gap <= contact_slop or gap + ti.min(normal_velocity, 0.0) <= 0.0:
-                active_contact[corner] = 1
-                if normal_velocity < -restitution_threshold:
-                    normal_target[corner] = (
-                        -ti.static(self.cfg.wall_restitution) * normal_velocity
-                    )
-
-        # A handful of iterations is ample for this four-contact scalar LCP
-        # and avoids choosing an arbitrary corner for an initially flat base.
-        for _ in ti.static(range(12)):
-            for corner in ti.static(range(4)):
-                if active_contact[corner] == 1:
-                    rx = lever_x[corner]
-                    normal_velocity = velocity.y + omega * rx
-                    effective_inverse_mass = inv_mass + rx * rx * inv_inertia
-                    delta_impulse = (
-                        normal_target[corner] - normal_velocity
-                    ) / effective_inverse_mass
-                    old_impulse = normal_impulse[corner]
-                    new_impulse = ti.max(0.0, old_impulse + delta_impulse)
-                    applied_impulse = new_impulse - old_impulse
-                    normal_impulse[corner] = new_impulse
-                    velocity.y += applied_impulse * inv_mass
-                    omega += rx * applied_impulse * inv_inertia
-
-                    # Tangent t=(1, 0): v_t=v_x-omega*r_y and
-                    # r x (J_t t)=-r_y J_t.  Accumulated projection gives a
-                    # single-coefficient Coulomb stick/slip model.
-                    ry = lever_y[corner]
-                    tangent_velocity = velocity.x - omega * ry
-                    tangent_inverse_mass = inv_mass + ry * ry * inv_inertia
-                    delta_tangent_impulse = -tangent_velocity / tangent_inverse_mass
-                    old_tangent_impulse = tangent_impulse[corner]
-                    friction_limit = bottom_friction * new_impulse
-                    new_tangent_impulse = ti.min(
-                        friction_limit,
-                        ti.max(
-                            -friction_limit, old_tangent_impulse + delta_tangent_impulse
-                        ),
-                    )
-                    applied_tangent_impulse = new_tangent_impulse - old_tangent_impulse
-                    tangent_impulse[corner] = new_tangent_impulse
-                    velocity.x += applied_tangent_impulse * inv_mass
-                    omega -= ry * applied_tangent_impulse * inv_inertia
-
-        # Do not clip omega after the constraint solve: doing so would destroy
-        # the just-enforced contact velocity and break angular-impulse balance.
+        local_com = ti.cast(self.body_local_center_of_mass[None], ti.f32)
         angle = self.body_angle[None] + omega
         center = self.body_center[None] + velocity
 
-        # Split position impulses remove any residual corner penetration
-        # without changing physical velocity or injecting kinetic energy.  In
-        # contrast to an AABB snap, a one-corner correction changes both the
-        # centre height and angle according to the same generalized inverse
-        # mass used by the velocity constraint.
-        position_slop = ti.static(1.0e-5)
-        position_beta = ti.static(0.8)
-        for _ in ti.static(range(12)):
-            for corner in ti.static(range(4)):
-                cosine_position = ti.cos(angle)
-                sine_position = ti.sin(angle)
-                local_x = ti.static(self._body_half_width) * (
-                    -1.0 if ti.static(corner % 2 == 0) else 1.0
-                )
-                local_y = ti.static(self._body_half_height) * (
-                    -1.0 if ti.static(corner < 2) else 1.0
-                )
-                relative = ti.Vector(
-                    [
-                        cosine_position * local_x - sine_position * local_y,
-                        sine_position * local_x + cosine_position * local_y,
-                    ]
-                )
-                penetration = floor_y - (center.y + relative.y)
-                if penetration > position_slop:
-                    effective_inverse_mass = (
-                        inv_mass + relative.x * relative.x * inv_inertia
-                    )
-                    split_impulse = (
-                        position_beta
-                        * (penetration - position_slop)
-                        / effective_inverse_mass
-                    )
-                    center.y += split_impulse * inv_mass
-                    angle += relative.x * split_impulse * inv_inertia
-
-        cosine = ti.abs(ti.cos(angle))
-        sine = ti.abs(ti.sin(angle))
-        extent_x = cosine * ti.static(self._body_half_width) + sine * ti.static(
-            self._body_half_height
-        )
-        extent_y = sine * ti.static(self._body_half_width) + cosine * ti.static(
-            self._body_half_height
-        )
-        lower_x = ti.static(float(self.cfg.boundary_cells)) + extent_x
-        upper_x = ti.static(float(self.nx - self.cfg.boundary_cells)) - extent_x
-        upper_y = ti.static(float(self.ny - self.cfg.boundary_cells)) - extent_y
-        restitution = ti.static(self.cfg.wall_restitution)
-        tangential = 1.0 - ti.static(self.cfg.wall_friction)
-        if center.x < lower_x:
-            center.x = lower_x
-            if velocity.x < 0.0:
-                velocity.x = -restitution * velocity.x
-                velocity.y *= tangential
-                omega *= tangential
-        elif center.x > upper_x:
-            center.x = upper_x
-            if velocity.x > 0.0:
-                velocity.x = -restitution * velocity.x
-                velocity.y *= tangential
-                omega *= tangential
-        if center.y > upper_y:
-            center.y = upper_y
-            if velocity.y > 0.0:
-                velocity.y = -restitution * velocity.y
-                velocity.x *= tangential
-                omega *= tangential
+        cosine = ti.cos(angle)
+        sine = ti.sin(angle)
         self.body_center[None] = center
         self.body_velocity[None] = velocity
         self.body_angle[None] = angle
         self.body_angular_velocity[None] = omega
+        reference_offset = ti.Vector(
+            [
+                cosine * local_com.x - sine * local_com.y,
+                sine * local_com.x + cosine * local_com.y,
+            ]
+        )
+        self.body_reference_origin[None] = center - reference_offset
         # This kernel is the sole consumer of the accumulated cut-link load.
         # Consume-and-clear ownership leaves the following stream kernel with
         # one job: add the next step's locally reduced boundary loads.
         self.hydrodynamic_impulse[None] = ti.Vector([0.0, 0.0])
         self.hydrodynamic_torque[None] = 0.0
+
+    @ti.kernel
+    def _project_moving_body_inside_container(self):
+        """Keep the whole body inside the walls and reject outward velocity."""
+
+        self._body_contact_projection_changed[None] = ti.cast(0, ti.i8)
+        center = self.body_center[None]
+        velocity = self.body_velocity[None]
+        angle = self.body_angle[None]
+        cosine = ti.cos(angle)
+        sine = ti.sin(angle)
+        local_com = ti.cast(self.body_local_center_of_mass[None], ti.f32)
+        rotated_com = ti.Vector(
+            [
+                cosine * local_com.x - sine * local_com.y,
+                sine * local_com.x + cosine * local_com.y,
+            ]
+        )
+
+        if self._body_contact_geometry_active[None] != 0:
+            minimum_relative_x = self._body_contact_support_extrema[0] - rotated_com.x
+            maximum_relative_x = self._body_contact_support_extrema[1] - rotated_com.x
+            minimum_relative_y = self._body_contact_support_extrema[2] - rotated_com.y
+            maximum_relative_y = self._body_contact_support_extrema[3] - rotated_com.y
+            lower_boundary = ti.static(float(self.cfg.boundary_cells))
+            upper_x_boundary = ti.static(float(self.nx - self.cfg.boundary_cells))
+            upper_y_boundary = ti.static(float(self.ny - self.cfg.boundary_cells))
+            lower_x = lower_boundary - minimum_relative_x
+            upper_x = upper_x_boundary - maximum_relative_x
+            lower_y = lower_boundary - minimum_relative_y
+            upper_y = upper_y_boundary - maximum_relative_y
+            if center.x <= lower_x:
+                if center.x < lower_x:
+                    self._body_contact_projection_changed[None] = ti.cast(1, ti.i8)
+                center.x = lower_x
+                velocity.x = ti.max(velocity.x, 0.0)
+            elif center.x >= upper_x:
+                if center.x > upper_x:
+                    self._body_contact_projection_changed[None] = ti.cast(1, ti.i8)
+                center.x = upper_x
+                velocity.x = ti.min(velocity.x, 0.0)
+            if center.y <= lower_y:
+                if center.y < lower_y:
+                    self._body_contact_projection_changed[None] = ti.cast(1, ti.i8)
+                center.y = lower_y
+                velocity.y = ti.max(velocity.y, 0.0)
+            elif center.y >= upper_y:
+                if center.y > upper_y:
+                    self._body_contact_projection_changed[None] = ti.cast(1, ti.i8)
+                center.y = upper_y
+                velocity.y = ti.min(velocity.y, 0.0)
+
+        self.body_center[None] = center
+        self.body_velocity[None] = velocity
+        # The fraction pass can be committed unchanged when contact only
+        # rejects an outward velocity at an already admissible boundary.  In
+        # that case leave the authoritative ALE origin bit-for-bit untouched;
+        # rewrite it only after a positional projection has actually changed
+        # the accepted pose.
+        if self._body_contact_projection_changed[None] != 0:
+            self.body_reference_origin[None] = center - rotated_com
+
+    def _solve_contact_and_rasterize(
+        self,
+        initialize_previous: bool = False,
+        *,
+        resolve_contact: bool = True,
+    ):
+        """Rasterize the moving material and resolve whole-body wall contact.
+
+        A single unclipped fraction pass feeds both the contact support
+        reduction and the shared world SDF/thermal coverage fields.  If
+        contact projection does not move the body, that pass is committed
+        directly.  If projection clamps a penetrated pose, the fraction is
+        evaluated once more at the corrected pose before committing it.
+        Normal calls advance the ALE old/new pair, initialization seeds both
+        values identically, and a mechanically inactive remnant is rasterized
+        but is never projected.
+
+        The body reference origin, angle, and wall are always read from this
+        simulator instance.  ``initialize_previous`` is used only when the
+        initial ALE old/new pair is seeded; ``resolve_contact=False`` is used
+        by fixed-pose thermal refreshes that must not run the mechanical
+        projection.  The return value reports whether contact projection
+        changed the accepted pose.
+        """
+
+        self._calculate_moving_body_fraction()
+        projected = False
+
+        if resolve_contact and int(self.body_active[None]) != 0:
+            self._prepare_moving_body_contact_support_kernel(True)
+            self._project_moving_body_inside_container()
+            projected = int(self._body_contact_projection_changed[None]) != 0
+            if projected:
+                self._calculate_moving_body_fraction()
+                self._prepare_moving_body_contact_support_kernel(True)
+        else:
+            # Keep the diagnostic flag scoped to one rasterization
+            # transaction when callers intentionally skip contact handling.
+            self._body_contact_projection_changed[None] = 0
+            self._prepare_moving_body_contact_support_kernel(False)
+
+        if initialize_previous:
+            previous_mode = 2
+        else:
+            previous_mode = 1
+        self._commit_moving_body_raster(previous_mode)
+        return projected
 
     # ------------------------------------------------------------------
     # Bounded, topology-constrained water-volume projection
@@ -1818,13 +2498,10 @@ class IceFlow2D:
     @ti.kernel
     def _reduce_phase_change_solid_volume(self):
         self.phase_change_current_solid_volume[None] = 0.0
-        for i, j in self.liquid_fraction:
-            if self.phase_change_material[i, j] != 0:
-                fraction = ti.min(1.0, ti.max(0.0, self.liquid_fraction[i, j]))
-                ti.atomic_add(
-                    self.phase_change_current_solid_volume[None],
-                    1.0 - ti.cast(fraction, ti.f64),
-                )
+        density_ratio = ti.static(float(self.cfg.rho_ice / self.cfg.rho_water))
+        self.phase_change_current_solid_volume[None] = (
+            self.body_mass_lattice[None] / density_ratio
+        )
 
     @ti.kernel
     def _reduce_phase_change_geometry_volume(self):
@@ -1835,15 +2512,11 @@ class IceFlow2D:
 
     def _initialize_phase_change_reference(self):
         self._reduce_phase_change_solid_volume()
-        self._reduce_phase_change_geometry_volume()
         self.phase_change_initial_water_volume[None] = float(
             self.water_volume_target[None]
         )
         initial_solid = float(self.phase_change_current_solid_volume[None])
         self.phase_change_initial_solid_volume[None] = initial_solid
-        self.phase_change_initial_geometry_volume[None] = float(
-            self.phase_change_current_geometry_volume[None]
-        )
 
     @ti.kernel
     def _apply_phase_change_water_target(self):
@@ -1852,47 +2525,27 @@ class IceFlow2D:
             self.phase_change_current_solid_volume[None]
             - self.phase_change_initial_solid_volume[None]
         )
-        sharp_geometry_change = (
-            self.phase_change_current_geometry_volume[None]
-            - self.phase_change_initial_geometry_volume[None]
-        )
-        # water_volume_target counts only active LBM water.  The continuous
-        # thermodynamic volume change supplies the physical expansion or
-        # contraction, while the sharp-mask term exactly compensates every
-        # whole node added to or removed from the active fluid lattice.
+        # Melt is detached and injected into world water immediately.  Sharp
+        # mask-count changes from rigid translation/rotation do not affect the
+        # density-converted target.
         self.water_volume_target[None] = (
             self.phase_change_initial_water_volume[None]
-            + (1.0 - density_ratio) * solid_volume_change
-            - sharp_geometry_change
+            - density_ratio * solid_volume_change
         )
 
     def _update_phase_change_water_target(self):
         """Apply exact ice-mass/water-volume conversion for the thermal state."""
 
         self._reduce_phase_change_solid_volume()
-        self._reduce_phase_change_geometry_volume()
         self._apply_phase_change_water_target()
 
     def phase_change_solid_volume_cells(self):
-        if not self._thermal_enabled:
-            raise RuntimeError("thermal coupling is disabled")
         self._reduce_phase_change_solid_volume()
         return float(self.phase_change_current_solid_volume[None])
 
     def phase_change_geometry_volume_cells(self):
-        if not self._thermal_enabled:
-            raise RuntimeError("thermal coupling is disabled")
         self._reduce_phase_change_geometry_volume()
         return float(self.phase_change_current_geometry_volume[None])
-
-    @property
-    def phase_change_melted_fraction(self):
-        if not self._thermal_enabled:
-            return 0.0
-        initial = float(self.phase_change_initial_solid_volume[None])
-        if initial <= 0.0:
-            return 0.0
-        return 1.0 - self.phase_change_solid_volume_cells() / initial
 
     @ti.kernel
     def _clip_water_phase_for_projection(self):
@@ -1911,21 +2564,44 @@ class IceFlow2D:
                 # prevents one-sided clipping/roundoff from accumulating into
                 # disconnected droplets or holes.  The resulting mass change
                 # is included in the subsequent constrained interface shift.
-                if bounded_phase < cutoff:
+                if bounded_phase <= cutoff:
                     bounded_phase = 0.0
-                elif bounded_phase > 1.0 - cutoff:
+                elif bounded_phase >= 1.0 - cutoff:
                     bounded_phase = 1.0
                 if bounded_phase != old_phase:
                     velocity = self.u[i, j]
-                    dynamic_pressure = self.p[i, j]
-                    if ti.static(self.cfg.well_balanced_hydrostatics):
-                        dynamic_pressure -= self.hydrostatic_reference_pressure[i, j]
+                    dynamic_pressure = (
+                        self.p[i, j] - self.hydrostatic_reference_pressure[i, j]
+                    )
                     old_density = _rho_mix(old_phase, rho_water, rho_air)
                     new_density = _rho_mix(bounded_phase, rho_water, rho_air)
                     for q in range(Q):
                         self.f[i, j, q] += _pressure_eq(
                             q, dynamic_pressure, new_density, velocity
                         ) - _pressure_eq(q, dynamic_pressure, old_density, velocity)
+                velocity = self.u[i, j]
+                phase_population_l1 = 0.0
+                for q in range(Q):
+                    phase_population_l1 += ti.abs(self.h[i, j, q])
+                regularize_bulk = (
+                    bounded_phase == 0.0 or bounded_phase == 1.0
+                ) and phase_population_l1 > ti.static(
+                    _MAX_D2Q9_BULK_PHASE_POPULATION_L1
+                )
+                if regularize_bulk:
+                    # A large L1 norm with a canonical zeroth moment is an
+                    # ill-conditioned cancellation of kinetic ghost modes,
+                    # not a resolved interface.  Rebuilding h preserves phase
+                    # mass and equilibrium flux without damping healthy bulk
+                    # populations on every projection.
+                    phase_velocity = self.u[i, j] + 0.5 * self.fluid_force[i, j]
+                    reconstructed_sum = 0.0
+                    for q in range(Q):
+                        reconstructed = _heq(q, bounded_phase, phase_velocity)
+                        self.h[i, j, q] = reconstructed
+                        reconstructed_sum += reconstructed
+                    self.h[i, j, 0] += bounded_phase - reconstructed_sum
+                elif bounded_phase != old_phase:
                     lifted_sum = 0.0
                     for q in range(Q):
                         lifted = (
@@ -1935,8 +2611,6 @@ class IceFlow2D:
                         )
                         self.h[i, j, q] = lifted
                         lifted_sum += lifted
-                    # Close the f32 zeroth moment without changing any bulk
-                    # cell that was already exactly zero or one.
                     self.h[i, j, 0] += bounded_phase - lifted_sum
                 self.phi[i, j] = bounded_phase
                 ti.atomic_add(
@@ -2015,18 +2689,29 @@ class IceFlow2D:
         self.water_volume_current[None] = 0.0
         self.water_projection_derivative[None] = 0.0
         exponential = ti.exp(lagrange_multiplier)
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
         for i, j in self.phi:
             if self._active(i, j):
                 phase64 = ti.cast(self.phi[i, j], ti.f64)
                 mapped64 = phase64
-                if self.h_post[i, j, 0] == 1.0:
+                adjustable = self.h_post[i, j, 0] == 1.0
+                if adjustable:
                     mapped64 = (
                         phase64 * exponential / (1.0 - phase64 + phase64 * exponential)
                     )
                 mapped32 = ti.cast(mapped64, ti.f32)
+                # Endpoint canonicalization is part of the projection map,
+                # rather than an unaccounted post-processing clip.  This is
+                # an active-set map: once an interface value enters an
+                # unresolved bulk tail it contributes exactly zero or one
+                # to the mass equation and has zero local derivative.
+                if mapped32 <= cutoff:
+                    mapped32 = 0.0
+                elif mapped32 >= 1.0 - cutoff:
+                    mapped32 = 1.0
                 mapped64 = ti.cast(mapped32, ti.f64)
                 ti.atomic_add(self.water_volume_current[None], mapped64)
-                if self.h_post[i, j, 0] == 1.0:
+                if adjustable and cutoff < mapped32 < 1.0 - cutoff:
                     ti.atomic_add(
                         self.water_projection_derivative[None],
                         mapped64 * (1.0 - mapped64),
@@ -2039,6 +2724,7 @@ class IceFlow2D:
         rho_water = ti.static(self._rho_water_l)
         rho_air = ti.static(self._rho_air_l)
         exponential = ti.exp(lagrange_multiplier)
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
         self.water_volume_current[None] = 0.0
         for i, j in self.phi:
             if self._active(i, j):
@@ -2052,11 +2738,94 @@ class IceFlow2D:
                         / (1.0 - old_phase64 + old_phase64 * exponential)
                     )
                     new_phase = ti.cast(mapped64, ti.f32)
+                if new_phase <= cutoff:
+                    new_phase = 0.0
+                elif new_phase >= 1.0 - cutoff:
+                    new_phase = 1.0
                 if new_phase != old_phase:
                     velocity = self.u[i, j]
-                    dynamic_pressure = self.p[i, j]
-                    if ti.static(self.cfg.well_balanced_hydrostatics):
-                        dynamic_pressure -= self.hydrostatic_reference_pressure[i, j]
+                    dynamic_pressure = (
+                        self.p[i, j] - self.hydrostatic_reference_pressure[i, j]
+                    )
+                    old_density = _rho_mix(old_phase, rho_water, rho_air)
+                    new_density = _rho_mix(new_phase, rho_water, rho_air)
+                    for q in range(Q):
+                        self.f[i, j, q] += _pressure_eq(
+                            q, dynamic_pressure, new_density, velocity
+                        ) - _pressure_eq(q, dynamic_pressure, old_density, velocity)
+                    lifted_sum = 0.0
+                    for q in range(Q):
+                        lifted = (
+                            self.h[i, j, q]
+                            + _heq(q, new_phase, velocity)
+                            - _heq(q, old_phase, velocity)
+                        )
+                        self.h[i, j, q] = lifted
+                        lifted_sum += lifted
+                    self.h[i, j, 0] += new_phase - lifted_sum
+                    self.phi[i, j] = new_phase
+                ti.atomic_add(
+                    self.water_volume_current[None], ti.cast(new_phase, ti.f64)
+                )
+
+    @ti.kernel
+    def _measure_water_projection_residual_weight(self, residual: ti.f64):
+        """Measure the free-set metric for a storage-level mass closure."""
+
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
+        # Four global f32 ulps are conservative at both phase endpoints and
+        # keep the subsequent cast strictly outside the canonicalized tails.
+        storage_margin = ti.static(4.0 * float(np.finfo(np.float32).eps))
+        magnitude = ti.abs(residual)
+        self.water_projection_derivative[None] = 0.0
+        for i, j in self.phi:
+            if self._active(i, j) and self.h_post[i, j, 0] == 1.0:
+                phase = ti.cast(self.phi[i, j], ti.f64)
+                free = cutoff < phase < 1.0 - cutoff
+                if residual > 0.0:
+                    free = free and 1.0 - cutoff - phase > magnitude + storage_margin
+                else:
+                    free = free and phase - cutoff > magnitude + storage_margin
+                if free:
+                    ti.atomic_add(
+                        self.water_projection_derivative[None],
+                        phase * (1.0 - phase),
+                    )
+
+    @ti.kernel
+    def _apply_water_projection_residual(self, residual: ti.f64, total_weight: ti.f64):
+        """Close a scalar f32 residual on the safe entropic free set."""
+
+        rho_water = ti.static(self._rho_water_l)
+        rho_air = ti.static(self._rho_air_l)
+        cutoff = ti.static(self.cfg.volume_projection_interface_cutoff)
+        storage_margin = ti.static(4.0 * float(np.finfo(np.float32).eps))
+        magnitude = ti.abs(residual)
+        self.water_volume_current[None] = 0.0
+        for i, j in self.phi:
+            if self._active(i, j):
+                old_phase = self.phi[i, j]
+                old_phase64 = ti.cast(old_phase, ti.f64)
+                new_phase = old_phase
+                free = self.h_post[i, j, 0] == 1.0 and (
+                    cutoff < old_phase64 < 1.0 - cutoff
+                )
+                if residual > 0.0:
+                    free = free and (
+                        1.0 - cutoff - old_phase64 > magnitude + storage_margin
+                    )
+                else:
+                    free = free and (old_phase64 - cutoff > magnitude + storage_margin)
+                if free and total_weight > 0.0:
+                    weight = old_phase64 * (1.0 - old_phase64)
+                    new_phase = ti.cast(
+                        old_phase64 + residual * weight / total_weight, ti.f32
+                    )
+                if new_phase != old_phase:
+                    velocity = self.u[i, j]
+                    dynamic_pressure = (
+                        self.p[i, j] - self.hydrostatic_reference_pressure[i, j]
+                    )
                     old_density = _rho_mix(old_phase, rho_water, rho_air)
                     new_density = _rho_mix(new_phase, rho_water, rho_air)
                     for q in range(Q):
@@ -2123,9 +2892,7 @@ class IceFlow2D:
         lagrange_multiplier = 0.0
         best_lambda = 0.0
         best_residual = abs(initial_error)
-        converged = False
-        iterations = 0
-        for iterations in range(1, int(self.cfg.volume_projection_max_iterations) + 1):
+        for _ in range(int(self.cfg.volume_projection_max_iterations)):
             self._evaluate_water_projection(lagrange_multiplier)
             mass = float(self.water_volume_current[None])
             derivative = float(self.water_projection_derivative[None])
@@ -2135,7 +2902,6 @@ class IceFlow2D:
                 best_lambda = lagrange_multiplier
             if abs(residual) <= tolerance:
                 best_lambda = lagrange_multiplier
-                converged = True
                 break
 
             if residual < 0.0:
@@ -2152,22 +2918,25 @@ class IceFlow2D:
                 proposal = 0.5 * (lower_lambda + upper_lambda)
             lagrange_multiplier = proposal
 
-        if not converged:
-            # With f32 phase storage the volume map is piecewise constant.
-            # Accept the best representable state only when it satisfies the
-            # declared conservation tolerance.
-            self._evaluate_water_projection(best_lambda)
-            best_residual = abs(float(self.water_volume_current[None]) - target)
-            if best_residual > tolerance:
-                raise RuntimeError(
-                    "water-volume projection did not converge to storage precision: "
-                    f"residual={best_residual:.6e}, tolerance={tolerance:.6e}"
-                )
-
         self._apply_water_projection(best_lambda)
+        # Endpoint canonicalization makes the scalar f32 map discontinuous.
+        # If the exact target lies in one of its small gaps, close the
+        # remaining volume on interface cells that are safely separated from
+        # either endpoint.  The Bernoulli entropy Hessian is
+        # 1/[phi(1-phi)], so this weighted correction is the minimum
+        # quadratic-entropy perturbation on the current active set.
+        for _ in range(8):
+            residual = target - float(self.water_volume_current[None])
+            if abs(residual) <= tolerance:
+                break
+            self._measure_water_projection_residual_weight(residual)
+            total_weight = float(self.water_projection_derivative[None])
+            if not math.isfinite(total_weight) or total_weight <= 0.0:
+                break
+            self._apply_water_projection_residual(residual, total_weight)
         final_error = abs(target - float(self.water_volume_current[None]))
         if final_error > tolerance:
             raise RuntimeError(
-                "water-volume projection application disagrees with its f64 reduction: "
+                "water-volume projection cannot close its endpoint active set: "
                 f"residual={final_error:.6e}, tolerance={tolerance:.6e}"
             )

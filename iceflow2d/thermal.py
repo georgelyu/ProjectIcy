@@ -1,13 +1,11 @@
-"""Reusable thermal configuration and enthalpy finite-volume kernels.
+"""Thermal configuration and body-ALE phase-change kernels.
 
-The module has two deliberately separated layers:
-
-* The dataclasses, lattice-unit conversion, and NumPy enthalpy inversion are
-  usable without Taichi.  They form the CPU reference surface used by tests
-  and by the standalone Stefan benchmark.
-* :class:`EnthalpyFV2D` owns Taichi fields and kernels intended to be held by
-  ``IceFlow2D`` after its CUDA runtime has been initialized.  Importing this
-  module does not initialize Taichi and remains valid when Taichi is absent.
+:class:`MovingBodyThermal2D` stores eroding ice in a material grid and water
+  volume/sensible energy in the world grid.  Paired volume--energy advection,
+  pose remapping, interface heat, and melt sources preserve the relevant
+  extensive sums before the parent solver updates rigid mass and momentum.
+  Importing this module does not initialize Taichi and remains valid when
+  Taichi is absent.
 
 The device discretization stores physical volumetric enthalpy in J/m^3 on the
 same ``(nx, ny)`` cell layout as the LBM solver.  One heat/enthalpy flux is
@@ -29,24 +27,21 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-import numpy as np
-
-try:  # Configuration and NumPy helpers must work without the GPU dependency.
+try:  # Configuration objects remain importable without the GPU dependency.
     import taichi as ti
 except ModuleNotFoundError:  # pragma: no cover - depends on optional dependency
     ti = None  # type: ignore[assignment]
 
 
-ThermalBoundaryKind = Literal["adiabatic", "dirichlet", "neumann"]
-WaterBuoyancyModel = Literal["linear", "freshwater_quadratic"]
+ThermalBoundaryKind = Literal["adiabatic", "dirichlet"]
+WaterBuoyancyModel = Literal["linear"]
+MovingBodyThermalScheme = Literal["body_ale"]
 
 _ADIABATIC = 0
 _DIRICHLET = 1
-_NEUMANN = 2
 _BOUNDARY_CODE = {
     "adiabatic": _ADIABATIC,
     "dirichlet": _DIRICHLET,
-    "neumann": _NEUMANN,
 }
 
 
@@ -111,9 +106,8 @@ class PhaseChangeProperties:
 class ThermalBoundary:
     """Thermal condition on one side of the active container.
 
-    ``value`` is a temperature in degrees Celsius for ``dirichlet`` and a heat
-    flux in W/m^2 for ``neumann``.  Neumann heat flux is positive *into* the
-    active domain on every side.  ``adiabatic`` requires a zero value.
+    ``value`` is a temperature in degrees Celsius for ``dirichlet``;
+    ``adiabatic`` requires a zero value.
     """
 
     kind: ThermalBoundaryKind = "adiabatic"
@@ -121,9 +115,7 @@ class ThermalBoundary:
 
     def __post_init__(self) -> None:
         if self.kind not in _BOUNDARY_CODE:
-            raise ValueError(
-                "thermal boundary kind must be 'adiabatic', 'dirichlet', or 'neumann'"
-            )
+            raise ValueError("thermal boundary kind must be 'adiabatic' or 'dirichlet'")
         value = _finite("thermal boundary value", self.value)
         if self.kind == "adiabatic" and value != 0.0:
             raise ValueError("adiabatic thermal boundary value must be zero")
@@ -136,10 +128,6 @@ class ThermalBoundary:
     @classmethod
     def dirichlet(cls, temperature_c: float) -> "ThermalBoundary":
         return cls("dirichlet", temperature_c)
-
-    @classmethod
-    def neumann(cls, inward_heat_flux_w_m2: float) -> "ThermalBoundary":
-        return cls("neumann", inward_heat_flux_w_m2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,9 +150,9 @@ class ThermalConfig:
     """Physical and numerical controls for coupled heat and phase change.
 
     The ambient water is required to start at or above the melting
-    temperature and the initial ice at or below it.  During the run, every
-    initially resolved water cell uses the same ice/water enthalpy law and can
-    therefore freeze when a cold boundary removes enough energy.
+    temperature and the initial ice at or below it.  Only original material
+    ice melts; melt water detaches and cannot refreeze onto the single rigid
+    remnant.
     """
 
     properties: PhaseChangeProperties = field(default_factory=PhaseChangeProperties)
@@ -178,12 +166,14 @@ class ThermalConfig:
     solid_liquid_threshold: float = 0.5
     max_fourier_number: float = 0.15
     max_courant_number: float = 0.50
+    max_substeps_per_update: int = 64
     water_buoyancy_model: WaterBuoyancyModel = "linear"
     thermal_expansion_water_1_k: float = 2.1e-4
     buoyancy_reference_temperature_c: float | None = None
     freshwater_density_max_temperature_c: float = 4.0
     freshwater_density_quadratic_coefficient_1_k2: float = 8.0e-6
     scheme: Literal["enthalpy_fv"] = "enthalpy_fv"
+    moving_body_scheme: MovingBodyThermalScheme = "body_ale"
 
     def __post_init__(self) -> None:
         if not isinstance(self.properties, PhaseChangeProperties):
@@ -192,11 +182,10 @@ class ThermalConfig:
             raise TypeError("boundaries must be a ThermalBoundarySet")
         if self.scheme != "enthalpy_fv":
             raise ValueError("scheme must be 'enthalpy_fv'")
-        if self.water_buoyancy_model not in ("linear", "freshwater_quadratic"):
-            raise ValueError(
-                "water_buoyancy_model must be 'linear' or "
-                "'freshwater_quadratic'"
-            )
+        if self.moving_body_scheme != "body_ale":
+            raise ValueError("moving_body_scheme must be 'body_ale'")
+        if self.water_buoyancy_model != "linear":
+            raise ValueError("water_buoyancy_model must be 'linear'")
         if not isinstance(self.advection_enabled, bool):
             raise ValueError("advection_enabled must be a boolean")
         if not isinstance(self.water_air_interface_adiabatic, bool):
@@ -210,6 +199,13 @@ class ThermalConfig:
         object.__setattr__(
             self, "update_interval_lbm_steps", int(self.update_interval_lbm_steps)
         )
+        if (
+            self.moving_body_scheme == "body_ale"
+            and not self.water_air_interface_adiabatic
+        ):
+            raise ValueError(
+                "body_ale currently requires an adiabatic water/air thermal interface"
+            )
         threshold = _finite("solid_liquid_threshold", self.solid_liquid_threshold)
         if not 0.0 < threshold < 1.0:
             raise ValueError("solid_liquid_threshold must be in (0, 1)")
@@ -255,6 +251,15 @@ class ThermalConfig:
         if courant > 1.0:
             raise ValueError("max_courant_number must not exceed one")
         object.__setattr__(self, "max_courant_number", courant)
+        if (
+            isinstance(self.max_substeps_per_update, bool)
+            or int(self.max_substeps_per_update) != self.max_substeps_per_update
+            or int(self.max_substeps_per_update) < 1
+        ):
+            raise ValueError("max_substeps_per_update must be a positive integer")
+        object.__setattr__(
+            self, "max_substeps_per_update", int(self.max_substeps_per_update)
+        )
         object.__setattr__(
             self,
             "thermal_expansion_water_1_k",
@@ -271,69 +276,6 @@ class ThermalConfig:
                 self.freshwater_density_quadratic_coefficient_1_k2,
             ),
         )
-        if self.water_buoyancy_model == "freshwater_quadratic":
-            reference_factor = 1.0 - (
-                self.freshwater_density_quadratic_coefficient_1_k2
-                * (
-                    self.buoyancy_reference_temperature_c
-                    - self.freshwater_density_max_temperature_c
-                )
-                ** 2
-            )
-            if reference_factor <= 0.0:
-                raise ValueError(
-                    "freshwater quadratic density must remain positive at the "
-                    "buoyancy reference temperature"
-                )
-
-
-def water_density_ratio_to_reference(
-    temperature_c: Any, config: ThermalConfig
-) -> float | np.ndarray:
-    """Return liquid-water density divided by its buoyancy reference density.
-
-    This ratio is used only in the Boussinesq gravity source.  It does not
-    replace the material density used by the air--water LBM, the enthalpy law,
-    or the ice/water mass-conversion model.  The quadratic branch implements
-    ``rho(T)=rho_star*(1-beta*(T-T_star)**2)`` and normalizes it by the same
-    expression evaluated at the configured far-field reference temperature.
-    """
-
-    if not isinstance(config, ThermalConfig):
-        raise TypeError("config must be a ThermalConfig")
-    anomaly = water_density_anomaly_ratio_to_reference(temperature_c, config)
-    return 1.0 + anomaly
-
-
-def water_density_anomaly_ratio_to_reference(
-    temperature_c: Any, config: ThermalConfig
-) -> float | np.ndarray:
-    """Return ``(rho_water(T) - rho_water(T_inf)) / rho_water(T_inf)``.
-
-    The quadratic expression is evaluated directly instead of subtracting two
-    nearly equal density ratios.  ``T_inf`` is the configured far-field
-    buoyancy reference and defaults to the initial bath temperature.
-    """
-
-    if not isinstance(config, ThermalConfig):
-        raise TypeError("config must be a ThermalConfig")
-    temperature = np.asarray(temperature_c, dtype=np.float64)
-    reference = float(config.buoyancy_reference_temperature_c)
-    if config.water_buoyancy_model == "linear":
-        anomaly = -float(config.thermal_expansion_water_1_k) * (
-            temperature - reference
-        )
-    else:
-        beta = float(config.freshwater_density_quadratic_coefficient_1_k2)
-        maximum_temperature = float(config.freshwater_density_max_temperature_c)
-        reference_factor = 1.0 - beta * (reference - maximum_temperature) ** 2
-        anomaly = beta * (
-            (reference - maximum_temperature) ** 2
-            - (temperature - maximum_temperature) ** 2
-        ) / reference_factor
-    if anomaly.ndim == 0:
-        return float(anomaly)
-    return anomaly
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,16 +306,6 @@ class LatticeScales:
     def reference_velocity_m_s(self) -> float:
         return self.reference_lattice_velocity * self.velocity_scale_m_s
 
-    def diffusivity_to_lattice(self, diffusivity_m2_s: float) -> float:
-        diffusivity = _non_negative("diffusivity_m2_s", diffusivity_m2_s)
-        return diffusivity * self.dt_s / (self.dx_m * self.dx_m)
-
-    def velocity_to_lattice(self, velocity_m_s: float) -> float:
-        return _finite("velocity_m_s", velocity_m_s) / self.velocity_scale_m_s
-
-    def velocity_to_physical(self, velocity_lattice: float) -> float:
-        return _finite("velocity_lattice", velocity_lattice) * self.velocity_scale_m_s
-
     @classmethod
     def from_reference_velocity(
         cls,
@@ -386,9 +318,7 @@ class LatticeScales:
         """Map a fixed physical reference speed to a lattice speed."""
 
         spacing = _positive("dx_m", dx_m)
-        reference_velocity = _positive(
-            "reference_velocity_m_s", reference_velocity_m_s
-        )
+        reference_velocity = _positive("reference_velocity_m_s", reference_velocity_m_s)
         lattice_velocity = _positive(
             "reference_lattice_velocity", reference_lattice_velocity
         )
@@ -416,266 +346,106 @@ class LatticeScales:
             ) from exc
 
 
-def recover_temperature_and_liquid_fraction_numpy(
-    enthalpy_j_m3: np.ndarray,
-    properties: PhaseChangeProperties,
-    *,
-    density_ice_kg_m3: float,
-    density_water_kg_m3: float | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Invert physical ice/water volumetric enthalpy into ``(T, liquid)``.
+@dataclass(frozen=True, slots=True)
+class MovingBodyThermalTotals:
+    """Mass and reference-energy reductions for moving-body phase change."""
 
-    The reference state is solid ice at the melting temperature, where
-    ``H=0``.  The latent interval ends at ``rho_ice * L``.  A distinct water
-    density may be supplied for liquid sensible heat; omitting it selects the
-    equal-density Stefan approximation.
-    """
-
-    if not isinstance(properties, PhaseChangeProperties):
-        raise TypeError("properties must be a PhaseChangeProperties")
-    rho_ice = _positive("density_ice_kg_m3", density_ice_kg_m3)
-    rho_water = (
-        rho_ice
-        if density_water_kg_m3 is None
-        else _positive("density_water_kg_m3", density_water_kg_m3)
-    )
-    enthalpy = np.asarray(enthalpy_j_m3, dtype=np.float64)
-    temperature = np.empty_like(enthalpy)
-    liquid_fraction = np.empty_like(enthalpy)
-
-    latent_volume = rho_ice * properties.latent_heat_j_kg
-    melting = properties.melting_temperature_c
-    solid = enthalpy < 0.0
-    mushy = (enthalpy >= 0.0) & (enthalpy <= latent_volume)
-    liquid = enthalpy > latent_volume
-
-    temperature[solid] = melting + enthalpy[solid] / (
-        rho_ice * properties.specific_heat_ice_j_kg_k
-    )
-    liquid_fraction[solid] = 0.0
-    temperature[mushy] = melting
-    liquid_fraction[mushy] = enthalpy[mushy] / latent_volume
-    temperature[liquid] = melting + (enthalpy[liquid] - latent_volume) / (
-        rho_water * properties.specific_heat_water_j_kg_k
-    )
-    liquid_fraction[liquid] = 1.0
-    return temperature, liquid_fraction
-
-
-def phase_change_enthalpy_numpy(
-    temperature_c: np.ndarray,
-    liquid_fraction: np.ndarray,
-    properties: PhaseChangeProperties,
-    *,
-    density_ice_kg_m3: float,
-    density_water_kg_m3: float | None = None,
-) -> np.ndarray:
-    """Return physical enthalpy for a thermodynamically consistent state.
-
-    A temperature below the melting point requires zero liquid fraction; a
-    temperature above it requires unit liquid fraction.  At the melting point
-    any liquid fraction in ``[0, 1]`` is valid.
-    """
-
-    if not isinstance(properties, PhaseChangeProperties):
-        raise TypeError("properties must be a PhaseChangeProperties")
-    rho_ice = _positive("density_ice_kg_m3", density_ice_kg_m3)
-    rho_water = (
-        rho_ice
-        if density_water_kg_m3 is None
-        else _positive("density_water_kg_m3", density_water_kg_m3)
-    )
-    temperature, fraction = np.broadcast_arrays(
-        np.asarray(temperature_c, dtype=np.float64),
-        np.asarray(liquid_fraction, dtype=np.float64),
-    )
-    if not np.isfinite(temperature).all() or not np.isfinite(fraction).all():
-        raise ValueError("temperature and liquid_fraction must be finite")
-    if (
-        float(np.min(fraction, initial=0.0)) < 0.0
-        or float(np.max(fraction, initial=1.0)) > 1.0
-    ):
-        raise ValueError("liquid_fraction must lie in [0, 1]")
-
-    melting = properties.melting_temperature_c
-    below = temperature < melting
-    above = temperature > melting
-    if np.any(below & (fraction != 0.0)):
-        raise ValueError("sub-melting states must have zero liquid fraction")
-    if np.any(above & (fraction != 1.0)):
-        raise ValueError("super-melting states must have unit liquid fraction")
-
-    latent_volume = rho_ice * properties.latent_heat_j_kg
-    enthalpy = fraction * latent_volume
-    enthalpy = np.where(
-        below,
-        rho_ice * properties.specific_heat_ice_j_kg_k * (temperature - melting),
-        enthalpy,
-    )
-    enthalpy = np.where(
-        above,
-        latent_volume
-        + rho_water * properties.specific_heat_water_j_kg_k * (temperature - melting),
-        enthalpy,
-    )
-    return np.asarray(enthalpy, dtype=np.float64)
-
-
-def phase_change_water_target_cells(
-    initial_water_volume_cells: float,
-    initial_solid_volume_cells: float,
-    current_solid_volume_cells: float,
-    *,
-    density_ice_kg_m3: float,
-    density_water_kg_m3: float,
-) -> float:
-    """Return total physical liquid-water volume after melting or freezing.
-
-    Volumes are expressed in lattice-cell areas for the two-dimensional unit
-    depth model.  A decrease of one solid cell generates
-    ``rho_ice / rho_water`` water cells; the missing volume for real ice is
-    taken up by motion of the water/air free surface.  Use
-    :func:`phase_change_active_water_target_cells` when the quantity being
-    projected excludes a separate sharp solid mask.
-    """
-
-    initial_water = _non_negative(
-        "initial_water_volume_cells", initial_water_volume_cells
-    )
-    initial_solid = _non_negative(
-        "initial_solid_volume_cells", initial_solid_volume_cells
-    )
-    current_solid = _non_negative(
-        "current_solid_volume_cells", current_solid_volume_cells
-    )
-    rho_ice = _positive("density_ice_kg_m3", density_ice_kg_m3)
-    rho_water = _positive("density_water_kg_m3", density_water_kg_m3)
-    target = initial_water + rho_ice / rho_water * (initial_solid - current_solid)
-    if target < -1.0e-12:
-        raise ValueError("phase change would require a negative water volume")
-    return max(0.0, target)
-
-
-def phase_change_active_water_target_cells(
-    initial_water_volume_cells: float,
-    initial_solid_volume_cells: float,
-    current_solid_volume_cells: float,
-    initial_sharp_geometry_volume_cells: float,
-    current_sharp_geometry_volume_cells: float,
-    *,
-    density_ice_kg_m3: float,
-    density_water_kg_m3: float,
-) -> float:
-    """Return the water target measured only over active LBM cells.
-
-    ``phase_change_water_target_cells`` gives the total physical liquid-water
-    volume.  A sharp LBM mask, however, adds or removes whole active cells when
-    the continuous liquid fraction crosses its geometry threshold.  This
-    target adds the physical ice/water expansion and subtracts that discrete
-    geometry change, so a node transition cannot create a projection spike.
-    When the sharp geometry volume equals the continuous solid volume, the
-    result reduces exactly to the total-water formula.
-    """
-
-    initial_water = _non_negative(
-        "initial_water_volume_cells", initial_water_volume_cells
-    )
-    initial_solid = _non_negative(
-        "initial_solid_volume_cells", initial_solid_volume_cells
-    )
-    current_solid = _non_negative(
-        "current_solid_volume_cells", current_solid_volume_cells
-    )
-    initial_geometry = _non_negative(
-        "initial_sharp_geometry_volume_cells",
-        initial_sharp_geometry_volume_cells,
-    )
-    current_geometry = _non_negative(
-        "current_sharp_geometry_volume_cells",
-        current_sharp_geometry_volume_cells,
-    )
-    rho_ice = _positive("density_ice_kg_m3", density_ice_kg_m3)
-    rho_water = _positive("density_water_kg_m3", density_water_kg_m3)
-    density_ratio = rho_ice / rho_water
-    target = (
-        initial_water
-        + (1.0 - density_ratio) * (current_solid - initial_solid)
-        - (current_geometry - initial_geometry)
-    )
-    if target < -1.0e-12:
-        raise ValueError("phase change would require a negative active water volume")
-    return max(0.0, target)
-
-
-def taichi_available() -> bool:
-    """Return whether the optional Taichi package was importable."""
-
-    return ti is not None
+    initial_body_mass_kg_m: float
+    solid_body_mass_kg_m: float
+    melted_mass_kg_m: float
+    water_mass_kg_m: float
+    total_mass_kg_m: float
+    body_sensible_energy_j_m: float
+    water_sensible_energy_j_m: float
+    latent_energy_j_m: float
+    total_energy_j_m: float
 
 
 if ti is not None:
 
     @ti.data_oriented
-    class EnthalpyFV2D:
-        """Taichi finite-volume enthalpy component for an IceFlow2D lattice.
+    class MovingBodyThermal2D:
+        """Body-frame ice enthalpy coupled to world-frame water sensible heat.
 
-        ``water_phase``, ``wall``, ``solid``, and ``velocity`` remain owned by
-        the parent flow solver and are supplied to :meth:`initialize` and
-        :meth:`advance`.  Velocity is in lattice cells per LBM step; it is
-        converted to m/s before forming the physical advective energy flux.
+        The material grid is immutable under rigid translation and rotation.
+        Only ``body_solid_mass`` and ``body_sensible_energy`` evolve there;
+        world rasterization is a read-only pose transform owned by the parent
+        solver.  Water stores cell volume and sensible energy as extensive
+        quantities.  Every ice--water face heat transfer is removed from the
+        water cell and atomically added to exactly one material cell before
+        phase change is applied.
 
-        ``ice_material`` marks every initial ice or water cell governed by the
-        ice/water enthalpy law; initial air remains outside the thermal domain
-        when the water/air interface is adiabatic.  It deliberately does not
-        move by itself, so a moving free surface or moving ice body must
-        conservatively remap this field in a later coupling stage.
+        This first moving-body implementation is intentionally one-way: melt
+        water detaches from the rigid body and cannot subsequently refreeze
+        onto it.  Water/air heat transfer is adiabatic, as required by
+        ``ThermalConfig(moving_body_scheme="body_ale")``.
         """
 
         def __init__(
             self,
             nx: int,
             ny: int,
+            body_nx: int,
+            body_ny: int,
             config: ThermalConfig,
             scales: LatticeScales,
             *,
             density_water_kg_m3: float,
-            density_air_kg_m3: float,
             density_ice_kg_m3: float,
+            water_phase_cutoff: float = 0.0,
         ):
-            if isinstance(nx, bool) or int(nx) != nx or int(nx) < 2:
-                raise ValueError("nx must be an integer of at least two")
-            if isinstance(ny, bool) or int(ny) != ny or int(ny) < 2:
-                raise ValueError("ny must be an integer of at least two")
+            for name, value, minimum in (
+                ("nx", nx, 2),
+                ("ny", ny, 2),
+                ("body_nx", body_nx, 1),
+                ("body_ny", body_ny, 1),
+            ):
+                if (
+                    isinstance(value, bool)
+                    or int(value) != value
+                    or int(value) < minimum
+                ):
+                    raise ValueError(f"{name} must be an integer of at least {minimum}")
             if not isinstance(config, ThermalConfig):
                 raise TypeError("config must be a ThermalConfig")
             if not isinstance(scales, LatticeScales):
                 raise TypeError("scales must be a LatticeScales")
+            if config.moving_body_scheme != "body_ale":
+                raise ValueError(
+                    "MovingBodyThermal2D requires moving_body_scheme='body_ale'"
+                )
 
             self.nx = int(nx)
             self.ny = int(ny)
+            self.body_nx = int(body_nx)
+            self.body_ny = int(body_ny)
             self.config = config
             self.scales = scales
             self.steps = 0
             self.time_s = 0.0
-
+            # Filled by ``IceFlow2D`` after construction.  Keeping the
+            # reference optional lets this component remain importable and
+            # usable for its material kernels without owning world geometry.
+            self._rasterize_world_callback = None
             self._rho_water = _positive("density_water_kg_m3", density_water_kg_m3)
-            self._rho_air = _positive("density_air_kg_m3", density_air_kg_m3)
             self._rho_ice = _positive("density_ice_kg_m3", density_ice_kg_m3)
+            self._water_phase_cutoff = _non_negative(
+                "water_phase_cutoff", water_phase_cutoff
+            )
+            if self._water_phase_cutoff >= 0.5:
+                raise ValueError("water_phase_cutoff must be below 0.5")
             props = config.properties
             self._melting = float(props.melting_temperature_c)
             self._cp_water = float(props.specific_heat_water_j_kg_k)
             self._cp_ice = float(props.specific_heat_ice_j_kg_k)
-            self._cp_air = float(props.specific_heat_air_j_kg_k)
             self._k_water = float(props.conductivity_water_w_m_k)
             self._k_ice = float(props.conductivity_ice_w_m_k)
-            self._k_air = float(props.conductivity_air_w_m_k)
             self._latent = float(props.latent_heat_j_kg)
-            self._latent_ice_volume = self._rho_ice * self._latent
-            self._latent_water_volume = self._rho_water * self._latent
-            self._velocity_scale = float(scales.velocity_scale_m_s)
             self._dx = float(scales.dx_m)
+            self._cell_area = self._dx * self._dx
+            self._velocity_scale = float(scales.velocity_scale_m_s)
+            self._threshold = float(config.solid_liquid_threshold)
             self._advection_enabled = bool(config.advection_enabled)
-            self._water_air_adiabatic = bool(config.water_air_interface_adiabatic)
 
             boundaries = config.boundaries
             self._left_kind = _BOUNDARY_CODE[boundaries.left.kind]
@@ -687,29 +457,108 @@ if ti is not None:
             self._bottom_value = float(boundaries.bottom.value)
             self._top_value = float(boundaries.top.value)
 
-            shape = (self.nx, self.ny)
-            # f64 is intentional: for physical diffusivities the enthalpy
-            # increment of one LBM step can be below f32 resolution.
-            self.enthalpy_j_m3 = ti.field(ti.f64, shape=shape)
-            self.temperature_c = ti.field(ti.f64, shape=shape)
-            self.liquid_fraction = ti.field(ti.f32, shape=shape)
-            self.conductivity_w_m_k = ti.field(ti.f64, shape=shape)
-            self.ice_material = ti.field(ti.i8, shape=shape)
-            self.flux_x_w_m2 = ti.field(ti.f64, shape=(self.nx + 1, self.ny))
-            self.flux_y_w_m2 = ti.field(ti.f64, shape=(self.nx, self.ny + 1))
-            self.boundary_power_w_m = ti.field(ti.f64, shape=())
-            self.boundary_heat_input_j_m = ti.field(ti.f64, shape=())
-            self._enthalpy_sum_j_m = ti.field(ti.f64, shape=())
-            self._solid_volume_cells = ti.field(ti.f64, shape=())
+            body_shape = (self.body_nx, self.body_ny)
+            world_shape = (self.nx, self.ny)
+            self.body_initial_mass = ti.field(ti.f64, shape=body_shape)
+            self.body_solid_mass = ti.field(ti.f64, shape=body_shape)
+            self.body_sensible_energy = ti.field(ti.f64, shape=body_shape)
+            self.body_temperature = ti.field(ti.f64, shape=body_shape)
+            self.body_solid_fraction = ti.field(ti.f32, shape=body_shape)
+            self._body_heat_delta = ti.field(ti.f64, shape=body_shape)
+            self._body_flux_x = ti.field(ti.f64, shape=(self.body_nx + 1, self.body_ny))
+            self._body_flux_y = ti.field(ti.f64, shape=(self.body_nx, self.body_ny + 1))
+            self._body_melt_target = ti.field(ti.i32, shape=body_shape)
+            self._body_melt_mass_step = ti.field(ti.f64, shape=body_shape)
+            self._body_melt_volume_step = ti.field(ti.f64, shape=body_shape)
+            self._body_melt_sensible_step = ti.field(ti.f64, shape=body_shape)
 
+            self.water_volume_m2 = ti.field(ti.f64, shape=world_shape)
+            self.water_sensible_energy = ti.field(ti.f64, shape=world_shape)
+            self.water_temperature = ti.field(ti.f64, shape=world_shape)
+            self._water_flux_x = ti.field(ti.f64, shape=(self.nx + 1, self.ny))
+            self._water_flux_y = ti.field(ti.f64, shape=(self.nx, self.ny + 1))
+            self._water_volume_flux_x = ti.field(ti.f64, shape=(self.nx + 1, self.ny))
+            self._water_volume_flux_y = ti.field(ti.f64, shape=(self.nx, self.ny + 1))
+            # Conservative projection between the extensive thermal water
+            # state and the current LBM water aperture.  The target is built
+            # from ``phi`` but is capped by one physical cell area, so newly
+            # wetted cells receive a thermal state and no cell can hold more
+            # water than its geometric capacity.
+            self._phase_target_volume = ti.field(ti.f64, shape=world_shape)
+            self._phase_volume_before = ti.field(ti.f64, shape=())
+            self._phase_energy_before = ti.field(ti.f64, shape=())
+            self._phase_base_capacity = ti.field(ti.f64, shape=())
+            self._phase_full_capacity = ti.field(ti.f64, shape=())
+            self._phase_donor_volume = ti.field(ti.f64, shape=())
+            self._phase_donor_energy = ti.field(ti.f64, shape=())
+            self._phase_receiver_volume = ti.field(ti.f64, shape=())
+            self._phase_volume_after = ti.field(ti.f64, shape=())
+            self._phase_energy_after = ti.field(ti.f64, shape=())
+            self._interface_heat_requested = ti.field(ti.f64, shape=world_shape)
+            self.water_melt_mass_source = ti.field(ti.f64, shape=world_shape)
+            # Read-only candidate set used while body-cell threads scatter
+            # newly melted water.  It is frozen in a separate kernel so one
+            # thread cannot make a previously dry cell eligible while another
+            # thread is still selecting its fallback target.
+            self._melt_injection_eligible = ti.field(ti.i8, shape=world_shape)
+
+            self.world_body_indicator = ti.field(ti.f32, shape=world_shape)
+            self.world_body_indicator_prev = ti.field(ti.f32, shape=world_shape)
+            # Rasterization produces one coverage value.  Keep the material
+            # coverage and its interpolation data here; the parent solver
+            # owns the single world SDF used by both rasterization and LBM.
+            self.world_body_solid_fraction = self.world_body_indicator
+            self.world_body_local_i = ti.field(ti.i32, shape=world_shape)
+            self.world_body_local_j = ti.field(ti.i32, shape=world_shape)
+            # Bilinear material contributors used by the thermal contact
+            # operator.  Keeping these interpolation coordinates avoids
+            # assigning heat to a zero-mass nearest cell after nonuniform
+            # erosion.
+            self.world_body_interp_base_i = ti.field(ti.i32, shape=world_shape)
+            self.world_body_interp_base_j = ti.field(ti.i32, shape=world_shape)
+            self.world_body_interp_fraction_x = ti.field(ti.f32, shape=world_shape)
+            self.world_body_interp_fraction_y = ti.field(ti.f32, shape=world_shape)
+            self.world_temperature_c = ti.field(ti.f64, shape=world_shape)
+            self.enthalpy_j_m3 = ti.field(ti.f64, shape=world_shape)
+            self.liquid_fraction = ti.field(ti.f32, shape=world_shape)
+            self.ice_material = ti.field(ti.i8, shape=world_shape)
+            # Stable public aliases used by the coupled example output layer.
+            self.temperature_c = self.world_temperature_c
+
+            self.boundary_power = ti.field(ti.f64, shape=())
+            self.boundary_heat_input = ti.field(ti.f64, shape=())
+            self.boundary_heat_input_j_m = self.boundary_heat_input
+            self.ale_water_volume_residual_m2 = ti.field(ti.f64, shape=())
+            self.ale_water_energy_residual_j_m = ti.field(ti.f64, shape=())
+            self.phase_aperture_volume_residual_m2 = ti.field(ti.f64, shape=())
+            self.phase_aperture_energy_residual_j_m = ti.field(ti.f64, shape=())
+            self.phase_aperture_capacity_margin_m2 = ti.field(ti.f64, shape=())
+            self._ale_removed_volume = ti.field(ti.f64, shape=())
+            self._ale_removed_energy = ti.field(ti.f64, shape=())
+            self._ale_release_weight = ti.field(ti.f64, shape=())
+            self._ale_fallback_weight = ti.field(ti.f64, shape=())
+            self._ale_assigned_volume = ti.field(ti.f64, shape=())
+            self._ale_assigned_energy = ti.field(ti.f64, shape=())
+            # A material cell normally injects melt into its paired interface
+            # water cell.  If that local topology disappears within a thermal
+            # substep, all four extensive sources enter this conservative
+            # fallback pool instead of being silently discarded.
+            self._unassigned_melt_mass = ti.field(ti.f64, shape=())
+            self._unassigned_melt_volume = ti.field(ti.f64, shape=())
+            self._unassigned_melt_energy = ti.field(ti.f64, shape=())
+            self._melt_fallback_free_weight = ti.field(ti.f64, shape=())
+            self._melt_fallback_wet_weight = ti.field(ti.f64, shape=())
+            self._interval_body_melt_mass = ti.field(ti.f64, shape=())
+            self._interval_water_melt_mass = ti.field(ti.f64, shape=())
+            self.melt_injection_mass_residual_kg_m = ti.field(ti.f64, shape=())
+            self._initial_body_mass_sum = ti.field(ti.f64, shape=())
+            self._solid_body_mass_sum = ti.field(ti.f64, shape=())
+            self._water_mass_sum = ti.field(ti.f64, shape=())
+            self._body_sensible_sum = ti.field(ti.f64, shape=())
+            self._water_sensible_sum = ti.field(ti.f64, shape=())
             alpha_water = self._k_water / (self._rho_water * self._cp_water)
-            alpha_air = self._k_air / (self._rho_air * self._cp_air)
             alpha_ice = self._k_ice / (self._rho_ice * self._cp_ice)
             self.maximum_diffusivity_m2_s = max(alpha_water, alpha_ice)
-            if not self._water_air_adiabatic:
-                self.maximum_diffusivity_m2_s = max(
-                    self.maximum_diffusivity_m2_s, alpha_air
-                )
             self.maximum_diffusion_time_step_s = (
                 config.max_fourier_number
                 * self._dx
@@ -720,46 +569,140 @@ if ti is not None:
         def maximum_advection_time_step_s(
             self, max_velocity_lattice_l1: float
         ) -> float:
-            """Return the upwind CFL limit for a lattice L1 speed bound."""
-
             speed = _non_negative("max_velocity_lattice_l1", max_velocity_lattice_l1)
             if not self._advection_enabled or speed == 0.0:
                 return math.inf
             return self.config.max_courant_number * self.scales.dt_s / speed
 
-        def required_substeps(
+        def _validate_substep_count(
+            self,
+            substeps: int,
+            *,
+            process: str,
+            time_step_s: float,
+            max_velocity_lattice_l1: float | None = None,
+        ) -> int:
+            if substeps > self.config.max_substeps_per_update:
+                detail = ""
+                if max_velocity_lattice_l1 is not None:
+                    detail = f", max_velocity_lattice_l1={max_velocity_lattice_l1!r}"
+                raise RuntimeError(
+                    "thermal stability requires "
+                    f"{substeps} {process} substeps for one coupling update, "
+                    "exceeding max_substeps_per_update="
+                    f"{self.config.max_substeps_per_update}; "
+                    f"time_step_s={time_step_s:.9g}{detail}. Reduce the "
+                    "thermal update interval or the lattice velocity, and "
+                    "inspect the LBM state before raising this safety limit."
+                )
+            return substeps
+
+        def required_advection_substeps(
             self,
             time_step_s: float,
             *,
             max_velocity_lattice_l1: float | None = None,
         ) -> int:
-            """Return a conservative explicit conduction/advection substep count.
-
-            Supplying a velocity bound accounts for the combined diffusion and
-            advection monotonicity budget.  If it is omitted, only the
-            diffusion requirement can be checked without synchronously reading
-            the parent solver's velocity field back to Python.
-            """
+            """Return the FAST upwind substeps required by the Courant bound."""
 
             dt = _positive("time_step_s", time_step_s)
-            normalized_load = dt / self.maximum_diffusion_time_step_s
+            load = 0.0
             if max_velocity_lattice_l1 is not None:
                 advection_limit = self.maximum_advection_time_step_s(
                     max_velocity_lattice_l1
                 )
                 if math.isfinite(advection_limit):
-                    normalized_load += dt / advection_limit
-            return max(1, int(math.ceil(normalized_load - 1.0e-14)))
+                    load = dt / advection_limit
+            substeps = max(1, int(math.ceil(load - 1.0e-14)))
+            return self._validate_substep_count(
+                substeps,
+                process="advection",
+                time_step_s=dt,
+                max_velocity_lattice_l1=max_velocity_lattice_l1,
+            )
 
-        def initialize(self, water_phase: Any, wall: Any, solid: Any) -> None:
-            """Initialize physical enthalpy from the parent flow fields."""
+        def required_diffusion_substeps(self, time_step_s: float) -> int:
+            """Return the SLOW conduction substeps required by the Fourier bound."""
 
-            self._initialize_fields(water_phase, wall, solid)
+            dt = _positive("time_step_s", time_step_s)
+            load = dt / self.maximum_diffusion_time_step_s
+            substeps = max(1, int(math.ceil(load - 1.0e-14)))
+            return self._validate_substep_count(
+                substeps,
+                process="diffusion",
+                time_step_s=dt,
+            )
+
+        def initialize(
+            self,
+            water_phase: Any,
+            wall: Any,
+            solid: Any,
+            *,
+            body_center: Any | None = None,
+            body_angle: Any | None = None,
+        ) -> None:
+            """Initialize the material body and extensive world-water state."""
+
+            # World rasterization is owned by ``IceFlow2D``.  Keep the pose
+            # arguments for source compatibility with callers of the former
+            # thermal-owned implementation, but deliberately do not use
+            # them here: the parent solver performs the initial geometry
+            # transaction after this state has been initialized.
+            del body_center, body_angle
+
+            self._initialize_body_state()
+            self._initialize_water_state(water_phase, wall, solid)
             self._reset_diagnostics()
+            self._recover_body_state()
+            self._recover_water_state()
             self.steps = 0
             self.time_s = 0.0
 
-        def advance(
+        def rasterize_world(
+            self,
+            body_center: Any | None = None,
+            body_angle: Any | None = None,
+            wall: Any | None = None,
+            *,
+            resolve_contact: bool = False,
+        ) -> None:
+            """Delegate world rasterization to the owning simulator.
+
+            The implementation used to live in this thermal component.  A
+            narrow forwarding shim keeps older code that calls
+            ``simulation.thermal.rasterize_world(...)`` working while the
+            simulator owns fraction sampling, the shared SDF, and contact
+            projection.
+            The legacy pose and wall arguments are accepted only for source
+            compatibility and are ignored; the simulator reads its own
+            authoritative fields.
+            ``resolve_contact`` is accepted for symmetry with the simulator
+            entry point.  It defaults to ``False`` to preserve the former
+            thermal-only rasterization semantics; the simulator entry point
+            defaults to the complete geometry/contact transaction.
+            """
+
+            callback = getattr(self, "_rasterize_world_callback", None)
+            if callback is None:
+                raise RuntimeError(
+                    "world rasterization is owned by IceFlow2D; no "
+                    "rasterize-world callback has been registered"
+            )
+            if body_center is None and body_angle is None and wall is None:
+                callback(resolve_contact=bool(resolve_contact))
+                return None
+            if body_center is None or body_angle is None or wall is None:
+                raise TypeError(
+                    "body_center, body_angle, and wall must be supplied together"
+                )
+            # The simulator now reads its own authoritative pose and wall
+            # fields.  The legacy values are validated above for callers that
+            # still pass them, then deliberately discarded.
+            callback(resolve_contact=bool(resolve_contact))
+            return None
+
+        def advance_fast(
             self,
             time_step_s: float,
             velocity: Any,
@@ -769,509 +712,1477 @@ if ti is not None:
             *,
             max_velocity_lattice_l1: float | None = None,
         ) -> int:
-            """Advance by a physical interval and return the substep count.
-
-            ``max_velocity_lattice_l1`` should be supplied by the parent from a
-            known low-Mach cap when strict combined CFL/Fourier enforcement is
-            desired.  Omitting it avoids a device-to-host velocity reduction.
-            """
+            """Advance one pose remap and water advection at the LBM rate."""
 
             dt = _positive("time_step_s", time_step_s)
-            substeps = self.required_substeps(
+            substeps = self.required_advection_substeps(
                 dt, max_velocity_lattice_l1=max_velocity_lattice_l1
             )
+            self._conservative_remap_water(water_phase, wall)
+            # The conservative remap closes global V/S sums, but its release
+            # weights may temporarily place that volume in a partial or still-
+            # sharp cell.  Restore the current LBM aperture before selecting
+            # the first upwind donor.
+            self.synchronize_water_aperture(
+                water_phase, wall, solid, refresh_derived=False
+            )
             sub_dt = dt / substeps
-            # The Allen--Cahn water/air phase can change between calls.  Sync
-            # temperature and conductivity with the current phase before the
-            # first face flux is formed; subsequent substeps recover below.
-            self._recover_state(water_phase, wall)
-            for _ in range(substeps):
+            for substep_index in range(substeps):
+                self._compute_water_advection_flux_x(velocity, water_phase, wall, solid)
+                self._compute_water_advection_flux_y(velocity, water_phase, wall, solid)
+                self._update_water_advection(sub_dt, wall)
+                # The upwind volume flux is conservative globally, while an
+                # individual partial cell can temporarily outrun its current
+                # phase aperture.  Reconcile after every Courant substep so
+                # the next face flux always sees an admissible capacity.
+                if substep_index + 1 < substeps:
+                    self.synchronize_water_aperture(
+                        water_phase, wall, solid, refresh_derived=False
+                    )
+            return substeps
+
+        def advance_slow(
+            self,
+            time_step_s: float,
+            water_phase: Any,
+            wall: Any,
+            solid: Any,
+            body_reference_origin: Any,
+            body_angle: Any,
+            *,
+            rasterize_world_callback: Any | None = None,
+        ) -> int:
+            """Advance conduction, wall heat, phase change, and melt injection."""
+
+            # ``IceFlow2D`` supplies the callback so that each thermal
+            # substep sees the current eroded material raster.  Falling back
+            # to the callback registered by the simulator keeps direct
+            # callers source-compatible while leaving this component free of
+            # rasterization kernels.
+            if rasterize_world_callback is None:
+                rasterize_world_callback = getattr(
+                    self, "_rasterize_world_callback", None
+                )
+
+            dt = _positive("time_step_s", time_step_s)
+            substeps = self.required_diffusion_substeps(dt)
+            sub_dt = dt / substeps
+            self._reset_interval_sources()
+            for substep_index in range(substeps):
+                self._recover_body_state()
+                self._recover_water_state()
+                self._reset_substep_sources()
+                self._compute_body_flux_x()
+                self._compute_body_flux_y()
+                self._accumulate_body_conduction(sub_dt)
                 self._reset_boundary_power()
-                self._compute_flux_x(velocity, water_phase, wall, solid)
-                self._compute_flux_y(velocity, water_phase, wall, solid)
-                self._update_enthalpy(sub_dt, wall)
+                self._compute_water_conduction_flux_x(water_phase, wall, solid)
+                self._compute_water_conduction_flux_y(water_phase, wall, solid)
+                self._update_water_conduction(sub_dt, wall)
                 self._accumulate_boundary_heat(sub_dt)
-                self._recover_state(water_phase, wall)
+                self._recover_water_state()
+                self._compute_interface_heat_requests(sub_dt, water_phase, wall, solid)
+                self._apply_interface_heat(sub_dt, water_phase, wall, solid)
+                self._apply_body_heat_and_phase_change()
+                self._freeze_melt_injection_eligibility(water_phase, wall, solid)
+                self._inject_melt_water(
+                    body_reference_origin,
+                    body_angle,
+                )
+                self._distribute_unassigned_melt(water_phase, wall, solid)
+                # Restore the per-cell aperture bound before the next heat
+                # substep; this keeps V and S admissible even when one
+                # coupling interval requires N_sub > 1.
+                self.synchronize_water_aperture(
+                    water_phase, wall, solid, refresh_derived=False
+                )
+                if substep_index + 1 < substeps:
+                    # A diffusion interval can melt enough material to alter
+                    # the continuous contact aperture before its next
+                    # substep.  Refresh the material-to-world weights at the
+                    # fixed SLOW pose; the parent solver rebuilds the sharp
+                    # LBM mask once after the complete interval.
+                    self._recover_body_state()
+                    if rasterize_world_callback is not None:
+                        rasterize_world_callback(resolve_contact=False)
+            self._reduce_melt_injection_residual()
+            self._recover_body_state()
+            self._recover_water_state()
+            if rasterize_world_callback is not None:
+                rasterize_world_callback(resolve_contact=False)
             self.steps += substeps
             self.time_s += dt
             return substeps
 
-        def total_enthalpy_j_m(self, wall: Any) -> float:
-            """Return energy per unit out-of-plane depth over non-wall cells."""
+        def synchronize_water_aperture(
+            self,
+            water_phase: Any,
+            wall: Any,
+            solid: Any,
+            *,
+            refresh_derived: bool = True,
+        ) -> None:
+            """Conservatively align extensive water state with the LBM aperture.
 
-            self._reduce_enthalpy(wall)
-            return float(self._enthalpy_sum_j_m[None])
+            For legal water-side cells, the phase-weighted target is
+            ``dx**2 * phi``.  If the thermal and phase totals differ between
+            coupling updates, the target is scaled down or its remaining
+            geometric capacity is filled proportionally.  Donor water and
+            its sensible energy are pooled with one common weight, preserving
+            both global extensive sums and a spatially uniform temperature.
+            """
 
-        def solid_volume_cells(self) -> float:
-            """Return ``sum(1-lambda)`` over phase-change material cells."""
+            self._measure_phase_aperture(water_phase, wall, solid)
+            total_volume = float(self._phase_volume_before[None])
+            full_capacity = float(self._phase_full_capacity[None])
+            tolerance = 1.0e-12 * max(
+                self._cell_area, abs(total_volume), abs(full_capacity)
+            )
+            if total_volume < -tolerance:
+                raise RuntimeError(
+                    "thermal water advection produced a negative total volume: "
+                    f"{total_volume:.17g} m^2"
+                )
+            if total_volume > full_capacity + tolerance:
+                raise RuntimeError(
+                    "thermal water volume exceeds the current fluid aperture "
+                    "capacity: "
+                    f"volume={total_volume:.17g} m^2, "
+                    f"capacity={full_capacity:.17g} m^2"
+                )
+            self._build_phase_aperture_targets(water_phase, wall, solid)
+            self._measure_phase_aperture_transfer()
+            self._apply_phase_aperture_transfer()
+            self._finish_phase_aperture_transfer()
+            if refresh_derived:
+                # Public callers observe a self-consistent temperature and
+                # display state immediately after changing V and S.  This is
+                # deliberately not a pose rasterization: ALE history and the
+                # pending-pose flag must remain untouched.
+                self._recover_water_state()
+                self._compose_world_temperature(wall)
 
-            self._reduce_solid_volume()
-            return float(self._solid_volume_cells[None])
+        def mass_energy_totals(self) -> MovingBodyThermalTotals:
+            """Synchronously reduce all extensive moving-body thermal fields."""
+
+            self._reduce_totals()
+            initial_body = float(self._initial_body_mass_sum[None])
+            solid_body = float(self._solid_body_mass_sum[None])
+            melted = initial_body - solid_body
+            water_mass = float(self._water_mass_sum[None])
+            body_sensible = float(self._body_sensible_sum[None])
+            water_sensible = float(self._water_sensible_sum[None])
+            latent = self._latent * melted
+            return MovingBodyThermalTotals(
+                initial_body_mass_kg_m=initial_body,
+                solid_body_mass_kg_m=solid_body,
+                melted_mass_kg_m=melted,
+                water_mass_kg_m=water_mass,
+                total_mass_kg_m=solid_body + water_mass,
+                body_sensible_energy_j_m=body_sensible,
+                water_sensible_energy_j_m=water_sensible,
+                latent_energy_j_m=latent,
+                total_energy_j_m=body_sensible + water_sensible + latent,
+            )
+
+        def total_enthalpy_j_m(self, wall: Any | None = None) -> float:
+            """Return conserved body/water energy per unit out-of-plane depth."""
+
+            del wall
+            return self.mass_energy_totals().total_energy_j_m
 
         @ti.kernel
-        def _initialize_fields(
+        def _initialize_body_state(self):
+            cell_mass = ti.cast(ti.static(self._rho_ice * self._cell_area), ti.f64)
+            cp_ice = ti.cast(ti.static(self._cp_ice), ti.f64)
+            melting = ti.cast(ti.static(self._melting), ti.f64)
+            initial_temperature = ti.cast(
+                ti.static(float(self.config.initial_ice_temperature_c)), ti.f64
+            )
+            for i, j in self.body_initial_mass:
+                mass = cell_mass
+                self.body_initial_mass[i, j] = mass
+                self.body_solid_mass[i, j] = mass
+                self.body_sensible_energy[i, j] = (
+                    mass * cp_ice * (initial_temperature - melting)
+                )
+                self.body_temperature[i, j] = initial_temperature
+                self.body_solid_fraction[i, j] = 1.0
+
+        @ti.kernel
+        def _initialize_water_state(
             self,
             water_phase: ti.template(),
             wall: ti.template(),
             solid: ti.template(),
         ):
-            melting = ti.static(self._melting)
-            rho_water = ti.static(self._rho_water)
-            rho_air = ti.static(self._rho_air)
-            rho_ice = ti.static(self._rho_ice)
-            cp_water = ti.static(self._cp_water)
-            cp_air = ti.static(self._cp_air)
-            cp_ice = ti.static(self._cp_ice)
-            k_water = ti.static(self._k_water)
-            k_ice = ti.static(self._k_ice)
-            k_air = ti.static(self._k_air)
-            latent_ice = ti.static(self._latent_ice_volume)
-            latent_water = ti.static(self._latent_water_volume)
-            initial_water = ti.static(float(self.config.initial_water_temperature_c))
-            initial_air = ti.static(float(self.config.initial_air_temperature_c))
-            initial_ice = ti.static(float(self.config.initial_ice_temperature_c))
-            for i, j in self.enthalpy_j_m3:
-                if wall[i, j] != 0:
-                    self.enthalpy_j_m3[i, j] = 0.0
-                    self.temperature_c[i, j] = melting
-                    self.liquid_fraction[i, j] = 0.0
-                    self.conductivity_w_m_k[i, j] = 0.0
-                    self.ice_material[i, j] = ti.cast(0, ti.i8)
-                elif solid[i, j] != 0:
-                    self.enthalpy_j_m3[i, j] = (
-                        rho_ice * cp_ice * (initial_ice - melting)
-                    )
-                    self.temperature_c[i, j] = initial_ice
-                    self.liquid_fraction[i, j] = 0.0
-                    self.conductivity_w_m_k[i, j] = k_ice
-                    self.ice_material[i, j] = ti.cast(1, ti.i8)
-                else:
-                    phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
-                    if phase >= 0.5:
-                        self.enthalpy_j_m3[i, j] = latent_ice + (
-                            rho_water * cp_water * (initial_water - melting)
-                        )
-                        self.temperature_c[i, j] = initial_water
-                        self.liquid_fraction[i, j] = 1.0
-                        self.conductivity_w_m_k[i, j] = k_water
-                        self.ice_material[i, j] = ti.cast(1, ti.i8)
-                    else:
-                        air_energy = rho_air * cp_air * (initial_air - melting)
-                        if ti.static(self._water_air_adiabatic):
-                            # The first coupled model treats phi<0.5 as a
-                            # thermally inactive air reservoir.  Ignoring later
-                            # diffuse-interface jitter here prevents a changing
-                            # phi from inventing latent heat in that reservoir.
-                            self.enthalpy_j_m3[i, j] = air_energy
-                            self.temperature_c[i, j] = initial_air
-                            self.conductivity_w_m_k[i, j] = k_air
-                        else:
-                            # For a conductive air domain, retain the resolved
-                            # sub-threshold water fraction in the mixture
-                            # enthalpy and use the same reference in recovery.
-                            water_energy = latent_water + rho_water * cp_water * (
-                                initial_water - melting
-                            )
-                            capacity = (
-                                phase * rho_water * cp_water
-                                + (1.0 - phase) * rho_air * cp_air
-                            )
-                            mixture_enthalpy = (
-                                phase * water_energy + (1.0 - phase) * air_energy
-                            )
-                            self.enthalpy_j_m3[i, j] = mixture_enthalpy
-                            self.temperature_c[i, j] = melting + (
-                                mixture_enthalpy - phase * latent_water
-                            ) / ti.max(capacity, 1.0e-30)
-                            self.conductivity_w_m_k[i, j] = (
-                                phase * k_water + (1.0 - phase) * k_air
-                            )
-                        self.liquid_fraction[i, j] = 1.0
-                        self.ice_material[i, j] = ti.cast(0, ti.i8)
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            rho_cp = ti.cast(ti.static(self._rho_water * self._cp_water), ti.f64)
+            melting = ti.cast(ti.static(self._melting), ti.f64)
+            initial_temperature = ti.cast(
+                ti.static(float(self.config.initial_water_temperature_c)), ti.f64
+            )
+            for i, j in self.water_volume_m2:
+                phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
+                volume = ti.cast(0.0, ti.f64)
+                if (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and phase > ti.static(self._water_phase_cutoff)
+                ):
+                    volume = area * ti.cast(phase, ti.f64)
+                self.water_volume_m2[i, j] = volume
+                self.water_sensible_energy[i, j] = (
+                    rho_cp * volume * (initial_temperature - melting)
+                )
+                self.water_temperature[i, j] = initial_temperature
 
         @ti.kernel
         def _reset_diagnostics(self):
-            self.boundary_power_w_m[None] = 0.0
-            self.boundary_heat_input_j_m[None] = 0.0
-            self._enthalpy_sum_j_m[None] = 0.0
+            self.boundary_power[None] = 0.0
+            self.boundary_heat_input[None] = 0.0
+            self.ale_water_volume_residual_m2[None] = 0.0
+            self.ale_water_energy_residual_j_m[None] = 0.0
+            self.phase_aperture_volume_residual_m2[None] = 0.0
+            self.phase_aperture_energy_residual_j_m[None] = 0.0
+            self.phase_aperture_capacity_margin_m2[None] = 0.0
+            self.melt_injection_mass_residual_kg_m[None] = 0.0
+
+        @ti.kernel
+        def _reset_interval_sources(self):
+            self._interval_body_melt_mass[None] = 0.0
+            self._interval_water_melt_mass[None] = 0.0
+            self.melt_injection_mass_residual_kg_m[None] = 0.0
+            for i, j in self.water_melt_mass_source:
+                self.water_melt_mass_source[i, j] = 0.0
+
+        @ti.kernel
+        def _reset_substep_sources(self):
+            self._unassigned_melt_mass[None] = 0.0
+            self._unassigned_melt_volume[None] = 0.0
+            self._unassigned_melt_energy[None] = 0.0
+            self._melt_fallback_free_weight[None] = 0.0
+            self._melt_fallback_wet_weight[None] = 0.0
+            for i, j in self._body_heat_delta:
+                self._body_heat_delta[i, j] = 0.0
+                self._body_melt_target[i, j] = -1
+                self._body_melt_mass_step[i, j] = 0.0
+                self._body_melt_volume_step[i, j] = 0.0
+                self._body_melt_sensible_step[i, j] = 0.0
+            for i, j in self._interface_heat_requested:
+                self._interface_heat_requested[i, j] = 0.0
 
         @ti.kernel
         def _reset_boundary_power(self):
-            self.boundary_power_w_m[None] = 0.0
+            self.boundary_power[None] = 0.0
 
         @ti.kernel
-        def _compute_flux_x(
+        def _recover_body_state(self):
+            melting = ti.cast(ti.static(self._melting), ti.f64)
+            cp_ice = ti.cast(ti.static(self._cp_ice), ti.f64)
+            for i, j in self.body_initial_mass:
+                initial_mass = self.body_initial_mass[i, j]
+                solid_mass = ti.min(
+                    initial_mass, ti.max(0.0, self.body_solid_mass[i, j])
+                )
+                self.body_solid_mass[i, j] = solid_mass
+                fraction = ti.cast(0.0, ti.f64)
+                temperature = ti.cast(melting, ti.f64)
+                if initial_mass > 1.0e-30:
+                    fraction = solid_mass / initial_mass
+                if solid_mass > 0.0:
+                    # The contact aperture is stored/rasterized in f32.  Keep
+                    # a positive representational aperture after the physical
+                    # fraction falls below the reliable interpolation range;
+                    # the associated heat is still debited from water and
+                    # pays the exact latent energy before mass reaches zero.
+                    fraction = ti.max(fraction, 1.0e-30)
+                if solid_mass > 1.0e-30:
+                    temperature += self.body_sensible_energy[i, j] / (
+                        solid_mass * cp_ice
+                    )
+                    temperature = ti.min(melting, temperature)
+                self.body_solid_fraction[i, j] = ti.cast(fraction, ti.f32)
+                self.body_temperature[i, j] = temperature
+
+        @ti.kernel
+        def _recover_water_state(self):
+            melting = ti.cast(ti.static(self._melting), ti.f64)
+            rho_cp = ti.cast(ti.static(self._rho_water * self._cp_water), ti.f64)
+            air_temperature = ti.cast(
+                ti.static(float(self.config.initial_air_temperature_c)), ti.f64
+            )
+            for i, j in self.water_volume_m2:
+                volume = self.water_volume_m2[i, j]
+                temperature = ti.cast(air_temperature, ti.f64)
+                if volume > 1.0e-30:
+                    temperature = melting + self.water_sensible_energy[i, j] / (
+                        rho_cp * volume
+                    )
+                self.water_temperature[i, j] = temperature
+
+        @ti.kernel
+        def _measure_phase_aperture(
             self,
-            velocity: ti.template(),
             water_phase: ti.template(),
             wall: ti.template(),
             solid: ti.template(),
         ):
-            nx = ti.static(self.nx)
-            dx = ti.static(self._dx)
-            velocity_scale = ti.static(self._velocity_scale)
-            melting = ti.static(self._melting)
-            rho_water_cp = ti.static(self._rho_water * self._cp_water)
-            left_value = ti.static(self._left_value)
-            right_value = ti.static(self._right_value)
-            for face_i, j in self.flux_x_w_m2:
-                flux = ti.cast(0.0, ti.f64)
-                boundary_inward = ti.cast(0.0, ti.f64)
-                if 0 < face_i < nx:
-                    left_i = face_i - 1
-                    right_i = face_i
-                    left_wall = wall[left_i, j] != 0
-                    right_wall = wall[right_i, j] != 0
-                    if not left_wall and not right_wall:
-                        left_material = self.ice_material[left_i, j] != 0
-                        right_material = self.ice_material[right_i, j] != 0
-                        conduct_face = True
-                        if ti.static(self._water_air_adiabatic):
-                            conduct_face = left_material and right_material
-                        if conduct_face:
-                            k_left = self.conductivity_w_m_k[left_i, j]
-                            k_right = self.conductivity_w_m_k[right_i, j]
-                            k_face = (
-                                2.0
-                                * k_left
-                                * k_right
-                                / ti.max(k_left + k_right, 1.0e-30)
-                            )
-                            flux = (
-                                -k_face
-                                * (
-                                    self.temperature_c[right_i, j]
-                                    - self.temperature_c[left_i, j]
-                                )
-                                / dx
-                            )
-                            if ti.static(self._advection_enabled):
-                                if solid[left_i, j] == 0 and solid[right_i, j] == 0:
-                                    speed = (
-                                        0.5
-                                        * (
-                                            velocity[left_i, j].x
-                                            + velocity[right_i, j].x
-                                        )
-                                        * velocity_scale
-                                    )
-                                    upwind_temperature = self.temperature_c[right_i, j]
-                                    if speed >= 0.0:
-                                        upwind_temperature = self.temperature_c[
-                                            left_i, j
-                                        ]
-                                    upwind_capacity = rho_water_cp
-                                    if speed >= 0.0:
-                                        if self.ice_material[left_i, j] == 0:
-                                            upwind_phase = ti.min(
-                                                1.0,
-                                                ti.max(0.0, water_phase[left_i, j]),
-                                            )
-                                            upwind_capacity = (
-                                                upwind_phase * rho_water_cp
-                                                + (1.0 - upwind_phase)
-                                                * ti.static(
-                                                    self._rho_air * self._cp_air
-                                                )
-                                            )
-                                    else:
-                                        if self.ice_material[right_i, j] == 0:
-                                            upwind_phase = ti.min(
-                                                1.0,
-                                                ti.max(0.0, water_phase[right_i, j]),
-                                            )
-                                            upwind_capacity = (
-                                                upwind_phase * rho_water_cp
-                                                + (1.0 - upwind_phase)
-                                                * ti.static(
-                                                    self._rho_air * self._cp_air
-                                                )
-                                            )
-                                    sensible_enthalpy = upwind_capacity * (
-                                        upwind_temperature - melting
-                                    )
-                                    flux += speed * sensible_enthalpy
-                    elif left_wall and not right_wall:
-                        apply_boundary = True
-                        if ti.static(self._water_air_adiabatic):
-                            apply_boundary = self.ice_material[right_i, j] != 0
-                        if apply_boundary:
-                            k_cell = self.conductivity_w_m_k[right_i, j]
-                            if ti.static(self._left_kind == _DIRICHLET):
-                                flux = (
-                                    2.0
-                                    * k_cell
-                                    * (left_value - self.temperature_c[right_i, j])
-                                    / dx
-                                )
-                            elif ti.static(self._left_kind == _NEUMANN):
-                                flux = left_value
-                        boundary_inward = flux
-                    elif not left_wall and right_wall:
-                        apply_boundary = True
-                        if ti.static(self._water_air_adiabatic):
-                            apply_boundary = self.ice_material[left_i, j] != 0
-                        if apply_boundary:
-                            k_cell = self.conductivity_w_m_k[left_i, j]
-                            if ti.static(self._right_kind == _DIRICHLET):
-                                flux = (
-                                    2.0
-                                    * k_cell
-                                    * (self.temperature_c[left_i, j] - right_value)
-                                    / dx
-                                )
-                            elif ti.static(self._right_kind == _NEUMANN):
-                                flux = -right_value
-                        boundary_inward = -flux
-                self.flux_x_w_m2[face_i, j] = flux
-                if boundary_inward != 0.0:
-                    ti.atomic_add(self.boundary_power_w_m[None], boundary_inward * dx)
+            """Reduce thermal totals and the legal water-side capacities."""
+
+            self._phase_volume_before[None] = 0.0
+            self._phase_energy_before[None] = 0.0
+            self._phase_base_capacity[None] = 0.0
+            self._phase_full_capacity[None] = 0.0
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            for i, j in self.water_volume_m2:
+                volume = self.water_volume_m2[i, j]
+                ti.atomic_add(self._phase_volume_before[None], volume)
+                ti.atomic_add(
+                    self._phase_energy_before[None],
+                    self.water_sensible_energy[i, j],
+                )
+                phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
+                if (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and phase > ti.static(self._water_phase_cutoff)
+                ):
+                    ti.atomic_add(
+                        self._phase_base_capacity[None],
+                        area * ti.cast(phase, ti.f64),
+                    )
+                    ti.atomic_add(self._phase_full_capacity[None], area)
 
         @ti.kernel
-        def _compute_flux_y(
+        def _build_phase_aperture_targets(
             self,
-            velocity: ti.template(),
             water_phase: ti.template(),
             wall: ti.template(),
             solid: ti.template(),
         ):
-            ny = ti.static(self.ny)
-            dx = ti.static(self._dx)
-            velocity_scale = ti.static(self._velocity_scale)
-            melting = ti.static(self._melting)
-            rho_water_cp = ti.static(self._rho_water * self._cp_water)
-            bottom_value = ti.static(self._bottom_value)
-            top_value = ti.static(self._top_value)
-            for i, face_j in self.flux_y_w_m2:
-                flux = ti.cast(0.0, ti.f64)
-                boundary_inward = ti.cast(0.0, ti.f64)
-                if 0 < face_j < ny:
-                    bottom_j = face_j - 1
-                    top_j = face_j
-                    bottom_wall = wall[i, bottom_j] != 0
-                    top_wall = wall[i, top_j] != 0
-                    if not bottom_wall and not top_wall:
-                        bottom_material = self.ice_material[i, bottom_j] != 0
-                        top_material = self.ice_material[i, top_j] != 0
-                        conduct_face = True
-                        if ti.static(self._water_air_adiabatic):
-                            conduct_face = bottom_material and top_material
-                        if conduct_face:
-                            k_bottom = self.conductivity_w_m_k[i, bottom_j]
-                            k_top = self.conductivity_w_m_k[i, top_j]
-                            k_face = (
-                                2.0
-                                * k_bottom
-                                * k_top
-                                / ti.max(k_bottom + k_top, 1.0e-30)
-                            )
-                            flux = (
-                                -k_face
-                                * (
-                                    self.temperature_c[i, top_j]
-                                    - self.temperature_c[i, bottom_j]
-                                )
-                                / dx
-                            )
-                            if ti.static(self._advection_enabled):
-                                if solid[i, bottom_j] == 0 and solid[i, top_j] == 0:
-                                    speed = (
-                                        0.5
-                                        * (
-                                            velocity[i, bottom_j].y
-                                            + velocity[i, top_j].y
-                                        )
-                                        * velocity_scale
-                                    )
-                                    upwind_temperature = self.temperature_c[i, top_j]
-                                    if speed >= 0.0:
-                                        upwind_temperature = self.temperature_c[
-                                            i, bottom_j
-                                        ]
-                                    upwind_capacity = rho_water_cp
-                                    if speed >= 0.0:
-                                        if self.ice_material[i, bottom_j] == 0:
-                                            upwind_phase = ti.min(
-                                                1.0,
-                                                ti.max(0.0, water_phase[i, bottom_j]),
-                                            )
-                                            upwind_capacity = (
-                                                upwind_phase * rho_water_cp
-                                                + (1.0 - upwind_phase)
-                                                * ti.static(
-                                                    self._rho_air * self._cp_air
-                                                )
-                                            )
-                                    else:
-                                        if self.ice_material[i, top_j] == 0:
-                                            upwind_phase = ti.min(
-                                                1.0,
-                                                ti.max(0.0, water_phase[i, top_j]),
-                                            )
-                                            upwind_capacity = (
-                                                upwind_phase * rho_water_cp
-                                                + (1.0 - upwind_phase)
-                                                * ti.static(
-                                                    self._rho_air * self._cp_air
-                                                )
-                                            )
-                                    sensible_enthalpy = upwind_capacity * (
-                                        upwind_temperature - melting
-                                    )
-                                    flux += speed * sensible_enthalpy
-                    elif bottom_wall and not top_wall:
-                        apply_boundary = True
-                        if ti.static(self._water_air_adiabatic):
-                            apply_boundary = self.ice_material[i, top_j] != 0
-                        if apply_boundary:
-                            k_cell = self.conductivity_w_m_k[i, top_j]
-                            if ti.static(self._bottom_kind == _DIRICHLET):
-                                flux = (
-                                    2.0
-                                    * k_cell
-                                    * (bottom_value - self.temperature_c[i, top_j])
-                                    / dx
-                                )
-                            elif ti.static(self._bottom_kind == _NEUMANN):
-                                flux = bottom_value
-                        boundary_inward = flux
-                    elif not bottom_wall and top_wall:
-                        apply_boundary = True
-                        if ti.static(self._water_air_adiabatic):
-                            apply_boundary = self.ice_material[i, bottom_j] != 0
-                        if apply_boundary:
-                            k_cell = self.conductivity_w_m_k[i, bottom_j]
-                            if ti.static(self._top_kind == _DIRICHLET):
-                                flux = (
-                                    2.0
-                                    * k_cell
-                                    * (self.temperature_c[i, bottom_j] - top_value)
-                                    / dx
-                                )
-                            elif ti.static(self._top_kind == _NEUMANN):
-                                flux = -top_value
-                        boundary_inward = -flux
-                self.flux_y_w_m2[i, face_j] = flux
-                if boundary_inward != 0.0:
-                    ti.atomic_add(self.boundary_power_w_m[None], boundary_inward * dx)
+            """Build a bounded target from phase volume and spare aperture."""
+
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            total = ti.max(0.0, self._phase_volume_before[None])
+            base = self._phase_base_capacity[None]
+            full = self._phase_full_capacity[None]
+            base_scale = ti.cast(0.0, ti.f64)
+            spare_scale = ti.cast(0.0, ti.f64)
+            if total <= base and base > 1.0e-30:
+                base_scale = total / base
+            elif total > base:
+                base_scale = 1.0
+                if full > base + 1.0e-30:
+                    spare_scale = ti.min(1.0, (total - base) / (full - base))
+            for i, j in self._phase_target_volume:
+                phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
+                target = ti.cast(0.0, ti.f64)
+                if (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and phase > ti.static(self._water_phase_cutoff)
+                ):
+                    phase64 = ti.cast(phase, ti.f64)
+                    target = area * (
+                        base_scale * phase64 + spare_scale * (1.0 - phase64)
+                    )
+                self._phase_target_volume[i, j] = ti.min(area, ti.max(0.0, target))
 
         @ti.kernel
-        def _update_enthalpy(self, time_step_s: ti.f64, wall: ti.template()):
-            inverse_dx = ti.static(1.0 / self._dx)
-            for i, j in self.enthalpy_j_m3:
-                if wall[i, j] == 0:
-                    divergence = (
-                        self.flux_x_w_m2[i + 1, j]
-                        - self.flux_x_w_m2[i, j]
-                        + self.flux_y_w_m2[i, j + 1]
-                        - self.flux_y_w_m2[i, j]
-                    ) * inverse_dx
-                    self.enthalpy_j_m3[i, j] -= time_step_s * divergence
+        def _measure_phase_aperture_transfer(self):
+            self._phase_donor_volume[None] = 0.0
+            self._phase_donor_energy[None] = 0.0
+            self._phase_receiver_volume[None] = 0.0
+            for i, j in self.water_volume_m2:
+                volume = self.water_volume_m2[i, j]
+                target = self._phase_target_volume[i, j]
+                if volume > target:
+                    excess = volume - target
+                    removed_energy = ti.cast(0.0, ti.f64)
+                    if volume > 1.0e-30:
+                        removed_energy = (
+                            self.water_sensible_energy[i, j] * excess / volume
+                        )
+                    ti.atomic_add(self._phase_donor_volume[None], excess)
+                    ti.atomic_add(self._phase_donor_energy[None], removed_energy)
+                elif target > volume:
+                    ti.atomic_add(self._phase_receiver_volume[None], target - volume)
 
         @ti.kernel
-        def _accumulate_boundary_heat(self, time_step_s: ti.f64):
-            self.boundary_heat_input_j_m[None] += (
-                time_step_s * self.boundary_power_w_m[None]
+        def _apply_phase_aperture_transfer(self):
+            donor_volume = self._phase_donor_volume[None]
+            donor_energy = self._phase_donor_energy[None]
+            receiver_volume = self._phase_receiver_volume[None]
+            for i, j in self.water_volume_m2:
+                volume = self.water_volume_m2[i, j]
+                target = self._phase_target_volume[i, j]
+                if volume > target:
+                    ratio = ti.cast(0.0, ti.f64)
+                    if volume > 1.0e-30:
+                        ratio = target / volume
+                    self.water_volume_m2[i, j] = target
+                    self.water_sensible_energy[i, j] *= ratio
+                elif target > volume and receiver_volume > 1.0e-30:
+                    fraction = (target - volume) / receiver_volume
+                    self.water_volume_m2[i, j] += donor_volume * fraction
+                    self.water_sensible_energy[i, j] += donor_energy * fraction
+
+        @ti.kernel
+        def _finish_phase_aperture_transfer(self):
+            self._phase_volume_after[None] = 0.0
+            self._phase_energy_after[None] = 0.0
+            for i, j in self.water_volume_m2:
+                ti.atomic_add(
+                    self._phase_volume_after[None], self.water_volume_m2[i, j]
+                )
+                ti.atomic_add(
+                    self._phase_energy_after[None],
+                    self.water_sensible_energy[i, j],
+                )
+            volume_residual = (
+                self._phase_volume_after[None] - self._phase_volume_before[None]
+            )
+            energy_residual = (
+                self._phase_energy_after[None] - self._phase_energy_before[None]
+            )
+            self.phase_aperture_volume_residual_m2[None] = volume_residual
+            self.phase_aperture_energy_residual_j_m[None] = energy_residual
+            self.phase_aperture_capacity_margin_m2[None] = (
+                self._phase_full_capacity[None] - self._phase_volume_after[None]
             )
 
         @ti.kernel
-        def _recover_state(self, water_phase: ti.template(), wall: ti.template()):
-            melting = ti.static(self._melting)
-            latent_ice = ti.static(self._latent_ice_volume)
-            latent_water = ti.static(self._latent_water_volume)
-            rho_ice_cp = ti.static(self._rho_ice * self._cp_ice)
-            rho_water_cp = ti.static(self._rho_water * self._cp_water)
-            rho_air_cp = ti.static(self._rho_air * self._cp_air)
-            k_ice = ti.static(self._k_ice)
-            k_water = ti.static(self._k_water)
-            k_air = ti.static(self._k_air)
-            for i, j in self.enthalpy_j_m3:
+        def _prepare_ale_water_remap(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+        ):
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            self._ale_removed_volume[None] = 0.0
+            self._ale_removed_energy[None] = 0.0
+            self._ale_release_weight[None] = 0.0
+            self._ale_fallback_weight[None] = 0.0
+            self._ale_assigned_volume[None] = 0.0
+            self._ale_assigned_energy[None] = 0.0
+            for i, j in self.water_volume_m2:
+                old_cover = ti.min(
+                    1.0, ti.max(0.0, self.world_body_indicator_prev[i, j])
+                )
+                new_cover = ti.min(1.0, ti.max(0.0, self.world_body_indicator[i, j]))
+                if new_cover > old_cover and self.water_volume_m2[i, j] > 0.0:
+                    old_open = ti.max(ti.cast(1.0 - old_cover, ti.f64), 1.0e-12)
+                    swept_ratio = ti.min(
+                        1.0,
+                        ti.cast(new_cover - old_cover, ti.f64) / old_open,
+                    )
+                    removed_volume = self.water_volume_m2[i, j] * swept_ratio
+                    removed_energy = self.water_sensible_energy[i, j] * swept_ratio
+                    self.water_volume_m2[i, j] -= removed_volume
+                    self.water_sensible_energy[i, j] -= removed_energy
+                    ti.atomic_add(self._ale_removed_volume[None], removed_volume)
+                    ti.atomic_add(self._ale_removed_energy[None], removed_energy)
+                release = ti.cast(ti.max(old_cover - new_cover, 0.0), ti.f64) * area
+                if (
+                    release > 0.0
+                    and wall[i, j] == 0
+                    and (
+                        water_phase[i, j] > ti.static(self._water_phase_cutoff)
+                        or self.water_volume_m2[i, j] > 1.0e-30
+                    )
+                ):
+                    ti.atomic_add(self._ale_release_weight[None], release)
+                if (
+                    wall[i, j] == 0
+                    and new_cover < 0.5
+                    and water_phase[i, j] > ti.static(self._water_phase_cutoff)
+                ):
+                    ti.atomic_add(
+                        self._ale_fallback_weight[None],
+                        area * ti.min(1.0, ti.max(0.0, water_phase[i, j])),
+                    )
+
+        @ti.kernel
+        def _distribute_ale_water_remap(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+        ):
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            removed_volume = self._ale_removed_volume[None]
+            removed_energy = self._ale_removed_energy[None]
+            release_total = self._ale_release_weight[None]
+            fallback_total = self._ale_fallback_weight[None]
+            use_release = release_total > 1.0e-30
+            denominator = release_total if use_release else fallback_total
+            for i, j in self.water_volume_m2:
+                old_cover = ti.min(
+                    1.0, ti.max(0.0, self.world_body_indicator_prev[i, j])
+                )
+                new_cover = ti.min(1.0, ti.max(0.0, self.world_body_indicator[i, j]))
+                weight = ti.cast(0.0, ti.f64)
+                if use_release:
+                    if wall[i, j] == 0 and (
+                        water_phase[i, j] > ti.static(self._water_phase_cutoff)
+                        or self.water_volume_m2[i, j] > 1.0e-30
+                    ):
+                        weight = (
+                            ti.cast(ti.max(old_cover - new_cover, 0.0), ti.f64) * area
+                        )
+                elif (
+                    wall[i, j] == 0
+                    and new_cover < 0.5
+                    and water_phase[i, j] > ti.static(self._water_phase_cutoff)
+                ):
+                    weight = area * ti.cast(
+                        ti.min(1.0, ti.max(0.0, water_phase[i, j])), ti.f64
+                    )
+                if weight > 0.0 and denominator > 1.0e-30:
+                    fraction = weight / denominator
+                    volume = fraction * removed_volume
+                    energy = fraction * removed_energy
+                    self.water_volume_m2[i, j] += volume
+                    self.water_sensible_energy[i, j] += energy
+                    ti.atomic_add(self._ale_assigned_volume[None], volume)
+                    ti.atomic_add(self._ale_assigned_energy[None], energy)
+
+        @ti.kernel
+        def _finish_ale_water_remap(self):
+            volume_residual = (
+                self._ale_assigned_volume[None] - self._ale_removed_volume[None]
+            )
+            energy_residual = (
+                self._ale_assigned_energy[None] - self._ale_removed_energy[None]
+            )
+            self.ale_water_volume_residual_m2[None] = volume_residual
+            self.ale_water_energy_residual_j_m[None] = energy_residual
+
+        def _conservative_remap_water(self, water_phase: Any, wall: Any) -> None:
+            """Apply a discrete geometric-conservation remap for pose changes.
+
+            Water volume and sensible energy use the same swept-coverage
+            weights.  Thus a uniform specific sensible energy remains uniform,
+            while the two extensive global sums change only by the recorded
+            roundoff residuals.
+            """
+
+            self._prepare_ale_water_remap(water_phase, wall)
+            self._distribute_ale_water_remap(water_phase, wall)
+            self._finish_ale_water_remap()
+
+        @ti.kernel
+        def _compose_world_temperature(self, wall: ti.template()):
+            air_temperature = ti.cast(
+                ti.static(float(self.config.initial_air_temperature_c)), ti.f64
+            )
+            melting = ti.cast(ti.static(self._melting), ti.f64)
+            threshold = ti.static(self._threshold)
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            latent_water_volume = ti.cast(
+                ti.static(self._rho_water * self._latent), ti.f64
+            )
+            for i, j in self.world_temperature_c:
+                temperature = ti.cast(air_temperature, ti.f64)
+                enthalpy = ti.cast(0.0, ti.f64)
+                liquid = ti.cast(1.0, ti.f64)
+                material = False
+                if self.water_volume_m2[i, j] > 1.0e-30:
+                    temperature = self.water_temperature[i, j]
+                    enthalpy = (
+                        latent_water_volume * self.water_volume_m2[i, j]
+                        + self.water_sensible_energy[i, j]
+                    ) / area
+                    material = True
+                body_i = self.world_body_local_i[i, j]
+                body_j = self.world_body_local_j[i, j]
+                if (
+                    self.world_body_solid_fraction[i, j] >= threshold
+                    and body_i >= 0
+                    and body_j >= 0
+                ):
+                    temperature = self.body_temperature[body_i, body_j]
+                    initial_mass = self.body_initial_mass[body_i, body_j]
+                    solid_mass = self.body_solid_mass[body_i, body_j]
+                    melted_mass = ti.max(0.0, initial_mass - solid_mass)
+                    enthalpy = (
+                        self.body_sensible_energy[body_i, body_j]
+                        + melted_mass * ti.static(self._latent)
+                    ) / area
+                    liquid = 1.0 - self.body_solid_fraction[body_i, body_j]
+                    material = True
+                if wall[i, j] != 0:
+                    temperature = melting
+                    enthalpy = 0.0
+                    liquid = 0.0
+                    material = False
+                self.world_temperature_c[i, j] = temperature
+                self.enthalpy_j_m3[i, j] = enthalpy
+                self.liquid_fraction[i, j] = ti.cast(liquid, ti.f32)
+                self.ice_material[i, j] = ti.cast(1 if material else 0, ti.i8)
+
+        @ti.kernel
+        def _compute_body_flux_x(self):
+            k_ice = ti.cast(ti.static(self._k_ice), ti.f64)
+            for face_i, j in self._body_flux_x:
+                flux = ti.cast(0.0, ti.f64)
+                if 0 < face_i < ti.static(self.body_nx):
+                    left_i = face_i - 1
+                    right_i = face_i
+                    left_fraction = self.body_solid_fraction[left_i, j]
+                    right_fraction = self.body_solid_fraction[right_i, j]
+                    if left_fraction > 0.0 and right_fraction > 0.0:
+                        fraction = ti.cast(
+                            ti.min(left_fraction, right_fraction), ti.f64
+                        )
+                        flux = (
+                            -k_ice
+                            * fraction
+                            * (
+                                self.body_temperature[right_i, j]
+                                - self.body_temperature[left_i, j]
+                            )
+                        )
+                self._body_flux_x[face_i, j] = flux
+
+        @ti.kernel
+        def _compute_body_flux_y(self):
+            k_ice = ti.cast(ti.static(self._k_ice), ti.f64)
+            for i, face_j in self._body_flux_y:
+                flux = ti.cast(0.0, ti.f64)
+                if 0 < face_j < ti.static(self.body_ny):
+                    bottom_j = face_j - 1
+                    top_j = face_j
+                    bottom_fraction = self.body_solid_fraction[i, bottom_j]
+                    top_fraction = self.body_solid_fraction[i, top_j]
+                    if bottom_fraction > 0.0 and top_fraction > 0.0:
+                        fraction = ti.cast(
+                            ti.min(bottom_fraction, top_fraction), ti.f64
+                        )
+                        flux = (
+                            -k_ice
+                            * fraction
+                            * (
+                                self.body_temperature[i, top_j]
+                                - self.body_temperature[i, bottom_j]
+                            )
+                        )
+                self._body_flux_y[i, face_j] = flux
+
+        @ti.kernel
+        def _accumulate_body_conduction(self, time_step_s: ti.f64):
+            for i, j in self._body_heat_delta:
+                divergence = (
+                    self._body_flux_x[i + 1, j]
+                    - self._body_flux_x[i, j]
+                    + self._body_flux_y[i, j + 1]
+                    - self._body_flux_y[i, j]
+                )
+                self._body_heat_delta[i, j] -= time_step_s * divergence
+
+        @ti.kernel
+        def _compute_water_conduction_flux_x(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            k_water = ti.cast(ti.static(self._k_water), ti.f64)
+            for face_i, j in self._water_flux_x:
+                flux = ti.cast(0.0, ti.f64)
+                boundary_inward = ti.cast(0.0, ti.f64)
+                if 0 < face_i < ti.static(self.nx):
+                    left_i = face_i - 1
+                    right_i = face_i
+                    left_active = (
+                        wall[left_i, j] == 0
+                        and solid[left_i, j] == 0
+                        and water_phase[left_i, j] > ti.static(self._water_phase_cutoff)
+                    )
+                    right_active = (
+                        wall[right_i, j] == 0
+                        and solid[right_i, j] == 0
+                        and water_phase[right_i, j]
+                        > ti.static(self._water_phase_cutoff)
+                    )
+                    if left_active and right_active:
+                        if (
+                            self.water_volume_m2[left_i, j] > 1.0e-30
+                            and self.water_volume_m2[right_i, j] > 1.0e-30
+                        ):
+                            left_aperture = ti.min(
+                                1.0,
+                                ti.max(
+                                    0.0,
+                                    self.water_volume_m2[left_i, j] / area,
+                                ),
+                            )
+                            right_aperture = ti.min(
+                                1.0,
+                                ti.max(
+                                    0.0,
+                                    self.water_volume_m2[right_i, j] / area,
+                                ),
+                            )
+                            face_aperture = ti.min(left_aperture, right_aperture)
+                            flux = (
+                                -k_water
+                                * face_aperture
+                                * (
+                                    self.water_temperature[right_i, j]
+                                    - self.water_temperature[left_i, j]
+                                )
+                            )
+                    elif (
+                        wall[left_i, j] != 0
+                        and right_active
+                        and self.water_volume_m2[right_i, j] > 1.0e-30
+                    ):
+                        local_aperture = ti.min(
+                            1.0,
+                            ti.max(
+                                0.0,
+                                self.water_volume_m2[right_i, j] / area,
+                            ),
+                        )
+                        if ti.static(self._left_kind == _DIRICHLET):
+                            flux = (
+                                2.0
+                                * k_water
+                                * local_aperture
+                                * (
+                                    ti.static(self._left_value)
+                                    - self.water_temperature[right_i, j]
+                                )
+                            )
+                        boundary_inward = flux
+                    elif (
+                        left_active
+                        and self.water_volume_m2[left_i, j] > 1.0e-30
+                        and wall[right_i, j] != 0
+                    ):
+                        local_aperture = ti.min(
+                            1.0,
+                            ti.max(
+                                0.0,
+                                self.water_volume_m2[left_i, j] / area,
+                            ),
+                        )
+                        if ti.static(self._right_kind == _DIRICHLET):
+                            flux = (
+                                2.0
+                                * k_water
+                                * local_aperture
+                                * (
+                                    self.water_temperature[left_i, j]
+                                    - ti.static(self._right_value)
+                                )
+                            )
+                        boundary_inward = -flux
+                self._water_flux_x[face_i, j] = flux
+                if boundary_inward != 0.0:
+                    ti.atomic_add(self.boundary_power[None], boundary_inward)
+
+        @ti.kernel
+        def _compute_water_advection_flux_x(
+            self,
+            velocity: ti.template(),
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            dx = ti.cast(ti.static(self._dx), ti.f64)
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            velocity_scale = ti.cast(ti.static(self._velocity_scale), ti.f64)
+            for face_i, j in self._water_flux_x:
+                energy_flux = ti.cast(0.0, ti.f64)
+                volume_flux = ti.cast(0.0, ti.f64)
+                if ti.static(self._advection_enabled):
+                    if 0 < face_i < ti.static(self.nx):
+                        left_i = face_i - 1
+                        right_i = face_i
+                        left_active = (
+                            wall[left_i, j] == 0
+                            and solid[left_i, j] == 0
+                            and water_phase[left_i, j]
+                            > ti.static(self._water_phase_cutoff)
+                        )
+                        right_active = (
+                            wall[right_i, j] == 0
+                            and solid[right_i, j] == 0
+                            and water_phase[right_i, j]
+                            > ti.static(self._water_phase_cutoff)
+                        )
+                        if left_active and right_active:
+                            speed = (
+                                0.5
+                                * ti.cast(
+                                    velocity[left_i, j].x + velocity[right_i, j].x,
+                                    ti.f64,
+                                )
+                                * velocity_scale
+                            )
+                            upwind_i = right_i
+                            if speed >= 0.0:
+                                upwind_i = left_i
+                            upwind_volume = self.water_volume_m2[upwind_i, j]
+                            upwind_fraction = ti.min(
+                                1.0, ti.max(0.0, upwind_volume / area)
+                            )
+                            volume_flux = speed * upwind_fraction * dx
+                            energy_density = self.water_sensible_energy[
+                                upwind_i, j
+                            ] / ti.max(upwind_volume, 1.0e-30)
+                            energy_flux = volume_flux * energy_density
+                self._water_flux_x[face_i, j] = energy_flux
+                self._water_volume_flux_x[face_i, j] = volume_flux
+
+        @ti.kernel
+        def _compute_water_conduction_flux_y(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            k_water = ti.cast(ti.static(self._k_water), ti.f64)
+            for i, face_j in self._water_flux_y:
+                flux = ti.cast(0.0, ti.f64)
+                boundary_inward = ti.cast(0.0, ti.f64)
+                if 0 < face_j < ti.static(self.ny):
+                    bottom_j = face_j - 1
+                    top_j = face_j
+                    bottom_active = (
+                        wall[i, bottom_j] == 0
+                        and solid[i, bottom_j] == 0
+                        and water_phase[i, bottom_j]
+                        > ti.static(self._water_phase_cutoff)
+                    )
+                    top_active = (
+                        wall[i, top_j] == 0
+                        and solid[i, top_j] == 0
+                        and water_phase[i, top_j] > ti.static(self._water_phase_cutoff)
+                    )
+                    if bottom_active and top_active:
+                        if (
+                            self.water_volume_m2[i, bottom_j] > 1.0e-30
+                            and self.water_volume_m2[i, top_j] > 1.0e-30
+                        ):
+                            bottom_aperture = ti.min(
+                                1.0,
+                                ti.max(
+                                    0.0,
+                                    self.water_volume_m2[i, bottom_j] / area,
+                                ),
+                            )
+                            top_aperture = ti.min(
+                                1.0,
+                                ti.max(
+                                    0.0,
+                                    self.water_volume_m2[i, top_j] / area,
+                                ),
+                            )
+                            face_aperture = ti.min(bottom_aperture, top_aperture)
+                            flux = (
+                                -k_water
+                                * face_aperture
+                                * (
+                                    self.water_temperature[i, top_j]
+                                    - self.water_temperature[i, bottom_j]
+                                )
+                            )
+                    elif (
+                        wall[i, bottom_j] != 0
+                        and top_active
+                        and self.water_volume_m2[i, top_j] > 1.0e-30
+                    ):
+                        local_aperture = ti.min(
+                            1.0,
+                            ti.max(
+                                0.0,
+                                self.water_volume_m2[i, top_j] / area,
+                            ),
+                        )
+                        if ti.static(self._bottom_kind == _DIRICHLET):
+                            flux = (
+                                2.0
+                                * k_water
+                                * local_aperture
+                                * (
+                                    ti.static(self._bottom_value)
+                                    - self.water_temperature[i, top_j]
+                                )
+                            )
+                        boundary_inward = flux
+                    elif (
+                        bottom_active
+                        and self.water_volume_m2[i, bottom_j] > 1.0e-30
+                        and wall[i, top_j] != 0
+                    ):
+                        local_aperture = ti.min(
+                            1.0,
+                            ti.max(
+                                0.0,
+                                self.water_volume_m2[i, bottom_j] / area,
+                            ),
+                        )
+                        if ti.static(self._top_kind == _DIRICHLET):
+                            flux = (
+                                2.0
+                                * k_water
+                                * local_aperture
+                                * (
+                                    self.water_temperature[i, bottom_j]
+                                    - ti.static(self._top_value)
+                                )
+                            )
+                        boundary_inward = -flux
+                self._water_flux_y[i, face_j] = flux
+                if boundary_inward != 0.0:
+                    ti.atomic_add(self.boundary_power[None], boundary_inward)
+
+        @ti.kernel
+        def _compute_water_advection_flux_y(
+            self,
+            velocity: ti.template(),
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            dx = ti.cast(ti.static(self._dx), ti.f64)
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            velocity_scale = ti.cast(ti.static(self._velocity_scale), ti.f64)
+            for i, face_j in self._water_flux_y:
+                energy_flux = ti.cast(0.0, ti.f64)
+                volume_flux = ti.cast(0.0, ti.f64)
+                if ti.static(self._advection_enabled):
+                    if 0 < face_j < ti.static(self.ny):
+                        bottom_j = face_j - 1
+                        top_j = face_j
+                        bottom_active = (
+                            wall[i, bottom_j] == 0
+                            and solid[i, bottom_j] == 0
+                            and water_phase[i, bottom_j]
+                            > ti.static(self._water_phase_cutoff)
+                        )
+                        top_active = (
+                            wall[i, top_j] == 0
+                            and solid[i, top_j] == 0
+                            and water_phase[i, top_j]
+                            > ti.static(self._water_phase_cutoff)
+                        )
+                        if bottom_active and top_active:
+                            speed = (
+                                0.5
+                                * ti.cast(
+                                    velocity[i, bottom_j].y + velocity[i, top_j].y,
+                                    ti.f64,
+                                )
+                                * velocity_scale
+                            )
+                            upwind_j = top_j
+                            if speed >= 0.0:
+                                upwind_j = bottom_j
+                            upwind_volume = self.water_volume_m2[i, upwind_j]
+                            upwind_fraction = ti.min(
+                                1.0, ti.max(0.0, upwind_volume / area)
+                            )
+                            volume_flux = speed * upwind_fraction * dx
+                            energy_density = self.water_sensible_energy[
+                                i, upwind_j
+                            ] / ti.max(upwind_volume, 1.0e-30)
+                            energy_flux = volume_flux * energy_density
+                self._water_flux_y[i, face_j] = energy_flux
+                self._water_volume_flux_y[i, face_j] = volume_flux
+
+        @ti.kernel
+        def _update_water_advection(self, time_step_s: ti.f64, wall: ti.template()):
+            for i, j in self.water_sensible_energy:
+                energy_divergence = (
+                    self._water_flux_x[i + 1, j]
+                    - self._water_flux_x[i, j]
+                    + self._water_flux_y[i, j + 1]
+                    - self._water_flux_y[i, j]
+                )
+                volume_divergence = (
+                    self._water_volume_flux_x[i + 1, j]
+                    - self._water_volume_flux_x[i, j]
+                    + self._water_volume_flux_y[i, j + 1]
+                    - self._water_volume_flux_y[i, j]
+                )
                 if wall[i, j] == 0:
-                    enthalpy = self.enthalpy_j_m3[i, j]
-                    if self.ice_material[i, j] != 0:
-                        temperature = ti.cast(melting, ti.f64)
-                        fraction = ti.cast(0.0, ti.f64)
-                        if enthalpy < 0.0:
-                            temperature = melting + enthalpy / rho_ice_cp
-                        elif enthalpy <= latent_ice:
-                            fraction = enthalpy / latent_ice
-                        else:
-                            temperature = (
-                                melting + (enthalpy - latent_ice) / rho_water_cp
+                    self.water_sensible_energy[i, j] -= time_step_s * energy_divergence
+                    self.water_volume_m2[i, j] -= time_step_s * volume_divergence
+
+        @ti.kernel
+        def _update_water_conduction(self, time_step_s: ti.f64, wall: ti.template()):
+            for i, j in self.water_sensible_energy:
+                energy_divergence = (
+                    self._water_flux_x[i + 1, j]
+                    - self._water_flux_x[i, j]
+                    + self._water_flux_y[i, j + 1]
+                    - self._water_flux_y[i, j]
+                )
+                if wall[i, j] == 0:
+                    self.water_sensible_energy[i, j] -= time_step_s * energy_divergence
+
+        @ti.kernel
+        def _accumulate_boundary_heat(self, time_step_s: ti.f64):
+            self.boundary_heat_input[None] += time_step_s * self.boundary_power[None]
+
+        @ti.kernel
+        def _compute_interface_heat_requests(
+            self,
+            time_step_s: ti.f64,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            k_face = ti.cast(
+                ti.static(
+                    2.0 * self._k_water * self._k_ice / (self._k_water + self._k_ice)
+                ),
+                ti.f64,
+            )
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            threshold = ti.cast(ti.static(self._threshold), ti.f64)
+            for i, j in self._interface_heat_requested:
+                requested = ti.cast(0.0, ti.f64)
+                active_water = (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and water_phase[i, j] > ti.static(self._water_phase_cutoff)
+                    and self.water_volume_m2[i, j] > 1.0e-30
+                )
+                if active_water:
+                    water_aperture = ti.min(
+                        1.0,
+                        ti.max(0.0, self.water_volume_m2[i, j] / area),
+                    )
+                    # The zero offset is the mixed-cell contact needed after
+                    # a remnant drops below the sharp LBM threshold.  The
+                    # four axial offsets retain the resolved surface faces.
+                    for di, dj in ti.static(((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))):
+                        ni = i + di
+                        nj = j + dj
+                        if 0 <= ni < ti.static(self.nx) and 0 <= nj < ti.static(
+                            self.ny
+                        ):
+                            world_fraction = ti.cast(
+                                self.world_body_solid_fraction[ni, nj], ti.f64
                             )
-                            fraction = 1.0
-                        self.temperature_c[i, j] = temperature
-                        self.liquid_fraction[i, j] = ti.cast(fraction, ti.f32)
-                        self.conductivity_w_m_k[i, j] = (
-                            1.0 - fraction
-                        ) * k_ice + fraction * k_water
-                    else:
-                        if ti.static(self._water_air_adiabatic):
-                            self.temperature_c[i, j] = melting + enthalpy / rho_air_cp
-                            self.conductivity_w_m_k[i, j] = k_air
-                        else:
-                            phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
-                            capacity = phase * rho_water_cp + (1.0 - phase) * rho_air_cp
-                            self.temperature_c[i, j] = melting + (
-                                enthalpy - phase * latent_water
-                            ) / ti.max(capacity, 1.0e-30)
-                            self.conductivity_w_m_k[i, j] = (
-                                phase * k_water + (1.0 - phase) * k_air
+                            if world_fraction > 0.0:
+                                body_aperture = ti.min(1.0, world_fraction / threshold)
+                                contact_aperture = ti.min(water_aperture, body_aperture)
+                                base_i = self.world_body_interp_base_i[ni, nj]
+                                base_j = self.world_body_interp_base_j[ni, nj]
+                                fraction_x = ti.cast(
+                                    self.world_body_interp_fraction_x[ni, nj],
+                                    ti.f64,
+                                )
+                                fraction_y = ti.cast(
+                                    self.world_body_interp_fraction_y[ni, nj],
+                                    ti.f64,
+                                )
+                                for ci, cj in ti.static(ti.ndrange(2, 2)):
+                                    body_i = base_i + ci
+                                    body_j = base_j + cj
+                                    if (
+                                        0 <= body_i < ti.static(self.body_nx)
+                                        and 0 <= body_j < ti.static(self.body_ny)
+                                        and self.body_solid_mass[body_i, body_j] > 0.0
+                                    ):
+                                        weight_x = fraction_x
+                                        weight_y = fraction_y
+                                        if ti.static(ci == 0):
+                                            weight_x = 1.0 - fraction_x
+                                        if ti.static(cj == 0):
+                                            weight_y = 1.0 - fraction_y
+                                        contribution = (
+                                            weight_x
+                                            * weight_y
+                                            * ti.cast(
+                                                self.body_solid_fraction[
+                                                    body_i, body_j
+                                                ],
+                                                ti.f64,
+                                            )
+                                        )
+                                        if contribution > 0.0:
+                                            share = contribution / world_fraction
+                                            delta_temperature = ti.max(
+                                                0.0,
+                                                self.water_temperature[i, j]
+                                                - self.body_temperature[body_i, body_j],
+                                            )
+                                            requested += (
+                                                time_step_s
+                                                * k_face
+                                                * contact_aperture
+                                                * share
+                                                * delta_temperature
+                                            )
+                self._interface_heat_requested[i, j] = requested
+
+        @ti.kernel
+        def _apply_interface_heat(
+            self,
+            time_step_s: ti.f64,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            k_face = ti.cast(
+                ti.static(
+                    2.0 * self._k_water * self._k_ice / (self._k_water + self._k_ice)
+                ),
+                ti.f64,
+            )
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            threshold = ti.cast(ti.static(self._threshold), ti.f64)
+            ny = ti.static(self.ny)
+            for i, j in self._interface_heat_requested:
+                requested = self._interface_heat_requested[i, j]
+                scale = ti.cast(0.0, ti.f64)
+                if requested > 0.0:
+                    scale = ti.min(
+                        1.0,
+                        ti.max(0.0, self.water_sensible_energy[i, j]) / requested,
+                    )
+                transferred = ti.cast(0.0, ti.f64)
+                if scale > 0.0:
+                    water_aperture = ti.min(
+                        1.0,
+                        ti.max(0.0, self.water_volume_m2[i, j] / area),
+                    )
+                    for di, dj in ti.static(((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))):
+                        ni = i + di
+                        nj = j + dj
+                        if 0 <= ni < ti.static(self.nx) and 0 <= nj < ti.static(
+                            self.ny
+                        ):
+                            world_fraction = ti.cast(
+                                self.world_body_solid_fraction[ni, nj], ti.f64
                             )
-                        self.liquid_fraction[i, j] = 1.0
+                            if world_fraction > 0.0:
+                                body_aperture = ti.min(1.0, world_fraction / threshold)
+                                contact_aperture = ti.min(water_aperture, body_aperture)
+                                base_i = self.world_body_interp_base_i[ni, nj]
+                                base_j = self.world_body_interp_base_j[ni, nj]
+                                fraction_x = ti.cast(
+                                    self.world_body_interp_fraction_x[ni, nj],
+                                    ti.f64,
+                                )
+                                fraction_y = ti.cast(
+                                    self.world_body_interp_fraction_y[ni, nj],
+                                    ti.f64,
+                                )
+                                for ci, cj in ti.static(ti.ndrange(2, 2)):
+                                    body_i = base_i + ci
+                                    body_j = base_j + cj
+                                    if (
+                                        0 <= body_i < ti.static(self.body_nx)
+                                        and 0 <= body_j < ti.static(self.body_ny)
+                                        and self.body_solid_mass[body_i, body_j] > 0.0
+                                    ):
+                                        weight_x = fraction_x
+                                        weight_y = fraction_y
+                                        if ti.static(ci == 0):
+                                            weight_x = 1.0 - fraction_x
+                                        if ti.static(cj == 0):
+                                            weight_y = 1.0 - fraction_y
+                                        contribution = (
+                                            weight_x
+                                            * weight_y
+                                            * ti.cast(
+                                                self.body_solid_fraction[
+                                                    body_i, body_j
+                                                ],
+                                                ti.f64,
+                                            )
+                                        )
+                                        if contribution > 0.0:
+                                            share = contribution / world_fraction
+                                            delta_temperature = ti.max(
+                                                0.0,
+                                                self.water_temperature[i, j]
+                                                - self.body_temperature[body_i, body_j],
+                                            )
+                                            heat = (
+                                                scale
+                                                * time_step_s
+                                                * k_face
+                                                * contact_aperture
+                                                * share
+                                                * delta_temperature
+                                            )
+                                            transferred += heat
+                                            ti.atomic_add(
+                                                self._body_heat_delta[body_i, body_j],
+                                                heat,
+                                            )
+                                            ti.atomic_max(
+                                                self._body_melt_target[body_i, body_j],
+                                                i * ny + j,
+                                            )
+                self.water_sensible_energy[i, j] -= transferred
+
+        @ti.kernel
+        def _apply_body_heat_and_phase_change(self):
+            latent = ti.cast(ti.static(self._latent), ti.f64)
+            rho_water = ti.cast(ti.static(self._rho_water), ti.f64)
+            for i, j in self.body_solid_mass:
+                heat = self._body_heat_delta[i, j]
+                solid_mass = self.body_solid_mass[i, j]
+                sensible = self.body_sensible_energy[i, j]
+                melt_mass = ti.cast(0.0, ti.f64)
+                melt_sensible = ti.cast(0.0, ti.f64)
+                if heat <= 0.0:
+                    if solid_mass > 0.0:
+                        sensible += heat
                 else:
-                    self.temperature_c[i, j] = melting
-                    self.liquid_fraction[i, j] = 0.0
-                    self.conductivity_w_m_k[i, j] = 0.0
+                    sensible_deficit = ti.max(-sensible, 0.0)
+                    sensible_gain = ti.min(heat, sensible_deficit)
+                    sensible += sensible_gain
+                    remaining = heat - sensible_gain
+                    melt_mass = ti.min(solid_mass, remaining / latent)
+                    solid_mass -= melt_mass
+                    melt_sensible = ti.max(0.0, remaining - melt_mass * latent)
+                # Do not silently discard a positive terminal residue: it is
+                # melted only when ``remaining`` supplies the corresponding
+                # latent heat, so mass, volume, and energy sources stay paired.
+                if solid_mass <= 0.0:
+                    solid_mass = 0.0
+                    sensible = 0.0
+                melt_volume = melt_mass / rho_water
+                self.body_solid_mass[i, j] = solid_mass
+                self.body_sensible_energy[i, j] = sensible
+                self._body_melt_mass_step[i, j] = melt_mass
+                self._body_melt_volume_step[i, j] = melt_volume
+                self._body_melt_sensible_step[i, j] = melt_sensible
+                if melt_mass > 0.0:
+                    ti.atomic_add(self._interval_body_melt_mass[None], melt_mass)
 
         @ti.kernel
-        def _reduce_enthalpy(self, wall: ti.template()):
-            self._enthalpy_sum_j_m[None] = 0.0
-            cell_area = ti.static(self._dx * self._dx)
-            for i, j in self.enthalpy_j_m3:
-                if wall[i, j] == 0:
+        def _freeze_melt_injection_eligibility(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            for i, j in self._melt_injection_eligible:
+                eligible = (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and water_phase[i, j] > ti.static(self._water_phase_cutoff)
+                    and self.water_volume_m2[i, j] > 1.0e-30
+                )
+                self._melt_injection_eligible[i, j] = ti.cast(eligible, ti.i8)
+
+        @ti.kernel
+        def _inject_melt_water(
+            self,
+            body_reference_origin: ti.template(),
+            body_angle: ti.template(),
+        ):
+            origin = body_reference_origin[None]
+            angle = body_angle[None]
+            cosine = ti.cos(angle)
+            sine = ti.sin(angle)
+            ny = ti.static(self.ny)
+            for body_i, body_j in self._body_melt_mass_step:
+                melt_mass = self._body_melt_mass_step[body_i, body_j]
+                if melt_mass > 0.0:
+                    local_x = (
+                        ti.cast(body_i, ti.f64) + 0.5 - ti.static(0.5 * self.body_nx)
+                    )
+                    local_y = (
+                        ti.cast(body_j, ti.f64) + 0.5 - ti.static(0.5 * self.body_ny)
+                    )
+                    world_x = origin.x + cosine * local_x - sine * local_y
+                    world_y = origin.y + sine * local_x + cosine * local_y
+                    encoded = self._body_melt_target[body_i, body_j]
+                    target_i = -1
+                    target_j = -1
+                    if encoded >= 0:
+                        target_i = encoded // ny
+                        target_j = encoded - target_i * ny
+                    else:
+                        base_i = ti.cast(ti.floor(world_x), ti.i32)
+                        base_j = ti.cast(ti.floor(world_y), ti.i32)
+                        best_distance = 1.0e30
+                        for di, dj in ti.static(ti.ndrange((-2, 3), (-2, 3))):
+                            wi = base_i + di
+                            wj = base_j + dj
+                            if (
+                                0 <= wi < ti.static(self.nx)
+                                and 0 <= wj < ti.static(self.ny)
+                                and self._melt_injection_eligible[wi, wj] != 0
+                            ):
+                                distance = ti.cast(di * di + dj * dj, ti.f32)
+                                if distance < best_distance:
+                                    best_distance = distance
+                                    target_i = wi
+                                    target_j = wj
+                    volume = self._body_melt_volume_step[body_i, body_j]
+                    energy = self._body_melt_sensible_step[body_i, body_j]
+                    if target_i >= 0 and target_j >= 0:
+                        ti.atomic_add(self.water_volume_m2[target_i, target_j], volume)
+                        ti.atomic_add(
+                            self.water_sensible_energy[target_i, target_j], energy
+                        )
+                        ti.atomic_add(
+                            self.water_melt_mass_source[target_i, target_j], melt_mass
+                        )
+                        ti.atomic_add(self._interval_water_melt_mass[None], melt_mass)
+                    else:
+                        ti.atomic_add(self._unassigned_melt_mass[None], melt_mass)
+                        ti.atomic_add(self._unassigned_melt_volume[None], volume)
+                        ti.atomic_add(self._unassigned_melt_energy[None], energy)
+
+        @ti.kernel
+        def _measure_melt_fallback_weights(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+        ):
+            self._melt_fallback_free_weight[None] = 0.0
+            self._melt_fallback_wet_weight[None] = 0.0
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            for i, j in self.water_volume_m2:
+                phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
+                if (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and phase > ti.static(self._water_phase_cutoff)
+                    and self.water_volume_m2[i, j] > 1.0e-30
+                ):
                     ti.atomic_add(
-                        self._enthalpy_sum_j_m[None],
-                        self.enthalpy_j_m3[i, j] * cell_area,
+                        self._melt_fallback_free_weight[None],
+                        ti.max(area - self.water_volume_m2[i, j], 0.0),
+                    )
+                    ti.atomic_add(
+                        self._melt_fallback_wet_weight[None],
+                        self.water_volume_m2[i, j],
                     )
 
         @ti.kernel
-        def _reduce_solid_volume(self):
-            self._solid_volume_cells[None] = 0.0
-            for i, j in self.liquid_fraction:
-                if self.ice_material[i, j] != 0:
-                    fraction = ti.min(1.0, ti.max(0.0, self.liquid_fraction[i, j]))
-                    ti.atomic_add(
-                        self._solid_volume_cells[None], 1.0 - ti.cast(fraction, ti.f64)
-                    )
+        def _apply_melt_fallback(
+            self,
+            water_phase: ti.template(),
+            wall: ti.template(),
+            solid: ti.template(),
+            use_free_capacity: ti.i32,
+        ):
+            area = ti.cast(ti.static(self._cell_area), ti.f64)
+            denominator = self._melt_fallback_wet_weight[None]
+            if use_free_capacity != 0:
+                denominator = self._melt_fallback_free_weight[None]
+            mass = self._unassigned_melt_mass[None]
+            volume = self._unassigned_melt_volume[None]
+            energy = self._unassigned_melt_energy[None]
+            if denominator > 1.0e-30 and mass > 0.0:
+                self._interval_water_melt_mass[None] += mass
+            for i, j in self.water_volume_m2:
+                phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
+                eligible = (
+                    wall[i, j] == 0
+                    and solid[i, j] == 0
+                    and phase > ti.static(self._water_phase_cutoff)
+                    and self.water_volume_m2[i, j] > 1.0e-30
+                )
+                weight = ti.cast(0.0, ti.f64)
+                if eligible:
+                    if use_free_capacity != 0:
+                        weight = ti.max(area - self.water_volume_m2[i, j], 0.0)
+                    else:
+                        weight = self.water_volume_m2[i, j]
+                if weight > 0.0 and denominator > 1.0e-30:
+                    fraction = weight / denominator
+                    added_mass = fraction * mass
+                    added_volume = fraction * volume
+                    added_energy = fraction * energy
+                    self.water_volume_m2[i, j] += added_volume
+                    self.water_sensible_energy[i, j] += added_energy
+                    self.water_melt_mass_source[i, j] += added_mass
+
+        def _distribute_unassigned_melt(
+            self, water_phase: Any, wall: Any, solid: Any
+        ) -> None:
+            """Conservatively inject melt whose local interface target vanished."""
+
+            unassigned_mass = float(self._unassigned_melt_mass[None])
+            if unassigned_mass <= 0.0:
+                return
+            self._measure_melt_fallback_weights(water_phase, wall, solid)
+            free_weight = float(self._melt_fallback_free_weight[None])
+            wet_weight = float(self._melt_fallback_wet_weight[None])
+            if free_weight > 1.0e-30:
+                self._apply_melt_fallback(water_phase, wall, solid, 1)
+            elif wet_weight > 1.0e-30:
+                # The following aperture projection will either recover spare
+                # capacity from other thermal donors or report infeasibility.
+                self._apply_melt_fallback(water_phase, wall, solid, 0)
+            else:
+                raise RuntimeError(
+                    "melt water has no legal LBM water cell for conservative "
+                    "mass and energy injection"
+                )
+
+        @ti.kernel
+        def _reduce_melt_injection_residual(self):
+            self.melt_injection_mass_residual_kg_m[None] = (
+                self._interval_water_melt_mass[None]
+                - self._interval_body_melt_mass[None]
+            )
+
+        @ti.kernel
+        def _reduce_totals(self):
+            self._initial_body_mass_sum[None] = 0.0
+            self._solid_body_mass_sum[None] = 0.0
+            self._water_mass_sum[None] = 0.0
+            self._body_sensible_sum[None] = 0.0
+            self._water_sensible_sum[None] = 0.0
+            rho_water = ti.static(self._rho_water)
+            for i, j in self.body_initial_mass:
+                ti.atomic_add(
+                    self._initial_body_mass_sum[None], self.body_initial_mass[i, j]
+                )
+                ti.atomic_add(
+                    self._solid_body_mass_sum[None], self.body_solid_mass[i, j]
+                )
+                ti.atomic_add(
+                    self._body_sensible_sum[None], self.body_sensible_energy[i, j]
+                )
+            for i, j in self.water_volume_m2:
+                ti.atomic_add(
+                    self._water_mass_sum[None], rho_water * self.water_volume_m2[i, j]
+                )
+                ti.atomic_add(
+                    self._water_sensible_sum[None], self.water_sensible_energy[i, j]
+                )
 
 else:
 
-    class EnthalpyFV2D:
-        """Unavailable Taichi component placeholder.
-
-        Keeping the symbol importable lets CPU-only users construct and test
-        all thermal configuration and NumPy reference objects.
-        """
+    class MovingBodyThermal2D:
+        """Unavailable Taichi moving-body component placeholder."""
 
         def __init__(self, *args: Any, **kwargs: Any):
             raise RuntimeError(
-                "EnthalpyFV2D requires the optional 'taichi' package and an "
-                "initialized Taichi runtime"
+                "MovingBodyThermal2D requires the optional 'taichi' package and "
+                "an initialized Taichi runtime"
             )
 
 
 __all__ = [
-    "EnthalpyFV2D",
     "LatticeScales",
+    "MovingBodyThermal2D",
+    "MovingBodyThermalScheme",
+    "MovingBodyThermalTotals",
     "PhaseChangeProperties",
     "ThermalBoundary",
     "ThermalBoundaryKind",
     "ThermalBoundarySet",
     "ThermalConfig",
-    "phase_change_active_water_target_cells",
-    "phase_change_enthalpy_numpy",
-    "phase_change_water_target_cells",
-    "recover_temperature_and_liquid_fraction_numpy",
-    "taichi_available",
 ]

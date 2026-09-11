@@ -4,7 +4,7 @@ import io
 import unittest
 from unittest import mock
 
-from iceflow2d.simulator import _format_duration, _TerminalProgress
+from iceflow2d.reporting import _format_duration, _TerminalProgress
 
 
 class ProgressTests(unittest.TestCase):
@@ -16,7 +16,7 @@ class ProgressTests(unittest.TestCase):
     def test_progress_reaches_completion(self):
         stream = io.StringIO()
         with mock.patch(
-            "iceflow2d.simulator.time.monotonic", side_effect=(100.0, 102.0, 105.0)
+            "iceflow2d.reporting.time.monotonic", side_effect=(100.0, 102.0, 105.0)
         ):
             with _TerminalProgress(2, enabled=True, stream=stream, width=4) as progress:
                 progress.advance()
@@ -49,6 +49,29 @@ class ProgressTests(unittest.TestCase):
 
         self.assertIn("1/2 frames", stream.getvalue())
         self.assertTrue(stream.getvalue().endswith("\n"))
+
+    def test_batched_progress_supports_custom_units_and_status(self):
+        stream = io.StringIO()
+        with _TerminalProgress(
+            8,
+            enabled=True,
+            stream=stream,
+            width=4,
+            label="Coupled thermal run",
+            unit="LBM steps",
+        ) as progress:
+            progress.set_status("fields 1/3 written")
+            progress.advance(3)
+
+        output = stream.getvalue()
+        self.assertIn("Coupled thermal run", output)
+        self.assertIn("3/8 LBM steps", output)
+        self.assertIn("fields 1/3 written", output)
+
+    def test_negative_progress_increment_is_rejected(self):
+        with _TerminalProgress(2, enabled=False) as progress:
+            with self.assertRaisesRegex(ValueError, "non-negative"):
+                progress.advance(-1)
 
 
 if __name__ == "__main__":
