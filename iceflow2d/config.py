@@ -27,18 +27,12 @@ def _positive(name: str, value: float) -> float:
 
 
 def _default_thermal_config() -> ThermalConfig:
-    """Build the hot-bath body-ALE defaults without importing Taichi eagerly."""
+    """Build the insulated-bath defaults without importing Taichi eagerly."""
 
-    from .thermal import ThermalBoundary, ThermalBoundarySet, ThermalConfig
+    from .thermal import ThermalBoundarySet, ThermalConfig
 
-    hot_wall = ThermalBoundary.dirichlet(90.0)
     return ThermalConfig(
-        boundaries=ThermalBoundarySet(
-            left=hot_wall,
-            right=hot_wall,
-            bottom=hot_wall,
-            top=ThermalBoundary.adiabatic(),
-        ),
+        boundaries=ThermalBoundarySet(),
         initial_water_temperature_c=90.0,
         initial_ice_temperature_c=0.0,
         initial_air_temperature_c=20.0,
@@ -286,13 +280,9 @@ class IceFlowConfig:
         upper_x_contact = float(nx - self.boundary_cells)
         upper_y_contact = float(ny - self.boundary_cells)
         if cx - extent_x < lower_contact or cx + extent_x > upper_x_contact:
-            raise ValueError(
-                "initial ice rectangle overlaps a side wall"
-            )
+            raise ValueError("initial ice rectangle overlaps a side wall")
         if cy - extent_y < lower_contact - 1.0e-9 or cy + extent_y > upper_y_contact:
-            raise ValueError(
-                "initial ice rectangle overlaps the bottom or top wall"
-            )
+            raise ValueError("initial ice rectangle overlaps the bottom or top wall")
 
         if self.thermal.moving_body_scheme != "body_ale":
             raise ValueError("thermal moving_body_scheme must be 'body_ale'")

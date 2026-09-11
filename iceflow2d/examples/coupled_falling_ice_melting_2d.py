@@ -1,9 +1,9 @@
 """Fully coupled example of an ice block falling into a 90 degC water bath.
 
-The ice starts in the thermally insulated air cap, falls through the free
-surface, and then exchanges heat, mass, and momentum with the hot water while
-it melts.  Water remains a liquid at 90 degC; evaporation, boiling, and vapour
-transport are outside this model.
+All four container walls are adiabatic. The ice starts in the insulated air
+cap, falls through the free surface, and exchanges heat, mass, and momentum
+with the hot water while it melts. Water remains a liquid at 90 degC;
+evaporation, boiling, and vapour transport are outside this model.
 
 Configuration and scheduling helpers do not import the CUDA simulator.  The
 ``IceFlow2D`` import is deliberately confined to :func:`_run_case`, keeping the
@@ -32,7 +32,6 @@ from iceflow2d import reporting  # noqa: E402
 from iceflow2d.thermal import (  # noqa: E402
     LatticeScales,
     PhaseChangeProperties,
-    ThermalBoundary,
     ThermalBoundarySet,
     ThermalConfig,
 )
@@ -86,6 +85,8 @@ class FallingMeltingSnapshot:
     thermal_initial_total_mass_kg_m: float
     thermal_total_mass_kg_m: float
     thermal_total_mass_residual_kg_m: float
+    water_mean_temperature_c: float
+    aperture_energy_correction_abs_j_m: float
 
     def __getattr__(self, name: str) -> Any:
         # The common visualization writers consume CoupledSnapshot fields by
@@ -357,15 +358,9 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         conductivity_air_w_m_k=args.air_conductivity,
         latent_heat_j_kg=args.latent_heat,
     )
-    hot_wall = ThermalBoundary.dirichlet(args.water_temperature_c)
     thermal = ThermalConfig(
         properties=properties,
-        boundaries=ThermalBoundarySet(
-            left=hot_wall,
-            right=hot_wall,
-            bottom=hot_wall,
-            top=ThermalBoundary.adiabatic(),
-        ),
+        boundaries=ThermalBoundarySet(),
         initial_water_temperature_c=args.water_temperature_c,
         initial_ice_temperature_c=args.ice_temperature_c,
         initial_air_temperature_c=args.air_temperature_c,
@@ -602,6 +597,19 @@ def _capture_snapshot(
         if initial_total_mass_kg_m is None
         else float(initial_total_mass_kg_m)
     )
+    thermal = simulation.thermal
+    if hasattr(thermal, "water_volume_m2"):
+        water_volume = thermal.water_volume_m2.to_numpy()
+        water_energy = thermal.water_sensible_energy.to_numpy()
+        water_mass = float(np.sum(water_volume)) * rho_water
+        mean_temperature = simulation.cfg.thermal.properties.melting_temperature_c
+        if water_mass > 0.0:
+            mean_temperature += float(np.sum(water_energy)) / (
+                water_mass
+                * simulation.cfg.thermal.properties.specific_heat_water_j_kg_k
+            )
+    else:
+        mean_temperature = simulation.cfg.thermal.initial_water_temperature_c
     return FallingMeltingSnapshot(
         coupled=coupled,
         body_active=body_active,
@@ -674,6 +682,10 @@ def _capture_snapshot(
         thermal_total_mass_residual_kg_m=(
             thermal_total_mass - thermal_initial_total_mass
         ),
+        water_mean_temperature_c=mean_temperature,
+        aperture_energy_correction_abs_j_m=_scalar_diagnostic(
+            simulation, "aperture_energy_correction_abs_j_m", default=0.0
+        ),
     )
 
 
@@ -710,6 +722,8 @@ MOTION_HISTORY_COLUMNS = (
     "thermal_initial_total_mass_kg_m",
     "thermal_total_mass_kg_m",
     "thermal_total_mass_residual_kg_m",
+    "water_mean_temperature_c",
+    "aperture_energy_correction_abs_j_m",
 )
 HISTORY_COLUMNS = reporting.HISTORY_COLUMNS + MOTION_HISTORY_COLUMNS
 
@@ -748,6 +762,8 @@ def _history_row(snapshot: FallingMeltingSnapshot) -> tuple[object, ...]:
         f"{snapshot.thermal_initial_total_mass_kg_m:.17g}",
         f"{snapshot.thermal_total_mass_kg_m:.17g}",
         f"{snapshot.thermal_total_mass_residual_kg_m:.17g}",
+        f"{snapshot.water_mean_temperature_c:.17g}",
+        f"{snapshot.aperture_energy_correction_abs_j_m:.17g}",
     )
 
 
@@ -893,6 +909,13 @@ def write_fields_npz(
             [item.thermal_total_mass_residual_kg_m for item in snapshots],
             dtype=np.float64,
         ),
+        water_mean_temperature_c=np.asarray(
+            [item.water_mean_temperature_c for item in snapshots], dtype=np.float64
+        ),
+        aperture_energy_correction_abs_j_m=np.asarray(
+            [item.aperture_energy_correction_abs_j_m for item in snapshots],
+            dtype=np.float64,
+        ),
     )
     np.savez_compressed(path, **arrays)
 
@@ -1021,6 +1044,17 @@ def write_metadata(
     sequences = _sequence_metadata(
         velocity_sequence, vorticity_sequence, temperature_sequence
     )
+    props = config.thermal.properties
+    energy_after_full_melt = (
+        initial.total_enthalpy_j_m - initial.body_mass_kg_m * props.latent_heat_j_kg
+    )
+    equilibrium_temperature = None
+    if energy_after_full_melt >= 0.0 and initial.thermal_total_mass_kg_m > 0.0:
+        equilibrium_temperature = (
+            props.melting_temperature_c
+            + energy_after_full_melt
+            / (initial.thermal_total_mass_kg_m * props.specific_heat_water_j_kg_k)
+        )
     data = {
         "model": "coupled two-dimensional falling-ice melting",
         "backend": "taichi-cuda",
@@ -1031,10 +1065,22 @@ def write_metadata(
         "phase_change_mass_conversion": (
             "delta_V_water=(rho_ice/rho_water)*(V_solid_initial-V_solid_current)"
         ),
+        "closed_bath_reference": {
+            "all_walls_adiabatic": all(
+                getattr(config.thermal.boundaries, side).kind == "adiabatic"
+                for side in ("left", "right", "bottom", "top")
+            ),
+            "initial_energy_j_m": initial.total_enthalpy_j_m,
+            "full_melt_added_water_area_m2": initial.body_mass_kg_m / config.rho_water,
+            "melt_water_to_ice_volume_ratio": config.rho_ice / config.rho_water,
+            "enough_heat_for_full_melt": equilibrium_temperature is not None,
+            "fully_melted_equilibrium_temperature_c": equilibrium_temperature,
+        },
         "assumptions": [
             "liquid water remains liquid at 90 degC",
             "no evaporation, boiling, or water-vapour transport",
             "water-air thermal interface is adiabatic",
+            "local temperature reconstruction with bounded global sensible-energy correction",
             "linear Boussinesq water buoyancy over the 0--90 degC range",
             "two-dimensional quantities are reported per unit out-of-plane depth",
         ],
@@ -1126,6 +1172,8 @@ def write_metadata(
             "thermal_total_mass_residual_kg_m": (
                 final.thermal_total_mass_residual_kg_m
             ),
+            "water_mean_temperature_c": final.water_mean_temperature_c,
+            "aperture_energy_correction_abs_j_m": final.aperture_energy_correction_abs_j_m,
         },
         "field_sequences": sequences,
         "field_output": {

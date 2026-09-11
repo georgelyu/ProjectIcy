@@ -138,7 +138,7 @@ D2Q9 离散、初始化方法，最后严格按照 \code{IceFlow2D.step()} 的�
   \item[相场 $\phi$] $\phi\approx1$ 表示水，$\phi\approx0$ 表示空气，二者之间的连续过渡带
   是自由液面。它不是“冰的液相率”。
   \item[锐界冰掩膜] 冰的连续材料覆盖率经过阈值化后得到 $\chi^s\in\{0,1\}$，决定一个格点
-  是否参加 LBM。连续覆盖率仍用于热接触和 ALE，不能与锐掩膜混为一谈。
+  是否参加 LBM。连续覆盖率仍用于热接触，不能与锐掩膜混为一谈。
   \item[aperture] 一个世界单元能够容纳液水的有效开口或容量。热模块中的液水面积必须放在
   LBM 认为合法的水侧开口中。
   \item[ALE 与 refill] 刚体移动会扫过或释放世界单元。ALE 重映射守恒搬运热水广延量；
@@ -228,8 +228,8 @@ $\Delta x=1.25\times10^{-4}\,\mathrm m$。本文讨论用户实际运行入口�
       $4\,\mathrm{m\,s^{-1}}\leftrightarrow0.1$ 格/步 \\
     相场 & 界面宽度 $W=5$ 格，迁移率 $M=0.1$，预热流送 500 步 \\
     热学 & 慢热间隔 $N_{\rm slow}=8$；$Fo_{\max}=0.15$，$Co_{\max}=0.50$ \\
-    热边界 & 左、右、底壁恒温 $90\,^{\circ}\mathrm C$；顶壁绝热；水--气与冰--气绝热 \\
-    输出 & 总时长 $2\,\mathrm s$，每 $0.01\,\mathrm s$ 采样 \\
+    热边界 & 四面容器墙绝热；水--气与冰--气绝热 \\
+    输出 & 总时长 $3\,\mathrm s$，每 $0.01\,\mathrm s$ 采样 \\
     \bottomrule
   \end{tabularx}
 \end{table}
@@ -238,7 +238,7 @@ $\Delta x=1.25\times10^{-4}\,\mathrm m$。本文讨论用户实际运行入口�
 \begin{equation}
   \Delta t_{\rm slow}=8\Delta t=5.0\times10^{-5}\,\mathrm s,
 \end{equation}
-每个输出间隔含 1600 个 LBM 步，终点为 320000 步；若计入 $t=0$，共 201 个采样。
+每个输出间隔含 1600 个 LBM 步，终点为 480000 步；若计入 $t=0$，共 301 个采样。
 
 \section{未知量、时间层和符号表}
 
@@ -457,7 +457,7 @@ $(\rho-\rho^H)\vect g$，而冰 cut-link 的动量交换补回同一 $p^H$ 的�
   \node[flow,below=of c] (s) {流送与边界：普通流送 / 固定墙反弹 / 移动冰 cut-link；旁路归约 $\vect J_h,L_h$};
   \node[flow,below=of s] (m) {恢复 $\phi,\vect u,p$；刚体积分得到候选位姿};
   \node[flow,below=of m] (g) {连续光栅与 contact 投影 $\rightarrow$ 锐掩膜 $\rightarrow$ 启闭节点 equilibrium refill};
-  \node[flow,below=of g] (f) {FAST：覆盖率 ALE $\rightarrow$ 热水 aperture $\rightarrow$ 成对 $V^w/S^w$ 迎风对流};
+  \node[flow,below=of g] (f) {FAST：位姿/相场联合 aperture 重映射 $\rightarrow$ 成对 $V^w/S^w$ 迎风对流};
   \node[decision,below=5mm of f] (d) {$n_{\rm pending}\ge N_{\rm slow}$？};
   \node[slow,right=19mm of d,text width=5.3cm] (slow) {SLOW：动量快照；冰/水导热；冰--水换热；潜热融化；融水注入；重算 $m,I,\vect\xi_c$；侵蚀光栅与 refill};
   \node[flow,below=7mm of d] (v) {相场水量投影 $\rightarrow$ 条件融水线/角动量闭合};
@@ -854,7 +854,7 @@ $x$ 分量：
   \label{eq:world-raster}
 \end{equation}
 其中 $\mathcal B(P)$ 是双线性插值的最多四个材料单元。调用前的 $C_P$ 保存为 $C_P^{\rm old}$，
-新值保存为 $C_P^{\rm new}$，供 FAST 的扫掠覆盖率 ALE 使用。材料矩形内部的 SDF 为
+新值保存为 $C_P^{\rm new}$，用于锐界判定和热接触；FAST 根据新开口联合重映射水体积和显热。材料矩形内部的 SDF 为
 \begin{equation}
   d_P=(f_{\rm th}-C_P)\Delta x,
   \qquad f_{\rm th}=0.5,
@@ -918,37 +918,16 @@ $|u_x^\star|+|u_y^\star|\le1$；水侧 CFL 最大值只在 $\phi>\varepsilon_\ph
 \end{equation}
 这里格子速度乘 $\Delta x/\Delta t_{\rm LBM}$ 后才是物理速度。
 
-\subsection{覆盖率 ALE 守恒重映射}
+\subsection{位姿与相场开口联合重映射}
 
-令旧/新连续覆盖为 $C_P^o,C_P^n$。当冰扫入某格时，移走比例
-\begin{equation}
-  r_P=\min\left[1,
-  \frac{(C_P^n-C_P^o)_+}{\max(1-C_P^o,\varepsilon)}\right].
-\end{equation}
-水面积和显热使用同一比例
-\begin{equation}
-  \Delta V_P=r_PV_P^w,
-  \qquad \Delta S_P=r_PS_P^w.
-  \label{eq:ale-remove}
-\end{equation}
-汇总 $V_{\rm rem}=\sum_P\Delta V_P$、$S_{\rm rem}=\sum_P\Delta S_P$。首选释放区域权重
-\begin{equation}
-  a_P=\cellarea(C_P^o-C_P^n)_+,
-\end{equation}
-且只保留合法水侧；若没有释放区域，退化为开放水相权重
-$a_P=\cellarea\clip(\phi_P,0,1)$。重分配为
-\begin{equation}
-  V_P^\star=V_P^w-\Delta V_P+\frac{a_P}{\sum_Ra_R}V_{\rm rem},
-  \qquad
-  S_P^\star=S_P^w-\Delta S_P+\frac{a_P}{\sum_Ra_R}S_{\rm rem}.
-  \label{eq:ale-redistribute}
-\end{equation}
-于是纯位姿变化在归约误差内保持 $\sum V^w$ 与 $\sum S^w$，并因共用权重而保持均匀
-$S^w/V^w$。这是全局守恒的一阶覆盖率重映射，不等同于逐面高阶几何守恒律格式。
+FAST 直接按第~\ref{sec:aperture} 节的新开口目标重映射 $V^w,S^w$。
+不再先按连续覆盖率扫掠一次、再按锐掩膜同步一次。原来的全域供体池虽然闭合总量，
+却把冰旁冷水混入整条上升自由面，又把远处热水混入冰旁 refill；这会产生初始水面附近的
+人工温度分层。现实现使用局部比显热重构和有界总能量校正，以减少这种空间误差。
 
 \subsection{成对液水面积--显热迎风对流}
 
-ALE 后先执行一次第~\ref{sec:aperture} 节的 aperture 同步，保证上游状态合法。对相邻合法水格
+联合 aperture 重映射保证上游状态合法。对相邻合法水格
 $L,R$ 的面，取物理法向速度、上游含水率和两种通量
 \begin{align}
   u_f&=\frac12(\vect u_L^\star+\vect u_R^\star)\cdot\vect n_f
@@ -1014,7 +993,7 @@ $\Delta t_{\rm S}=N_{\rm slow}\Delta t_{\rm LBM}$。进入前先同步 aperture�
   \qquad a_P^w=\clip(V_P^w/\cellarea,0,1).
   \label{eq:wall-heat-flux}
 \end{equation}
-绝热壁功率为零。当前默认左右和底壁是 $90\,^{\circ}\mathrm C$ 恒温壁，顶壁绝热；空气没有
+绝热壁功率为零。当前默认四壁均绝热；$90\,^{\circ}\mathrm C$ 仅为初始水温。空气没有
 独立能量方程，水--气、冰--气和冰--壁直接接触均绝热。
 
 \subsection{离散冰--水界面换热}
@@ -1259,9 +1238,24 @@ $\sum_q\vect c_q\delta f_{Pq}=\delta\vect p_P$，所以不改变相场或 $f$ �
 实现把退化分母按零贡献处理，并把目标面积 $D_P$ 裁到单元允许区间 $[0,\cellarea]$；若总热水
 面积 $V_\Sigma$ 超过满格容量 $C$，则报告合法水侧容量不足。
 
-对当前液水面积 $V_P^w$ 大于目标面积 $D_P$ 的供体单元，按目标面积与当前面积之比
-$D_P/V_P^w$ 同比例移除水和显热，将移出的总水面积与总显热汇入公共池；随后按照目标面积
-$D_P$ 与当前液水面积 $V_P^w$ 之间的接收缺口比例，把池中两种广延量同时分配给接收单元。
+已有水的格保留局部比显热 $e_P=S_P^w/V_P^w$。新开放格从最近的湿邻域外推，最多搜索三圈，
+权重为邻格水面积除以距离平方；没有局部水邻居的孤立新组件才回退到当前全水域平均比显热。
+这一步只读取冻结的旧水状态，不使用初始水温或空气温度作为能量来源。令
+$\widehat S_P=D_P e_P$，并取旧水比显热的全域极值 $e_-,e_+$，定义
+\begin{equation}
+ \delta E=\sum_P S_P^w-\sum_P\widehat S_P,\quad
+ C_-=\sum_P(\widehat S_P-D_Pe_-),\quad
+ C_+=\sum_P(D_Pe_+-\widehat S_P).
+\end{equation}
+最后令 $V_P^{w,+}=D_P$，并作一次有界的总显热校正：
+\begin{equation}
+ S_P^{w,+}=\widehat S_P+
+ \begin{cases}
+ \dfrac{\delta E}{C_-}(\widehat S_P-D_Pe_-),&\delta E<0,\\[2mm]
+ \dfrac{\delta E}{C_+}(D_Pe_+-\widehat S_P),&\delta E\ge0.
+ \end{cases}
+\end{equation}
+零容量不参与校正，浮点实现把系数限制在 $[-1,0]$ 或 $[0,1]$。
 记同步前、后的液水面积分别为 $V_P^{w,-}$ 和 $V_P^{w,+}$，同步前、后的水显热广延量分别为
 $S_P^{w,-}$ 和 $S_P^{w,+}$，则有
 \begin{equation}
@@ -1271,10 +1265,10 @@ $S_P^{w,-}$ 和 $S_P^{w,+}$，则有
   \qquad 0\le V_P^{w,+}\le\cellarea.
   \label{eq:aperture-conservation}
 \end{equation}
-前两条等式来自“供体移出的量全部进入接收单元”的封闭池转移，最后一条界限则来自有界目标及
-不越过目标的比例分配；这些关系在精确算术下成立，实际浮点归约误差另存为守恒残量诊断。
-水面积与显热共用移除和接收权重，因此还会保持原本空间均匀的水显热--面积比
-$S_P^w/V_P^w$，也就是保持均匀水温不变。
+前两条等式分别来自有界水量目标及总显热校正；这些关系在精确算术下成立，实际浮点误差
+另存为守恒残量诊断。该算法还保持均匀水温，并且不产生新的温度极值。全局校正仍然是非局部
+数值热再分配，不能视为逐面精确的几何输运；它用有限的局部精度换取每步不必迭代解几何通量。
+累计校正绝对量由 \code{aperture\_energy\_correction\_abs\_j\_m} 单独记录。
 
 最后，记水密度为 $\rho_w$、水定压比热为 $c_{p,w}$、熔点温度为 $T_m$、同步后的液水温度为
 $T_{w,P}^{+}$，并记温度恢复所用的面积容差为 $V_{\rm tol}=10^{-30}\,\mathrm m^2$。把液水显热
@@ -1310,8 +1304,8 @@ $T_{w,P}^{+}$，并记温度恢复所用的面积容差为 $V_{\rm tol}=10^{-30}
 \label{fig:multirate}
 \end{figure}
 
-刚体每一步都会移动，所以覆盖率 ALE 不能把八步位姿变化压成一次首尾差；否则中间扫掠过的水量
-和显热会丢失。导热和相变变化较慢，可累计物理时间后按 Fourier 条件再分子步。水显热对流仍必须
+刚体每一步都会移动，所以流体开口与温度重映射每步执行；否则对流会读到已经关闭的水单元。
+导热和相变变化较慢，可累计物理时间后按 Fourier 条件再分子步。水显热对流仍必须
 每个 LBM 步跟随瞬时速度执行。
 
 \section{守恒诊断与数值验收}
@@ -1332,19 +1326,29 @@ $T_{w,P}^{+}$，并记温度恢复所用的面积容差为 $V_{\rm tol}=10^{-30}
   \label{eq:total-energy}
 \end{align}
 这里不含流体/刚体动能，也不包含机械能转热。
+四壁绝热时 $Q_b=0$。若有足够热量完全融化，最终混合温度应为
+\begin{equation}
+ T_{\rm eq}=T_m+
+ \frac{m_{w,0}c_{p,w}(T_{w,0}-T_m)+m_{i,0}c_{p,i}(T_{i,0}-T_m)-m_{i,0}L}
+ {(m_{w,0}+m_{i,0})c_{p,w}}.
+\end{equation}
+默认实际水面积扣除墙层后为 $10998\Delta x^2$，故 $T_{\rm eq}\simeq76.64\,^{\circ}\mathrm C$。
+完全融化增加的水面积为 $0.917\times32^2\Delta x^2=5.8688\times10^{-5}\,\mathrm m^2$。
+若式中分子为负，则热量不足以完全融化；不能把该值当作全液态终温。
 
 \subsection{各层投影的独立残差}
 
 程序分别记录而不是混成一个“总误差”：
 \begin{align}
   R_\phi&=\sum_{P\in\mathcal A}\phi_P-V_w^\star,\\
-  R_V^{\rm ALE}&=V_{\rm assigned}-V_{\rm removed},
-  &R_S^{\rm ALE}&=S_{\rm assigned}-S_{\rm removed},\\
+  R_V^{\rm ALE}&=R_V^{\rm ap},
+  &R_S^{\rm ALE}&=R_S^{\rm ap},\\
   R_V^{\rm ap}&=\sum_PV_P^{w,+}-\sum_PV_P^{w,-},
   &R_S^{\rm ap}&=\sum_PS_P^{w,+}-\sum_PS_P^{w,-},\\
   R_m^{\rm melt}&=\Delta M_{w,\rm inject}-\Delta M_{i,\rm melt}.
   \label{eq:projection-residuals}
 \end{align}
+ALE 名称为历史输出兼容别名，现与联合 aperture 同步残差相同。
 还记录满格容量余量 $C-\sum_PV_P^w$。累计融水动量残差为
 \begin{equation}
   \vect R_P=\sum_k\Delta\vect P_{f,k}-\sum_k\Delta\vect P_{b,k},
@@ -1361,7 +1365,7 @@ $T_{w,P}^{+}$，并记温度恢复所用的面积容差为 $V_{\rm tol}=10^{-30}
   \item 若打开 \code{\small\_thermal\_stability\_check\_enabled}，先查 NaN/Inf 和
   $|u_x|+|u_y|$，排除 LBM 已离开稳定包络；
   \item 查 $R_\phi$，判断自由液面水量投影是否可达；
-  \item 查 $R_V^{\rm ALE},R_S^{\rm ALE}$，判断位姿扫掠重映射；
+  \item 检查新开放格温度与邻域是否相符，并检查累计显热校正量，不能仅以总量闭合验收温度场；
   \item 查 $R_V^{\rm ap},R_S^{\rm ap}$ 与容量余量，判断热水是否有合法开口；
   \item 查 $R_m^{\rm melt}$，判断潜热生成与融水注入是否配对；
   \item 最后查 $\vect R_P,R_L$，判断侵蚀 refill、相场修正与融水动量 lift 的三矩闭合。
@@ -1429,7 +1433,7 @@ $f/h$ 碰撞与流送 & $f_q,h_q,\phi,\vect u,p$ & 相场零阶矩、动量矩�
 cut-link MEM & 反弹 populations，$\vect J_h,L_h$ & 流体--刚体逐链动量交换；静水牵引一致性 \\
 刚体积分/墙面投影 & $\vect V_c,\omega,\vect X_c,\theta$ & 当前锐界整体不穿物理墙；只截断穿墙法向平移速度 \\
 equilibrium refill & 新启闭节点 $f,h,\phi,p,\vect u$ & 确定性拓扑更新，不读取同核新节点 \\
-覆盖率 ALE & $V^w,S^w$ & 全局水面积与显热 \\
+联合开口重映射 & $V^w,S^w$ & 全局水面积与显热，局部温度外推及极值限制 \\
 成对迎风 & $V^w,S^w$ & 两种广延量使用同一通量，均匀温度保持 \\
 界面换热/潜热 & $E^s,m^s,V^w,S^w$ & 冰水成对能量、熔化质量与融水体积 \\
 相场水量投影 & $\phi,f,h$ & $\sum\phi=V_w^\star$，纯相不动点 \\
@@ -1444,8 +1448,8 @@ aperture 同步 & $V^w,S^w,T,H$ & 固定总 $V^w,S^w$ 下的合法容量 \\
 IceFlow2D 的关键并非把多个求解器简单串联，而是在同一步内明确每一种状态由谁负责：LBM 负责
 空气--水相场和流体动量；锐 cut-link 负责流体--冰冲量；刚体积分负责侵蚀后的质量、质心和惯量推进，
 整体位置与法向速度投影只负责防止冰体穿过物理墙；
-材料网格负责固冰质量和显热；世界热网格负责液水面积和显热。四类守恒修正---覆盖率 ALE、相场
-水量投影、融水三矩 lift 和 aperture 同步---分别作用于不同未知量，不能相互替代。严格保持
+材料网格负责固冰质量和显热；世界热网格负责液水面积和显热。相场水量投影、融水三矩 lift
+和联合 aperture 重映射分别作用于不同未知量，不能相互替代。严格保持
 算法~\ref{alg:step} 的顺序，才可使新位姿、新锐界、新温度、新水量和新动量在 $n+1$ 层重新一致。
 
 \begin{thebibliography}{9}

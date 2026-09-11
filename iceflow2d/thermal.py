@@ -485,13 +485,21 @@ if ti is not None:
             # wetted cells receive a thermal state and no cell can hold more
             # water than its geometric capacity.
             self._phase_target_volume = ti.field(ti.f64, shape=world_shape)
+            self._phase_target_energy = ti.field(ti.f64, shape=world_shape)
             self._phase_volume_before = ti.field(ti.f64, shape=())
             self._phase_energy_before = ti.field(ti.f64, shape=())
             self._phase_base_capacity = ti.field(ti.f64, shape=())
             self._phase_full_capacity = ti.field(ti.f64, shape=())
-            self._phase_donor_volume = ti.field(ti.f64, shape=())
-            self._phase_donor_energy = ti.field(ti.f64, shape=())
-            self._phase_receiver_volume = ti.field(ti.f64, shape=())
+            self._phase_specific_energy_min = ti.field(ti.f64, shape=())
+            self._phase_specific_energy_max = ti.field(ti.f64, shape=())
+            self._phase_reconstructed_energy = ti.field(ti.f64, shape=())
+            self._phase_cooling_capacity = ti.field(ti.f64, shape=())
+            self._phase_heating_capacity = ti.field(ti.f64, shape=())
+            # The bounded energy projection is a deliberate low-cost
+            # approximation to a fully local geometric transport solve.
+            # Expose its size separately from the conservation residual.
+            self.aperture_energy_correction_j_m = ti.field(ti.f64, shape=())
+            self.aperture_energy_correction_abs_j_m = ti.field(ti.f64, shape=())
             self._phase_volume_after = ti.field(ti.f64, shape=())
             self._phase_energy_after = ti.field(ti.f64, shape=())
             self._interface_heat_requested = ti.field(ti.f64, shape=world_shape)
@@ -528,17 +536,13 @@ if ti is not None:
             self.boundary_power = ti.field(ti.f64, shape=())
             self.boundary_heat_input = ti.field(ti.f64, shape=())
             self.boundary_heat_input_j_m = self.boundary_heat_input
-            self.ale_water_volume_residual_m2 = ti.field(ti.f64, shape=())
-            self.ale_water_energy_residual_j_m = ti.field(ti.f64, shape=())
             self.phase_aperture_volume_residual_m2 = ti.field(ti.f64, shape=())
             self.phase_aperture_energy_residual_j_m = ti.field(ti.f64, shape=())
             self.phase_aperture_capacity_margin_m2 = ti.field(ti.f64, shape=())
-            self._ale_removed_volume = ti.field(ti.f64, shape=())
-            self._ale_removed_energy = ti.field(ti.f64, shape=())
-            self._ale_release_weight = ti.field(ti.f64, shape=())
-            self._ale_fallback_weight = ti.field(ti.f64, shape=())
-            self._ale_assigned_volume = ti.field(ti.f64, shape=())
-            self._ale_assigned_energy = ti.field(ti.f64, shape=())
+            # Legacy output names now audit the single combined pose/phase
+            # remap, rather than a separate swept-coverage operation.
+            self.ale_water_volume_residual_m2 = self.phase_aperture_volume_residual_m2
+            self.ale_water_energy_residual_j_m = self.phase_aperture_energy_residual_j_m
             # A material cell normally injects melt into its paired interface
             # water cell.  If that local topology disappears within a thermal
             # substep, all four extensive sources enter this conservative
@@ -688,7 +692,7 @@ if ti is not None:
                 raise RuntimeError(
                     "world rasterization is owned by IceFlow2D; no "
                     "rasterize-world callback has been registered"
-            )
+                )
             if body_center is None and body_angle is None and wall is None:
                 callback(resolve_contact=bool(resolve_contact))
                 return None
@@ -718,11 +722,9 @@ if ti is not None:
             substeps = self.required_advection_substeps(
                 dt, max_velocity_lattice_l1=max_velocity_lattice_l1
             )
-            self._conservative_remap_water(water_phase, wall)
-            # The conservative remap closes global V/S sums, but its release
-            # weights may temporarily place that volume in a partial or still-
-            # sharp cell.  Restore the current LBM aperture before selecting
-            # the first upwind donor.
+            # One remap handles both the moving sharp mask and phase aperture.
+            # A preceding swept-coverage remap would count the displacement
+            # twice and mix the cold interface water into remote receivers.
             self.synchronize_water_aperture(
                 water_phase, wall, solid, refresh_derived=False
             )
@@ -824,12 +826,14 @@ if ti is not None:
         ) -> None:
             """Conservatively align extensive water state with the LBM aperture.
 
-            For legal water-side cells, the phase-weighted target is
-            ``dx**2 * phi``.  If the thermal and phase totals differ between
-            coupling updates, the target is scaled down or its remaining
-            geometric capacity is filled proportionally.  Donor water and
-            its sensible energy are pooled with one common weight, preserving
-            both global extensive sums and a spatially uniform temperature.
+            The bounded volume target follows ``dx**2 * phi`` and preserves
+            the thermal water total, including density-converted melt. Wet
+            cells retain their specific sensible energy; newly opened cells
+            extrapolate it from nearby water. A bounded global energy
+            projection closes the extensive sum without introducing new
+            temperature extrema. This avoids a costly geometric flux solve
+            at every LBM step, at the expense of nonlocal numerical heat
+            redistribution, recorded by ``aperture_energy_correction_abs_j_m``.
             """
 
             self._measure_phase_aperture(water_phase, wall, solid)
@@ -851,7 +855,6 @@ if ti is not None:
                     f"capacity={full_capacity:.17g} m^2"
                 )
             self._build_phase_aperture_targets(water_phase, wall, solid)
-            self._measure_phase_aperture_transfer()
             self._apply_phase_aperture_transfer()
             self._finish_phase_aperture_transfer()
             if refresh_derived:
@@ -941,12 +944,12 @@ if ti is not None:
         def _reset_diagnostics(self):
             self.boundary_power[None] = 0.0
             self.boundary_heat_input[None] = 0.0
-            self.ale_water_volume_residual_m2[None] = 0.0
-            self.ale_water_energy_residual_j_m[None] = 0.0
             self.phase_aperture_volume_residual_m2[None] = 0.0
             self.phase_aperture_energy_residual_j_m[None] = 0.0
             self.phase_aperture_capacity_margin_m2[None] = 0.0
             self.melt_injection_mass_residual_kg_m[None] = 0.0
+            self.aperture_energy_correction_j_m[None] = 0.0
+            self.aperture_energy_correction_abs_j_m[None] = 0.0
 
         @ti.kernel
         def _reset_interval_sources(self):
@@ -1034,6 +1037,8 @@ if ti is not None:
             self._phase_energy_before[None] = 0.0
             self._phase_base_capacity[None] = 0.0
             self._phase_full_capacity[None] = 0.0
+            self._phase_specific_energy_min[None] = 1.0e30
+            self._phase_specific_energy_max[None] = -1.0e30
             area = ti.cast(ti.static(self._cell_area), ti.f64)
             for i, j in self.water_volume_m2:
                 volume = self.water_volume_m2[i, j]
@@ -1042,6 +1047,10 @@ if ti is not None:
                     self._phase_energy_before[None],
                     self.water_sensible_energy[i, j],
                 )
+                if volume > 1.0e-30:
+                    specific = self.water_sensible_energy[i, j] / volume
+                    ti.atomic_min(self._phase_specific_energy_min[None], specific)
+                    ti.atomic_max(self._phase_specific_energy_max[None], specific)
                 phase = ti.min(1.0, ti.max(0.0, water_phase[i, j]))
                 if (
                     wall[i, j] == 0
@@ -1061,12 +1070,17 @@ if ti is not None:
             wall: ti.template(),
             solid: ti.template(),
         ):
-            """Build a bounded target from phase volume and spare aperture."""
+            """Reconstruct local water temperature on the new volume target."""
 
             area = ti.cast(ti.static(self._cell_area), ti.f64)
             total = ti.max(0.0, self._phase_volume_before[None])
             base = self._phase_base_capacity[None]
             full = self._phase_full_capacity[None]
+            self._phase_reconstructed_energy[None] = 0.0
+            self._phase_cooling_capacity[None] = 0.0
+            self._phase_heating_capacity[None] = 0.0
+            low = self._phase_specific_energy_min[None]
+            high = self._phase_specific_energy_max[None]
             base_scale = ti.cast(0.0, ti.f64)
             spare_scale = ti.cast(0.0, ti.f64)
             if total <= base and base > 1.0e-30:
@@ -1087,46 +1101,85 @@ if ti is not None:
                     target = area * (
                         base_scale * phase64 + spare_scale * (1.0 - phase64)
                     )
-                self._phase_target_volume[i, j] = ti.min(area, ti.max(0.0, target))
-
-        @ti.kernel
-        def _measure_phase_aperture_transfer(self):
-            self._phase_donor_volume[None] = 0.0
-            self._phase_donor_energy[None] = 0.0
-            self._phase_receiver_volume[None] = 0.0
-            for i, j in self.water_volume_m2:
+                target = ti.min(area, ti.max(0.0, target))
+                self._phase_target_volume[i, j] = target
                 volume = self.water_volume_m2[i, j]
-                target = self._phase_target_volume[i, j]
-                if volume > target:
-                    excess = volume - target
-                    removed_energy = ti.cast(0.0, ti.f64)
+                energy = ti.cast(0.0, ti.f64)
+                if target > 0.0:
+                    specific = ti.cast(0.0, ti.f64)
                     if volume > 1.0e-30:
-                        removed_energy = (
-                            self.water_sensible_energy[i, j] * excess / volume
-                        )
-                    ti.atomic_add(self._phase_donor_volume[None], excess)
-                    ti.atomic_add(self._phase_donor_energy[None], removed_energy)
-                elif target > volume:
-                    ti.atomic_add(self._phase_receiver_volume[None], target - volume)
+                        specific = self.water_sensible_energy[i, j] / volume
+                    else:
+                        # Frozen source arrays: newly exposed nodes must not
+                        # read other nodes being refilled in this GPU launch.
+                        # Prefer the first wet ring, including covered donors
+                        # which still carry the outgoing local water state.
+                        weight = ti.cast(0.0, ti.f64)
+                        for radius in ti.static(range(1, 4)):
+                            if weight <= 1.0e-30:
+                                for di, dj in ti.ndrange(
+                                    (-radius, radius + 1), (-radius, radius + 1)
+                                ):
+                                    ni, nj = i + di, j + dj
+                                    if (
+                                        ti.max(ti.abs(di), ti.abs(dj)) == radius
+                                        and 0 <= ni < ti.static(self.nx)
+                                        and 0 <= nj < ti.static(self.ny)
+                                        and wall[ni, nj] == 0
+                                    ):
+                                        neighbor_volume = self.water_volume_m2[ni, nj]
+                                        if neighbor_volume > 1.0e-30:
+                                            distance2 = ti.cast(
+                                                di * di + dj * dj, ti.f64
+                                            )
+                                            specific += (
+                                                self.water_sensible_energy[ni, nj]
+                                                / distance2
+                                            )
+                                            weight += neighbor_volume / distance2
+                        if weight > 1.0e-30:
+                            specific /= weight
+                        elif total > 1.0e-30:
+                            # Only disconnected/new components lack any
+                            # local water stencil. Never use the configured
+                            # initial bath or air temperature as a heat source.
+                            specific = self._phase_energy_before[None] / total
+                    specific = ti.min(high, ti.max(low, specific))
+                    energy = target * specific
+                    ti.atomic_add(
+                        self._phase_cooling_capacity[None], target * (specific - low)
+                    )
+                    ti.atomic_add(
+                        self._phase_heating_capacity[None], target * (high - specific)
+                    )
+                self._phase_target_energy[i, j] = energy
+                ti.atomic_add(self._phase_reconstructed_energy[None], energy)
 
         @ti.kernel
         def _apply_phase_aperture_transfer(self):
-            donor_volume = self._phase_donor_volume[None]
-            donor_energy = self._phase_donor_energy[None]
-            receiver_volume = self._phase_receiver_volume[None]
+            correction = (
+                self._phase_energy_before[None] - self._phase_reconstructed_energy[None]
+            )
+            self.aperture_energy_correction_j_m[None] = correction
+            self.aperture_energy_correction_abs_j_m[None] += ti.abs(correction)
+            low = self._phase_specific_energy_min[None]
+            high = self._phase_specific_energy_max[None]
+            cooling = self._phase_cooling_capacity[None]
+            heating = self._phase_heating_capacity[None]
             for i, j in self.water_volume_m2:
-                volume = self.water_volume_m2[i, j]
                 target = self._phase_target_volume[i, j]
-                if volume > target:
-                    ratio = ti.cast(0.0, ti.f64)
-                    if volume > 1.0e-30:
-                        ratio = target / volume
-                    self.water_volume_m2[i, j] = target
-                    self.water_sensible_energy[i, j] *= ratio
-                elif target > volume and receiver_volume > 1.0e-30:
-                    fraction = (target - volume) / receiver_volume
-                    self.water_volume_m2[i, j] += donor_volume * fraction
-                    self.water_sensible_energy[i, j] += donor_energy * fraction
+                energy = self._phase_target_energy[i, j]
+                if target > 0.0:
+                    if correction < 0.0 and cooling > 1.0e-30:
+                        energy += ti.max(-1.0, correction / cooling) * ti.max(
+                            0.0, energy - low * target
+                        )
+                    elif correction > 0.0 and heating > 1.0e-30:
+                        energy += ti.min(1.0, correction / heating) * ti.max(
+                            0.0, high * target - energy
+                        )
+                self.water_volume_m2[i, j] = target
+                self.water_sensible_energy[i, j] = energy
 
         @ti.kernel
         def _finish_phase_aperture_transfer(self):
@@ -1151,124 +1204,6 @@ if ti is not None:
             self.phase_aperture_capacity_margin_m2[None] = (
                 self._phase_full_capacity[None] - self._phase_volume_after[None]
             )
-
-        @ti.kernel
-        def _prepare_ale_water_remap(
-            self,
-            water_phase: ti.template(),
-            wall: ti.template(),
-        ):
-            area = ti.cast(ti.static(self._cell_area), ti.f64)
-            self._ale_removed_volume[None] = 0.0
-            self._ale_removed_energy[None] = 0.0
-            self._ale_release_weight[None] = 0.0
-            self._ale_fallback_weight[None] = 0.0
-            self._ale_assigned_volume[None] = 0.0
-            self._ale_assigned_energy[None] = 0.0
-            for i, j in self.water_volume_m2:
-                old_cover = ti.min(
-                    1.0, ti.max(0.0, self.world_body_indicator_prev[i, j])
-                )
-                new_cover = ti.min(1.0, ti.max(0.0, self.world_body_indicator[i, j]))
-                if new_cover > old_cover and self.water_volume_m2[i, j] > 0.0:
-                    old_open = ti.max(ti.cast(1.0 - old_cover, ti.f64), 1.0e-12)
-                    swept_ratio = ti.min(
-                        1.0,
-                        ti.cast(new_cover - old_cover, ti.f64) / old_open,
-                    )
-                    removed_volume = self.water_volume_m2[i, j] * swept_ratio
-                    removed_energy = self.water_sensible_energy[i, j] * swept_ratio
-                    self.water_volume_m2[i, j] -= removed_volume
-                    self.water_sensible_energy[i, j] -= removed_energy
-                    ti.atomic_add(self._ale_removed_volume[None], removed_volume)
-                    ti.atomic_add(self._ale_removed_energy[None], removed_energy)
-                release = ti.cast(ti.max(old_cover - new_cover, 0.0), ti.f64) * area
-                if (
-                    release > 0.0
-                    and wall[i, j] == 0
-                    and (
-                        water_phase[i, j] > ti.static(self._water_phase_cutoff)
-                        or self.water_volume_m2[i, j] > 1.0e-30
-                    )
-                ):
-                    ti.atomic_add(self._ale_release_weight[None], release)
-                if (
-                    wall[i, j] == 0
-                    and new_cover < 0.5
-                    and water_phase[i, j] > ti.static(self._water_phase_cutoff)
-                ):
-                    ti.atomic_add(
-                        self._ale_fallback_weight[None],
-                        area * ti.min(1.0, ti.max(0.0, water_phase[i, j])),
-                    )
-
-        @ti.kernel
-        def _distribute_ale_water_remap(
-            self,
-            water_phase: ti.template(),
-            wall: ti.template(),
-        ):
-            area = ti.cast(ti.static(self._cell_area), ti.f64)
-            removed_volume = self._ale_removed_volume[None]
-            removed_energy = self._ale_removed_energy[None]
-            release_total = self._ale_release_weight[None]
-            fallback_total = self._ale_fallback_weight[None]
-            use_release = release_total > 1.0e-30
-            denominator = release_total if use_release else fallback_total
-            for i, j in self.water_volume_m2:
-                old_cover = ti.min(
-                    1.0, ti.max(0.0, self.world_body_indicator_prev[i, j])
-                )
-                new_cover = ti.min(1.0, ti.max(0.0, self.world_body_indicator[i, j]))
-                weight = ti.cast(0.0, ti.f64)
-                if use_release:
-                    if wall[i, j] == 0 and (
-                        water_phase[i, j] > ti.static(self._water_phase_cutoff)
-                        or self.water_volume_m2[i, j] > 1.0e-30
-                    ):
-                        weight = (
-                            ti.cast(ti.max(old_cover - new_cover, 0.0), ti.f64) * area
-                        )
-                elif (
-                    wall[i, j] == 0
-                    and new_cover < 0.5
-                    and water_phase[i, j] > ti.static(self._water_phase_cutoff)
-                ):
-                    weight = area * ti.cast(
-                        ti.min(1.0, ti.max(0.0, water_phase[i, j])), ti.f64
-                    )
-                if weight > 0.0 and denominator > 1.0e-30:
-                    fraction = weight / denominator
-                    volume = fraction * removed_volume
-                    energy = fraction * removed_energy
-                    self.water_volume_m2[i, j] += volume
-                    self.water_sensible_energy[i, j] += energy
-                    ti.atomic_add(self._ale_assigned_volume[None], volume)
-                    ti.atomic_add(self._ale_assigned_energy[None], energy)
-
-        @ti.kernel
-        def _finish_ale_water_remap(self):
-            volume_residual = (
-                self._ale_assigned_volume[None] - self._ale_removed_volume[None]
-            )
-            energy_residual = (
-                self._ale_assigned_energy[None] - self._ale_removed_energy[None]
-            )
-            self.ale_water_volume_residual_m2[None] = volume_residual
-            self.ale_water_energy_residual_j_m[None] = energy_residual
-
-        def _conservative_remap_water(self, water_phase: Any, wall: Any) -> None:
-            """Apply a discrete geometric-conservation remap for pose changes.
-
-            Water volume and sensible energy use the same swept-coverage
-            weights.  Thus a uniform specific sensible energy remains uniform,
-            while the two extensive global sums change only by the recorded
-            roundoff residuals.
-            """
-
-            self._prepare_ale_water_remap(water_phase, wall)
-            self._distribute_ale_water_remap(water_phase, wall)
-            self._finish_ale_water_remap()
 
         @ti.kernel
         def _compose_world_temperature(self, wall: ti.template()):

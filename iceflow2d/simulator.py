@@ -343,7 +343,7 @@ class IceFlow2D:
         return self.steps * self._time_step_s
 
     def _advance_moving_thermal_fast(self, *, target_step):
-        """Advance pose ALE and paired water advection at every LBM step."""
+        """Remap the moving aperture and advect water/energy at every LBM step."""
 
         self._prepare_thermal_advection_velocity()
         maximum_velocity_l1 = float(self.thermal_max_velocity_l1[None])

@@ -35,11 +35,12 @@ class _FakeMovingThermal:
         self.time_s = 0.0
         self.steps = 0
         self.total_mass_kg_m = total_mass_kg_m
+        self.total_energy_j_m = 0.0
         self.boundary_heat_input_j_m = _FakeField(0.0)
         self.melt_injection_mass_residual_kg_m = _FakeField(4.0e-15)
 
     def total_enthalpy_j_m(self, _wall) -> float:
-        return 0.0
+        return self.total_energy_j_m
 
     def mass_energy_totals(self):
         return SimpleNamespace(total_mass_kg_m=self.total_mass_kg_m)
@@ -151,15 +152,15 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
         self.assertEqual(config.thermal.water_buoyancy_model, "linear")
         self.assertEqual(config.thermal.initial_water_temperature_c, 90.0)
         self.assertEqual(config.thermal.buoyancy_reference_temperature_c, 90.0)
-        self.assertEqual(config.thermal.boundaries.left.value, 90.0)
-        self.assertEqual(config.thermal.boundaries.right.value, 90.0)
-        self.assertEqual(config.thermal.boundaries.bottom.value, 90.0)
-        self.assertEqual(config.thermal.boundaries.top.kind, "adiabatic")
+        for side in ("left", "right", "bottom", "top"):
+            boundary = getattr(config.thermal.boundaries, side)
+            self.assertEqual(boundary.kind, "adiabatic")
+            self.assertEqual(boundary.value, 0.0)
         self.assertEqual(config.gravity, (0.0, -9.8))
         self.assertEqual(config.sigma, 0.072)
         self.assertEqual(config.reference_velocity, 4.0)
         self.assertEqual(config.air_interface_relaxation_time, 0.8)
-        self.assertEqual(args.end_time_s, 2.0)
+        self.assertEqual(args.end_time_s, 3.0)
         self.assertEqual(args.output_interval_s, 0.01)
 
     def test_initial_rigid_velocity_is_not_artificially_capped(self):
@@ -174,6 +175,98 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
         config = example.create_config(args)
         self.assertEqual(config.ice_initial_velocity, (0.12, 0.09))
 
+    def test_closed_bath_reference_matches_independent_calorimetry(self):
+        # Use the physical water inside the wall layers, not the nominal
+        # water_width * water_height rectangle (which includes wall cells).
+        cases = (
+            [],
+            ["--ice-temperature-c", "-10"],
+            ["--density-ice", "900", "--density-water", "998"],
+            ["--melting-temperature-c", "5", "--ice-temperature-c", "-5"],
+            ["--water-temperature-c", "1"],
+        )
+        for argv in cases:
+            with self.subTest(argv=argv):
+                args = example.parse_args(argv)
+                config = example.create_config(args)
+                props = config.thermal.properties
+                simulation = _FakeMovingSimulation(config)
+                water_cells = (config.nx - 2 * config.boundary_cells) * (
+                    config.water_height - config.boundary_cells
+                )
+                ice_cells = config.ice_width * config.ice_height
+                water_mass = water_cells * config.dx**2 * config.rho_water
+                ice_mass = ice_cells * config.dx**2 * config.rho_ice
+                water_heat = water_mass * props.specific_heat_water_j_kg_k * (
+                    args.water_temperature_c - props.melting_temperature_c
+                )
+                ice_warming_heat = ice_mass * props.specific_heat_ice_j_kg_k * (
+                    props.melting_temperature_c - args.ice_temperature_c
+                )
+                melt_heat = ice_mass * props.latent_heat_j_kg
+                simulation.water_volume_current.value = float(water_cells)
+                simulation.water_volume_target.value = float(water_cells)
+                simulation.thermal.total_mass_kg_m = water_mass + ice_mass
+                simulation.thermal.total_energy_j_m = water_heat - ice_warming_heat
+                initial = example._capture_snapshot(
+                    simulation,
+                    initial_total_enthalpy_j_m=simulation.thermal.total_energy_j_m,
+                    initial_solid_volume_cells=ice_cells,
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "metadata.json"
+                    example.write_metadata(
+                        path,
+                        args=args,
+                        config=config,
+                        scales=LatticeScales.from_iceflow_config(config),
+                        targets=[0],
+                        initial=initial,
+                        final=initial,
+                        snapshot_count=1,
+                        velocity_sequence=None,
+                        vorticity_sequence=None,
+                        temperature_sequence=None,
+                    )
+                    reference = json.loads(path.read_text())["closed_bath_reference"]
+
+                self.assertTrue(reference["all_walls_adiabatic"])
+                self.assertAlmostEqual(
+                    reference["full_melt_added_water_area_m2"] * config.rho_water,
+                    ice_mass,
+                    delta=1.0e-14,
+                )
+                self.assertAlmostEqual(
+                    reference["melt_water_to_ice_volume_ratio"],
+                    config.rho_ice / config.rho_water,
+                )
+                enough_heat = water_heat >= ice_warming_heat + melt_heat
+                self.assertEqual(reference["enough_heat_for_full_melt"], enough_heat)
+                equilibrium = reference["fully_melted_equilibrium_temperature_c"]
+                if not enough_heat:
+                    self.assertIsNone(equilibrium)
+                    continue
+
+                # Heat lost by the original water pays for warming the ice,
+                # its latent heat, and warming the newly produced water.
+                released_heat = water_mass * props.specific_heat_water_j_kg_k * (
+                    args.water_temperature_c - equilibrium
+                )
+                absorbed_heat = ice_warming_heat + melt_heat + (
+                    ice_mass
+                    * props.specific_heat_water_j_kg_k
+                    * (equilibrium - props.melting_temperature_c)
+                )
+                self.assertAlmostEqual(released_heat, absorbed_heat, delta=1.0e-8)
+                if not argv:
+                    self.assertEqual(water_cells, 10998)
+                    self.assertAlmostEqual(
+                        reference["full_melt_added_water_area_m2"],
+                        5.8688e-5,
+                        delta=1.0e-14,
+                    )
+                    self.assertAlmostEqual(equilibrium, 76.643725, places=6)
+
     def test_physical_time_scheduler_is_thermal_step_aligned(self):
         args = example.parse_args([])
         config = example.create_config(args)
@@ -185,8 +278,8 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
         self.assertAlmostEqual(scales.dt_s, 6.25e-6)
         self.assertEqual(targets[0], 0)
         self.assertEqual(targets[1], 1600)
-        self.assertEqual(targets[-1], 320000)
-        self.assertEqual(len(targets), 201)
+        self.assertEqual(targets[-1], 480000)
+        self.assertEqual(len(targets), 301)
         self.assertTrue(
             all(
                 target % config.thermal.update_interval_lbm_steps == 0
@@ -194,7 +287,7 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
             )
         )
         self.assertGreaterEqual(targets[-1] * scales.dt_s, args.end_time_s)
-        self.assertEqual(example._progress_chunk_steps(targets[-1]), 160)
+        self.assertEqual(example._progress_chunk_steps(targets[-1]), 240)
 
     def test_chunked_advance_updates_step_progress_before_a_field_frame(self):
         class FakeSimulation:
@@ -304,6 +397,8 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
         self.assertEqual(len(example._history_row(final)), len(example.HISTORY_COLUMNS))
 
         diagnostic_names = {
+            "water_mean_temperature_c",
+            "aperture_energy_correction_abs_j_m",
             "phase_aperture_water_residual_cells",
             "phase_aperture_energy_residual_j_m",
             "phase_aperture_capacity_margin_cells",
@@ -345,6 +440,19 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
             self.assertTrue(diagnostic_names.issubset(results))
             self.assertAlmostEqual(results["thermal_total_mass_residual_kg_m"], -2.5e-9)
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertTrue(metadata["closed_bath_reference"]["all_walls_adiabatic"])
+            self.assertAlmostEqual(
+                metadata["closed_bath_reference"]["melt_water_to_ice_volume_ratio"],
+                0.917,
+            )
+            self.assertFalse(
+                metadata["closed_bath_reference"]["enough_heat_for_full_melt"]
+            )
+            self.assertIsNone(
+                metadata["closed_bath_reference"][
+                    "fully_melted_equilibrium_temperature_c"
+                ]
+            )
             self.assertTrue(metadata["requested"]["progress_enabled"])
             self.assertEqual(
                 metadata["field_output"]["write_mode"],

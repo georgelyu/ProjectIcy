@@ -729,7 +729,7 @@ def _render_velocity_frame(
     axis.set_ylabel("y (m)")
     axis.set_title(
         f"Water velocity during {scenario_label}\n"
-        f"T_inf={config.thermal.buoyancy_reference_temperature_c:g} degC, "
+        f"T_water,0={config.thermal.initial_water_temperature_c:g} degC, "
         f"t={snapshot.physical_time_s:.4f} s, "
         f"melted={100.0 * snapshot.melted_fraction:.2f}%"
     )
@@ -932,7 +932,7 @@ def _render_vorticity_frame(
     axis.set_ylabel("y (m)")
     axis.set_title(
         f"Water vorticity during {scenario_label}\n"
-        f"T_inf={config.thermal.buoyancy_reference_temperature_c:g} degC, "
+        f"T_water,0={config.thermal.initial_water_temperature_c:g} degC, "
         f"t={snapshot.physical_time_s:.4f} s, "
         f"melted={100.0 * snapshot.melted_fraction:.2f}%"
     )
@@ -1111,7 +1111,7 @@ def _render_temperature_frame(
     axis.set_ylabel("y (m)")
     axis.set_title(
         f"Temperature during {scenario_label}\n"
-        f"T_inf={config.thermal.buoyancy_reference_temperature_c:g} degC, "
+        f"T_water,0={config.thermal.initial_water_temperature_c:g} degC, "
         f"t={snapshot.physical_time_s:.4f} s, "
         f"melted={100.0 * snapshot.melted_fraction:.2f}%"
     )

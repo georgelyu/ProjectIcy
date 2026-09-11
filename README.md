@@ -40,10 +40,14 @@ The default domain is `0.025 m × 0.050 m` on a `100 × 200` grid. A
 lowest corner `0.0015 m` above a `0.030 m`-deep, `90 °C` water bath. The
 reference mapping is `4 m/s ↔ 0.1 LU`, so `dx = 2.5e-4 m` and
 `dt = 6.25e-6 s`. Conduction and phase change are updated every eight LBM
-steps; pose ALE and thermal advection remain coupled every step.
+steps; aperture remapping and thermal advection remain coupled every step.
+All four walls and the air interfaces are adiabatic, so the water cools as
+it supplies the ice's sensible and latent heat. Complete melting adds water
+equal to 91.7% of the ice volume; the default bath's equilibrium is about
+76.64 °C, calculated using the actual water volume inside the wall cells.
 
-The default physical duration is 2 seconds, sampled every `0.01 s`: 320,000
-LBM steps and 201 snapshots including the initial state.
+The default physical duration is 3 seconds, sampled every `0.01 s`: 480,000
+LBM steps and 301 snapshots including the initial state.
 Use this short output smoke run when checking an installation:
 
 ```bash
