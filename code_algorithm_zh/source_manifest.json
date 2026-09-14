@@ -1,0 +1,25 @@
+{
+  "snapshot_date": "2026-09-14",
+  "git_head": "97b8bf8dc587d6bce002c635ad8caf992c258930",
+  "existing_worktree_change": "The example default --end-time-s is 10.0 (HEAD: 3.0).",
+  "files": {
+    "benchmarks/benchmark_solver.py": "5ed31c3c599aeeb1731d724ad36686a9f9150f17ebf774327222cd5dd9a08043",
+    "iceflow2d/__init__.py": "638bca4fabb8fe98e286c406b8d91c228f2c127aa346830665723f97728c9878",
+    "iceflow2d/__main__.py": "3f928a6a5c1cdefb774cd4bb6246a53de5ee98eaaf2eb702dbdddf5cd83819fd",
+    "iceflow2d/config.py": "f77f6bf7d0ecffda5e9b24db245b5656f9cbcb1564fe0d862f003a529e0eb523",
+    "iceflow2d/examples/__init__.py": "a58a2d153d5e1496792cd6e5e03af72a9a882b231133caf75cc3a61f19caa32d",
+    "iceflow2d/examples/coupled_falling_ice_melting_2d.py": "672af2cb92f83e5e14302f1f60afd8b7967bbf477259005ca9d632c2d8d5ab2a",
+    "iceflow2d/lattice.py": "353bdaae7981448428b7fdf71de65f28374a0d3b3ec1fbc9548afc955574cbfb",
+    "iceflow2d/reporting.py": "7653ba4523a4f4d7d78d25ccaede8b238efc07c10886e5dce4249ffeeeb3db96",
+    "iceflow2d/simulator.py": "71356139c37c6674d6f50d5a53e34e3945c4611850ce80c92df58cf5f4ae9946",
+    "iceflow2d/test_gpu_state.py": "b839a7a62e7c080bf5d59fb8c156459c5ce41f5c64c500b0a7694ee2e5e66cff",
+    "iceflow2d/test_iceflow.py": "88b9020b42f265f03ca03fbf8d745305ef0e126b53acdc5294c67235112c7cbd",
+    "iceflow2d/test_thermal_coupling.py": "db47ed6e471f448693293c8c57ea5946c322e5e1832bb13ba493a974f4bf1066",
+    "iceflow2d/test_volume_projection.py": "d54ed3991cfb1ebe5756849dad8451cc54a55d1a07e6b6109037f0a233f4a678",
+    "requirements.txt": "b1fe2a6ce630e4dab24f141233b4cdf2eb8ff5d39b1cfe4e821d3fada9fa5b46",
+    "tests/test_config_validation.py": "765e1265f379a40b3598dd37cdb4f2faa1f5968fa6373cb62e20ca770a7642ac",
+    "tests/test_coupled_falling_ice_melting_example.py": "b59acf63a0e35b50efeb711e9ef4dc611c193541ca54f3649c1ff65810216f55",
+    "tests/test_moving_body_thermal.py": "419626041e8162c526ebfdcc9c5a427e493ad8b4b3366fba79a93307a7b9b3bf",
+    "tests/test_progress.py": "75b2a8e367ccb5a271e5413dc8b219b6801f799991c98eaf288ebdafc15bbb00"
+  }
+}

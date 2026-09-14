@@ -1,0 +1,83 @@
+% !TeX program = xelatex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+\usepackage[margin=24mm,headheight=15pt]{geometry}
+\usepackage{fontspec}
+\setmainfont{Liberation Serif}
+\setsansfont{Liberation Sans}
+\setmonofont{DejaVu Sans Mono}[Scale=0.82]
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans CJK SC}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{booktabs,longtable,array,tabularx}
+\usepackage{graphicx,xcolor,tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage{enumitem,listings,fancyhdr}
+\usepackage[unicode,colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black]{hyperref}
+\usepackage{xurl}
+\hypersetup{pdftitle={ProjectIcy：代码结构与耦合算法},pdfauthor={代码分析文档}}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\newcommand{\R}{\mathbb R}
+\newcommand{\dd}{\,\mathrm d}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\rot}{\mathsf J}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\src}[1]{\par\smallskip{\small\sffamily 代码对应：\code{#1}。}\par}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\numberwithin{equation}{section}
+\setcounter{tocdepth}{2}
+\setlist{nosep,leftmargin=2em}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{2em}
+\renewcommand{\arraystretch}{1.18}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small ProjectIcy：代码结构与耦合算法}
+\fancyhead[R]{\small\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\sectionmark}[1]{\markboth{\thesection\quad #1}{}}
+\lstset{basicstyle=\small\ttfamily,breaklines=true,columns=fullflexible,
+  keepspaces=true,showstringspaces=false,frame=single,rulecolor=\color{black!20},
+  backgroundcolor=\color{black!2},xleftmargin=0pt,xrightmargin=0pt}
+\title{\vspace{-12mm}\textbf{ProjectIcy：代码结构与耦合算法}\\[4mm]
+  \large 二维冰体下落、气液流动与融化的实现说明}
+\author{}
+\date{代码快照日期：2026 年 9 月 14 日}
+\begin{document}
+\maketitle
+\vspace{-8mm}
+\begin{abstract}
+本文从当前 Python 实现出发，说明二维冰体在热水中下落与融化的完整计算过程。
+流动部分以 D2Q9 压力—动量分布和守恒相场分布描述空气—水系统；
+冰体以随体材料网格保存质量与显热，以刚体平动和转动描述运动；
+热过程采用有限体积通量、显热—潜热分配以及材料到空间网格的守恒映射。
+全文围绕状态变量、离散方程、边界处理、算子执行次序和守恒诊断展开，
+并给出公式与函数的对应关系。所述方法以实际函数体为依据；连续方程用于解释离散结构，
+不代替对具体数值修正的说明。
+\end{abstract}
+\noindent\textbf{阅读范围。}
+分析对象为当前工作区中的 \code{iceflow2d/}、\code{tests/}、
+\code{benchmarks/benchmark_solver.py} 与 \code{requirements.txt}。
+本文独立编写，未读取或修改已有说明文档。
+基准提交为 \code{97b8bf8dc587d6bce002c635ad8caf992c258930}，
+同时计入工作区中示例默认终止时间为 $10\,\mathrm s$ 的已有改动。
+精确文件摘要见同目录 \code{source_manifest.json}。
+
+\begingroup
+\small\linespread{1.0}\selectfont
+\setlength{\parskip}{0pt}
+\tableofcontents
+\endgroup
+\clearpage
+\input{01_model}
+\input{02_flow}
+\input{03_body}
+\input{04_thermal}
+\input{05_conservation}
+\input{06_program}
+\appendix
+\input{07_index}
+\end{document}

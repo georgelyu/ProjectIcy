@@ -1,0 +1,173 @@
+\section{随体热模型与显热—潜热分配}
+\label{sec:thermal}
+本节全部使用物理单位。ALE 指材料坐标与空间坐标并用的描述：
+冰的热状态在材料网格中演化，水的热状态在固定空间网格中演化，
+两者通过当前位姿和覆盖率交换热量。
+在不发生相变的区域，导热与对流的连续物理背景为
+\begin{align}
+ \rho_ic_i(\partial_t+\bm u_b\cdot\nabla)T_{\rm ice}&=\nabla\cdot(k_i\nabla T_{\rm ice}),\\
+ \rho_wc_w(\partial_t+\bm u\cdot\nabla)T_{\rm water}&=\nabla\cdot(k_w\nabla T_{\rm water}).
+\end{align}
+随体坐标消去冰的刚体输运；相变所需热量通过后述局部能量分配扣除。
+程序实际推进广延量和离散通量，界面附近使用其专门的覆盖率近似。
+
+\subsection{广延状态与温度恢复}
+每个冰材料单元保存固体质量 $m_a$ 和显热 $S_a$；
+每个空间水单元保存面积 $V_i$ 和显热 $E_i$。
+以熔点 $T_m$ 为显热零点，初值为
+\begin{equation}
+ m_a^0=\rho_iA,\quad S_a^0=m_a^0c_i(T_{i,0}-T_m),\quad
+ V_i^0=A\phi_i^0\ \ (i\in\mathcal W),\quad
+ E_i^0=\rho_wc_wV_i^0(T_{w,0}-T_m).
+\end{equation}
+温度由广延量恢复：
+\begin{equation}
+ T_a=\min\left(T_m,T_m+\frac{S_a}{m_ac_i}\right),\qquad
+ T_i=T_m+\frac{E_i}{\rho_wc_wV_i}.
+ \label{eq:temperature}
+\end{equation}
+仅在分母大于代码中的小量阈值时作除法。
+空冰材料单元返回 $T_m$，无水单元返回配置中的初始空气温度。
+使用质量与能量而非直接推进温度，可使融化、单元容量变化和能量收支共享同一组状态。
+
+\subsection{冰内部导热}
+对材料网格四邻接面，定义从 $a$ 到 $b$ 的导热功率
+\begin{equation}
+ \dot Q_{a\to b}=k_i\min(s_a,s_b)(T_a-T_b),\qquad
+ \Delta S_a^{\rm cond}=-\delta t\sum_{b\sim a}\dot Q_{a\to b}.
+\end{equation}
+二维面长 $\Delta x$ 与中心距离 $\Delta x$ 相消，因此式中无额外网格因子。
+两端在同一不可变质量与显热状态上计算，满足
+$\dot Q_{a\to b}=-\dot Q_{b\to a}$。
+\code{_body_heat_delta} 暂存导热增量，待加入冰水界面热量后统一更新材料。
+
+\subsection{水内部导热与容器热边界}
+以 $x$ 向面为例，左、右单元为 $L,R$，定义水占据比例
+$a_i=\clip(V_i/A,0,1)$。两侧均为合法热水单元时
+\begin{equation}
+ F_{E,f}^{\rm cond}=-k_w\min(a_L,a_R)(T_R-T_L).
+\end{equation}
+约定面通量沿正坐标方向为正，则
+\begin{equation}
+ E_{ij}^{\rm new}=E_{ij}-\delta t
+ (F^x_{i+1,j}-F^x_{i,j}+F^y_{i,j+1}-F^y_{i,j}).
+ \label{eq:fv}
+\end{equation}
+同一面通量由两侧以相反符号使用，内部热交换在总和中抵消。
+水—气面通量为零；冰水交换另行计算。
+
+绝热容器壁的热通量为零。定温壁以半格距离 $\Delta x/2$ 计算入域热流
+\begin{equation}
+ \dot Q_{\partial\Omega\to i}=2k_wa_i(T_b-T_i).
+\end{equation}
+累计边界输入 $Q_\partial$ 由每个导热子步的入域功率乘以 $\delta t$ 累加。
+定温边界只通过相邻水单元起作用，当前路径没有直接冰—容器导热项。
+默认示例的四壁均为绝热。
+
+\subsection{水体积与显热的成对对流}
+面物理速度由两侧受力速度的算术平均给出：
+\begin{equation}
+ u_f=\frac{c_u}{2}(u_L^\ell+u_R^\ell).
+\end{equation}
+按 $u_f$ 的符号选上风单元 $D$，并同时构造体积与显热通量
+\begin{equation}
+ F_{V,f}=u_f\Delta x\,\clip(V_D/A,0,1),\qquad
+ F_{E,f}^{\rm adv}=F_{V,f}\frac{E_D}{V_D}.
+ \label{eq:paired-flux}
+\end{equation}
+两种广延量分别用式 \eqref{eq:fv} 的离散散度更新。
+面两侧都必须属于当前湿流体集合，单元不能通过干燥气相或固体面直接输运水。
+界面移动所需的容量调整由第 \ref{sec:remap} 节的重映射承担。
+同温水满足 $E_i=eV_i$，成对通量在纯对流中维持这一比例，避免容量变化造成伪温变。
+
+\src{simulator.py:_accumulate_body_conduction, _compute_water_conduction_flux_x, _compute_water_conduction_flux_y, _compute_water_advection_flux_x, _compute_water_advection_flux_y}
+
+\subsection{冰水界面的热交换}
+对每个湿流体单元 $i$，检查本单元及四个轴向邻单元的冰覆盖率。
+每个被检查位置 $r$ 再映射至至多四个材料节点，故一个水线程最多形成 20 个热请求。
+采用调和导热系数
+\begin{equation}
+ k_{wi}=\frac{2k_wk_i}{k_w+k_i},\qquad
+ A_{ir}=\min\left(a_i,\min(1,C_r/s_*)\right).
+\end{equation}
+对仍有质量的材料节点 $a$，令双线性权重为 $W_{ra}$，请求热量为
+\begin{equation}
+ q_{ira}=\delta t\,k_{wi}A_{ir}\frac{W_{ra}s_a}{C_r}
+ \max(0,T_i-T_a),\qquad C_r>0.
+\end{equation}
+这一接触系数是基于覆盖率的离散近似，未重建几何界面的精确面长。
+为保证水只交出实际可用的显热，对同一水单元所有请求统一缩放：
+\begin{equation}
+ q_i=\sum_{r,a}q_{ira},\qquad
+ \eta_i=\begin{cases}\min(1,\max(E_i,0)/q_i),&q_i>0,\\0,&q_i=0,\end{cases}
+ \qquad \widehat q_{ira}=\eta_iq_{ira}.
+\end{equation}
+水显热减少 $\sum_{r,a}\widehat q_{ira}$，相应材料热增量增加同量。
+材料端采用原子累加，水线程只更新自身显热。
+该热交换只允许水向冰传热；与单向融化假设一致。
+当冰与热水尚无离散接触时，空气不会为冰供热。
+
+\subsection{局部相变更新}
+设材料单元累计得到净热量 $Q_a$，其旧状态为 $(m_a,S_a)$，潜热为 $L$。
+若 $Q_a\leq0$ 且仍有固体，则 $S_a' = S_a+Q_a$、$m_a'=m_a$。
+若 $Q_a>0$，先补足低于熔点的显热亏损，再支付潜热：
+\begin{align}
+ Q_{\rm sens}&=\min[Q_a,\max(-S_a,0)],& S_a'&=S_a+Q_{\rm sens},\\
+ Q_{\rm rest}&=Q_a-Q_{\rm sens},&
+ \Delta m_a&=\min(m_a,Q_{\rm rest}/L),\\
+ m_a'&=m_a-\Delta m_a,&
+ E_a^{\rm melt}&=\max(0,Q_{\rm rest}-L\Delta m_a).
+ \label{eq:melt-rule}
+\end{align}
+材料完全融化后，其 $m_a',S_a'$ 置零，剩余正热量 $E_a^{\rm melt}$ 随融水进入空间网格。
+因此，即使剩余质量极小，也必须由实际潜热支付才能消失。
+这是显热与潜热分配实现的焓法；并不存在另外一个被时间积分的统一温度—液相率场。
+
+\subsection{融水注入与密度转换}
+\begin{equation}
+ \Delta V_w=\Delta m_a/\rho_w,
+ \qquad \Delta E_w=E_a^{\rm melt},\qquad
+ \frac{\Delta V_w}{\Delta V_i}=\frac{\rho_i}{\rho_w}.
+ \label{eq:melt-volume}
+\end{equation}
+潜热记入累计融化能，不重复加入水显热。
+材料节点优先向已记录的界面水节点注入；若有多个供热节点，
+记录其线性编码的最大值，以原子最大值操作确定一个目标。
+无记录目标时，在材料位置附近 $5\times5$ 网格中寻找最近合法湿单元。
+资格掩码先由单独内核冻结，防止注入过程改变后续线程的搜索集合。
+
+仍无法分配的融水进入后备池，按合法湿单元的剩余容量分配；
+无剩余容量权重时按已有水体积分配，再由容量同步恢复单元限制。
+完全没有合法湿单元则报错。
+后备分配保持质量与显热总量，但不代表精确的局部融水轨迹。
+
+\src{simulator.py:_exchange_interface_heat, _apply_body_heat_and_phase_change, _freeze_melt_injection_eligibility, _inject_melt_water, _distribute_unassigned_melt}
+
+\subsection{快慢时间尺度与稳定性}
+\label{sec:multirate}
+每个 LBM 步执行一次快速过程：容量重映射及水的对流。
+每累计 $K$ 个 LBM 步执行一次慢过程：导热、边界热交换、融化和融水注入。
+默认 $K=8$；慢过程按当前固定刚体位姿推进 $K\Delta t$，不是沿区间内全部历史位姿积分。
+
+对流步长依据\textbf{面向外速度之和}而非单个节点速度范数。
+对合法湿面，令格子面速度为 $\bm u_f^\ell$，外法向为 $\bm n_{if}$，定义
+\begin{equation}
+ r_i=\sum_{f\subset\partial i}\max(0,\bm u_f^\ell\cdot\bm n_{if}),
+ \quad r_{\max}=\max_i r_i,
+ \quad \delta t_{\rm adv}^{\max}=\frac{C_{\max}\Delta t}{r_{\max}}.
+\end{equation}
+无流出或关闭对流时上界为无穷。导热步长上界为
+\begin{equation}
+ \alpha_{\max}=\max\left(\frac{k_w}{\rho_wc_w},\frac{k_i}{\rho_ic_i}\right),
+ \qquad \delta t_{\rm diff}^{\max}=Fo_{\max}\frac{\Delta x^2}{\alpha_{\max}}.
+\end{equation}
+给定过程区间 $\Delta T$，取
+\begin{equation}
+ N_{\rm sub}=\max\left(1,\left\lceil\Delta T/\delta t^{\max}-10^{-14}\right\rceil\right),
+ \qquad \delta t=\Delta T/N_{\rm sub}.
+\end{equation}
+默认 $C_{\max}=0.5$、$Fo_{\max}=0.15$，每次过程至多 64 个子步。
+配置要求 $Fo_{\max}\leq1/6$，与定温壁半格距离和角点扩散系数一致。
+上述是代码实际采用的显式步长控制，不能替代整体耦合方法的收敛性验证。
+慢热时钟只在慢过程结束时增加；若直接调用非 $K$ 倍数的 \code{step}，
+其热时钟可落后于流动时钟。

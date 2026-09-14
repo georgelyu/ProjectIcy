@@ -1,0 +1,248 @@
+\section{程序组织、运行过程与结果读取}
+\label{sec:program}
+
+\subsection{文件职责与调用入口}
+\begin{longtable}{L{0.39\linewidth}L{0.54\linewidth}}
+\toprule 文件 & 职责\\\midrule
+\endhead
+\code{iceflow2d/__main__.py} & 包命令入口，调用示例的 \code{main}。\\
+\code{iceflow2d/__init__.py} & 导出配置类型；通过模块 \code{__getattr__} 延迟导入求解器。\\
+\code{iceflow2d/config.py} & 物性、边界、尺度与场景配置，参数验证及配置序列化。\\
+\code{iceflow2d/lattice.py} & D2Q9 常量、平衡态、矩逆变换及二维叉积。\\
+\code{iceflow2d/simulator.py} & 流动、热、刚体、投影与守恒诊断的 Taichi 内核及 Python 调度。\\
+\code{iceflow2d/examples/coupled_falling_ice_melting_2d.py} & 物理几何转格子参数、采样调度、运行循环、CSV/NPZ/元数据和最终图。\\
+\code{iceflow2d/reporting.py} & 通用快照、物理量换算、图像与 GIF 序列、进度显示。\\
+\code{iceflow2d/test_*.py} & 内核状态、边界、体积约束及热耦合的配置与 CUDA 回归测试。\\
+\code{tests/test_*.py} & 配置、示例调度、输出接口和进度显示等主机侧测试。\\
+\code{benchmarks/benchmark_solver.py} & 预热后的步进计时及去重 Taichi 字段有效载荷统计。\\
+\code{requirements.txt} & Taichi 1.7.4、NumPy、Matplotlib 和 Pillow 依赖。\\
+\bottomrule
+\end{longtable}
+\code{examples/__init__.py} 仅标识示例包。
+求解器初始化强制使用 CUDA，并关闭 CPU 回退。
+纯配置、几何和大部分输出辅助代码可在不初始化 CUDA 的情况下使用。
+
+主调用链为
+\begin{equation*}
+ \texttt{main}\ \longrightarrow\ \texttt{parse\_args}\ \longrightarrow\
+ \texttt{create\_config}\ \longrightarrow\ \texttt{\_snapshot\_step\_targets}
+ \ \longrightarrow\ \texttt{\_run\_case}.
+\end{equation*}
+其中 \code{_run_case} 创建 \code{IceFlow2D}，按目标步推进，并在采样边界写出结果。
+
+\subsection{初始化的依赖顺序}
+\code{IceFlow2D.__init__} 按以下依赖关系构造一致初态：
+\begin{enumerate}
+ \item 验证配置并初始化 CUDA；换算格子尺度，分配流动、刚体与热状态。
+ \item 初始化刚体位姿、速度、质量与惯量；以完整材料质量初始化 $s_a=1$。
+ \item 计算未裁剪的空间覆盖率、处理容器接触、提交覆盖率和尖锐固体掩码。
+ \item 初始化尖锐水区与两套分布，记录初始活动水体积 $V_{w,0}^{\ell}$。
+ \item 只执行相场碰撞与迁移进行界面预热；该过程不推进物理时钟或刚体运动。
+ \item 恢复宏观量并投影水体积，使弥散界面仍对应原初始水量。
+ \item 按预热后的 $\phi$ 初始化热水体积与显热，并归约材料质量性质。
+ \item 构造冻结静水参考场，将流体速度初始化为零，压力初始化为 $p_H$，分布仅承载零扰动压力。
+\end{enumerate}
+若在相场预热前初始化水显热，热容量会与最终相场不一致；
+若预热后重新定义初始水量，则会掩盖预热引入的质量变化。
+这些依赖决定了构造函数的实际顺序。
+
+\subsection{完整时间步}
+下面的伪代码与 \code{IceFlow2D.step} 的调用次序一一对应。
+\begin{lstlisting}[caption={一个 LBM 步的调度；pending 记录待处理慢热步数}]
+collide_momentum()
+collide_phase()
+stream()
+update_streamed_macroscopic_fields()
+update_pressure()
+integrate_rigid_ice()
+solve_contact_and_rasterize()
+update_solid_mask()
+refill_changed_nodes()
+advance_moving_thermal_fast(dt)
+pending += 1
+if pending >= K:
+    advance_moving_thermal_slow(pending * dt)
+    pending = 0
+correct_water_volume()
+finalize_melt_momentum_coupling()
+synchronize_moving_water_aperture()
+steps += 1
+\end{lstlisting}
+快速热过程先按新几何同步容量，再对流；若有多个 Courant 子步，
+中间子步后再次同步容量，末子步则交给主循环后续同步。
+慢过程开始前也先同步容量，再记录流体动量；随后逐导热子步执行
+冰内部导热、水内部导热与壁热、冰水热交换、材料相变、融水注入和容量同步。
+导热子步间只刷新连续覆盖率，尖锐 LBM 掩码在完整慢过程后统一提交。
+之后更新刚体质量性质并重填因侵蚀暴露的节点，标记待闭合的融化动量。
+
+水体积投影必须早于融化动量闭合，因为相场密度提升本身也改变分布一阶矩。
+最后的容量同步使热系统与投影后的流动湿区一致。
+没有慢过程的普通步，\code{_finalize_melt_momentum_coupling} 直接返回。
+\code{step(0)} 不推进；负数、布尔值和非整数步数均被拒绝。
+
+\subsection{状态存储与 GPU 执行}
+\begin{longtable}{L{0.42\linewidth}L{0.17\linewidth}L{0.32\linewidth}}
+\toprule 状态 & 类型 & 作用\\\midrule
+\endhead
+\code{momentum_populations}, \code{phase_populations} & \code{f32} & 当前 $f,h$，形状 $(N_x,N_y,9)$。\\
+两套 \code{*_stream_buffer} & \code{f32} & 碰撞后分布与迁移缓存。\\
+\code{water_phase}, 速度、压力、加速度 & \code{f32} & 空间宏观状态。\\
+\code{solid_mask}, \code{previous_solid_mask} & \code{i8} & 当前与上次提交的冰体拓扑。\\
+\code{body_reference_origin}, 转角、速度 & \code{f32} & 权威刚体运动状态。\\
+\code{body_mass_lattice}, 惯量、材料质心 & \code{f64} & 融化后质量性质。\\
+\code{body_solid_mass}, \code{body_sensible_energy} & \code{f64} & 材料网格上的热状态。\\
+\code{water_volume_m2}, \code{water_sensible_energy} & \code{f64} & 空间网格上的热状态。\\
+面通量、热增量、守恒归约 & \code{f64} & 降低大规模求和及正负相消误差。\\
+\bottomrule
+\end{longtable}
+分布数组的逻辑索引是 $(i,j,q)$，底层按 $q$ 分块存储，以利相邻空间线程的合并读取。
+相场迁移完成后，其缓存已无活跃分布用途，$q=0,1$ 两个平面被复用为体积投影掩码。
+这依赖确定的算子次序，不能同时将这些平面用于另一组尚未消费的数据。
+
+\code{_DerivedField} 是计算视图，用于壁掩码、几何距离、温度、质心和若干残差。
+设备侧通过 \code{@ti.func} 即时求值，主机侧按需读取权威状态生成 NumPy 数组；
+它通常没有独立设备数组，也无需刷新副本。
+少数视图提供主机写入转换，例如修改质心会反算参考原点。
+\code{temperature} 等完整输出场仅支持主机采样路径。
+
+\code{@ti.kernel} 形成设备任务边界，\code{@ti.func} 内联到调用内核。
+部分全局归约按 128 线程块补齐，先以 32 线程 warp 归约，再汇总局部结果。
+双精度 shuffle 拆分并恢复两个 32 位字，避免将归约值降为单精度。
+其他原子归约仍可能受到执行顺序影响，不能要求不同运行逐位一致。
+主机读取标量与 \code{to_numpy()} 涉及设备同步或数据传输。
+
+若以 $N=N_xN_y$、$B=N_{bx}N_{by}$ 计，主要存储复杂度为 $O(N+B)$。
+每步流动计算为 $O(9N)$，热子步为 $O(N+B)$，投影还增加若干全域扫描。
+性能测试需同时报告热子步、投影工作量及是否包含输出；字段有效载荷不等于总显存占用。
+
+\subsection{配置接口与几何约束}
+\begin{longtable}{L{0.39\linewidth}L{0.54\linewidth}}
+\toprule 类型或参数组 & 意义及验证\\\midrule
+\endhead
+\code{PhaseChangeProperties} & 熔点、三相比热与导热系数、潜热；物性须为正且有限。密度统一取流动配置。\\
+\code{ThermalBoundary}, \code{ThermalBoundarySet} & 四侧绝热或定温条件；绝热的附加数值必须为零。\\
+\code{ThermalConfig} & 初始温度、对流开关、快慢间隔、固相阈值、Fourier/Courant 上界及热浮力参数。\\
+\code{IceFlowConfig} & 物理尺度、气液物性、界面参数、几何、刚体初值、阻尼、体积投影和输出元数据。\\
+\code{create_iceflow_config} & 校验覆盖参数名，拒绝未知字段，再构造配置。\\
+\code{resolution}, \code{boundary_cells} & 网格必须容纳边界层及内部单元；初始旋转冰体必须位于容器内。\\
+水区与重力 & 要求水平满宽水池、有空气层，气液静水参考要求竖直重力。\\
+热初值 & 初始水温不低于熔点，初始冰温不高于熔点；水气界面必须绝热。\\
+模式 & 仅支持 \code{body_ale}、\code{enthalpy_fv}、\code{unified}、自由刚体、静水平衡及线性水热浮力。\\
+\bottomrule
+\end{longtable}
+示例的 \code{derive_geometry} 要求正方形网格
+$L_x/N_x=L_y/N_y$，水位和冰边长对齐格子面。
+初始最低冰角与水面的间距至少为 $\max(2,\lceil W\rceil)$ 格。
+示例使用 $(n+1/2)/N$ 表示需转换回整数 $n$ 的尺寸比例，
+避免浮点截断将预期整数尺寸减一。
+水位参数是从完整域原点量起的高度，实际水深还需减去底壁厚度。
+
+\subsection{最小运行方式}
+在仓库根目录安装依赖后，可通过包入口运行短算例：
+\begin{lstlisting}[language=bash]
+python -m pip install -r requirements.txt
+python -m iceflow2d --end-time-s 0.01 --output-interval-s 0.005 \
+  --no-plot --output-dir outputs/doc_short_run
+\end{lstlisting}
+去掉 \code{--no-plot} 以生成三种场序列；加入 \code{--save-npz} 保存完整采样数组。
+默认完整算例终止时间为 $10\,\mathrm s$，共需 $1{,}600{,}000$ 个 LBM 步，
+初次运行还包含 Taichi 编译，因此短算例适合先确认执行链。
+重新使用同一输出目录会覆盖历史与元数据，序列写入器也会清理该目录的旧帧。
+
+Python 中可直接创建求解器：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Python]
+from iceflow2d import IceFlow2D
+from iceflow2d.examples.coupled_falling_ice_melting_2d import create_config
+
+config = create_config()
+sim = IceFlow2D(config)
+sim.step(config.thermal.update_interval_lbm_steps)
+totals = sim.thermal.mass_energy_totals()
+fields_xy = sim.sample_thermal_fields()
+print(sim.physical_time_s, totals.total_energy_j_m)
+\end{lstlisting}
+\end{minipage}\par
+配置中的 \code{show_gui} 不会在当前示例中启动交互窗口；
+该例的绘图与 NPZ 保留行为由命令行参数和 \code{_run_case} 管理。
+
+\subsection{物理时间采样与输出结构}
+给定请求时刻 $t_r$，示例将其向上对齐到完整慢热周期：
+\begin{equation}
+ n_r=K\max\left(1,\left\lceil\frac{t_r}{K\Delta t}-10^{-12}\right\rceil\right).
+\end{equation}
+去除重复步号并保留 $n=0$ 的初态。
+因此实际采样时刻一般略晚于请求时刻，末帧也可能略超出请求终止时刻。
+默认每 $0.01\,\mathrm s$ 一帧，对应 1600 格子步，恰为完整热周期；
+默认完整算例共有 1001 帧。
+进度块约取 $\lceil n_{\rm end}/2000\rceil$ 步，块划分不改变数值调度。
+
+\begin{longtable}{L{0.37\linewidth}L{0.56\linewidth}}
+\toprule 输出 & 内容\\\midrule
+\endhead
+\code{history.csv} & 每个采样时刻的运动、融化率、体积、能量、质量与动量残差；逐行写出并刷新。\\
+\code{metadata.json} & 参数、单位映射、实际采样步号、初末统计、绝热量热学参考及图像色标。\\
+\code{fields.npz} & 可选；时间序列标量场、矢量场、空间坐标和诊断量。\\
+\code{velocity_frames/}, \code{velocity_field.gif} & 物理水速度幅值及箭头。\\
+\code{vorticity_frames/}, \code{vorticity_field.gif} & 水区涡量 $\partial_xu_y-\partial_yu_x$。\\
+\code{temperature_frames/}, \code{temperature_field.gif} & 水和冰的温度。\\
+\code{coupled_falling_ice_melting_2d.png} & 最后一个快照的温度及相态图。\\
+\bottomrule
+\end{longtable}
+设备标量场形状为 $(N_x,N_y)$；\code{reporting._capture_snapshot} 转置为
+$(N_y,N_x)$。NPZ 标量序列为 $(N_t,N_y,N_x)$，矢量序列多一个末轴分量维度 2。
+\code{sim.sample_thermal_fields()} 本身返回未转置的 $(N_x,N_y)$ 数组。
+
+输出的 \code{velocity_lattice} 保存动量速度 $\bm v$；
+\code{physical_velocity_lattice} 保存受力速度 $\bm u$，仍需乘 $c_u$ 才是米每秒。
+水速度显示掩码要求 $\phi\geq0.5$ 且非壁、非冰。
+涡量仅在中心差分两侧均为合法水单元时计算，其余位置为 NaN 掩码。
+色标在运行开始时固定，图中饱和颜色不表示数值速度被截断。
+GIF 每帧的默认展示时长为 0.8 秒，与模拟时刻间隔不同。
+
+\code{_StreamingGif} 逐帧编码，内存中至多保留一个解码图像；
+未启用 NPZ 时无需保留全部采样数组。启用 NPZ 后，快照保留量随帧数增长。
+
+\subsection{如何解读融化与热输出}
+由材料体积计算
+\begin{align}
+ f_{\rm melt}&=1-V_i^{\rm mat}/V_{i,0}^{\rm mat},\\
+ \ell_{\rm eq}&=\sqrt{V_i^{\rm mat}},\qquad
+ d_{\rm eq}=\tfrac12(\sqrt{V_{i,0}^{\rm mat}}-\ell_{\rm eq}),\\
+ \Delta V_w&=(\rho_i/\rho_w)(V_{i,0}^{\rm mat}-V_i^{\rm mat}),\\
+ \Delta V_{\rm contraction}&=(1-\rho_i/\rho_w)(V_{i,0}^{\rm mat}-V_i^{\rm mat}).
+\end{align}
+$d_{\rm eq}$ 是等面积正方形的等效均匀融化深度，不是每个表面的局部退缩距离。
+
+\code{sample_world_fields} 在湿单元中以
+$(\rho_wLV_i+E_i)/A$ 构造展示焓，在阈值冰区映射材料显热和已融化潜热。
+这一空间采样场使用最近材料索引并含有不同的常量能量基准，
+不应对其直接积分以代替式 \eqref{eq:energy-total}。
+权威能量取 \code{thermal.mass_energy_totals()} 或 \code{total_enthalpy_j_m()}。
+干空气中的 \code{liquid_fraction} 默认也可为 1，
+必须结合 \code{phase_change_material}、$\phi$ 和尖锐冰掩码解释相态。
+
+\subsection{测试覆盖与当前核对结果}
+现有测试围绕下列可检验性质展开，测试存在本身不等于全部物理工况已验证：
+\begin{longtable}{L{0.38\linewidth}L{0.55\linewidth}}
+\toprule 测试文件 & 核心检验\\\midrule
+\endhead
+\code{test_iceflow.py} & 短程状态有限性、切链反射公式、真实质量与惯量参与积分、未裁剪接触支撑及壁速度投影。\\
+\code{test_volume_projection.py} & 相场有界、体积闭合、纯相不受投影污染、正常投影保留非平衡部分。\\
+\code{test_thermal_coupling.py} & 热质量与能量收支、密度转换、融化动量、局部重建温度及绝热量热学约束。\\
+\code{test_gpu_state.py} & 计算视图随权威状态更新、面流出 CFL 与水量正性、无效步数拒绝。\\
+\code{tests/test_moving_body_thermal.py} & 模式限制、多速率控制、物性与边界验证及可选稳定性扫描。\\
+\code{tests/test_coupled_falling_ice_melting_example.py} & 无 CUDA 导入路径、几何、时间调度、诊断导出和可视化接口。\\
+\code{tests/test_config_validation.py}, \code{tests/test_progress.py} & 数值输入规范化、无效值拒绝及进度接口行为。\\
+\bottomrule
+\end{longtable}
+本次执行 \texttt{python -m unittest discover -s tests -v}，共 27 项，25 项通过。
+其余两项分别断言默认终止时间为 3 秒、默认终止步为 480000；
+当前工作区实际值为 10 秒与 1600000，故发生断言不一致。
+这是现有测试期望与当前示例参数的差异，本文按实际代码记述，未修改测试或求解器。
+本次文档任务未执行完整 CUDA 物理回归或默认长时算例。
+
+复现实验应分别观察 $R_M,R_E$、相场体积残差、容量同步残差、融化线/角动量残差，
+并结合 $A_E^{\rm remap}$ 判断守恒修正对局部温度的影响。
+更改网格、参考速度、界面宽度或热更新间隔时，仍需独立检验空间与时间收敛。
+代码的可选全域有限性和速度扫描默认关闭，但每步热对流的面流出率归约仍执行。

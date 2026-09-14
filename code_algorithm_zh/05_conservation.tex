@@ -1,0 +1,231 @@
+\section{体积、能量与融化动量的守恒约束}
+\label{sec:constraints}
+该求解器有两种不同的水体积描述：流动相场的 $A\sum_{\mathcal F}\phi_i$，
+以及热系统的 $\sum_iV_i$。
+几何重填、相场输运和热融化分别修改它们，因此每一步需要明确的同步顺序。
+
+\subsection{相场水体积的熵型投影}
+\label{sec:phase-projection}
+以格子面积为单位，水体积目标为
+\begin{equation}
+ V_{w,*}^{\ell}=V_{w,0}^{\ell}+M_{i,0}^{\ell}-M_i^{\ell}
+ =V_{w,0}^{\ell}+\frac{\rho_i}{\rho_w}
+ (V_{i,0}^{\ell}-V_i^{\ell}).
+ \label{eq:volume-target}
+\end{equation}
+这里 $M_i^\ell=M_i/(\rho_wA)$，故格子质量损失直接等于新增格子水体积。
+初始目标在相场预热之前由尖锐水区确定，预热不能重新定义水总量。
+
+首先将活动流体的相场截断到 $[0,1]$，将
+$\phi\leq\eps_\phi$ 置零、$\phi\geq1-\eps_\phi$ 置一。
+这一步移除无法分辨的相场尾部，其体积变化仍由随后约束补偿。
+可调整集合 $\mathcal A$ 只包含与局部 $\phi=1/2$ 穿越相连接的弥散界面节点。
+代码先在八邻域中寻找穿越种子，再仅沿
+$\eps_\phi<\phi<1-\eps_\phi$ 节点扩张。
+扩张次数至少为 2，取不小于
+\begin{equation}
+ R_b=\left\lceil\frac W4\log\frac{1-\eps_\phi}{\eps_\phi}\right\rceil
+\end{equation}
+的偶数，以便双缓存扩张结束于主掩码。
+
+忽略存储取整与尾部截断时，下列二元相对熵最小化解释投影形式：
+\begin{align}
+ \min_{\{z_i\}}\quad&\sum_{i\in\mathcal A}
+ \left[z_i\log\frac{z_i}{\phi_i}+(1-z_i)\log\frac{1-z_i}{1-\phi_i}\right],\\
+ \text{约束}\quad&\sum_{i\in\mathcal A}z_i+
+ \sum_{i\in\mathcal F\setminus\mathcal A}\phi_i=V_{w,*}^{\ell}.
+\end{align}
+取约束项符号为负，驻点满足
+\begin{equation}
+ \log\frac{z_i}{1-z_i}=\log\frac{\phi_i}{1-\phi_i}+\lambda,
+ \qquad z_i(\lambda)=\frac{\phi_i e^\lambda}{1-\phi_i+\phi_ie^\lambda}.
+ \label{eq:logistic}
+\end{equation}
+实现直接使用该映射，无需通用优化器。
+若界面剖面为 $\phi(d)=[1+\exp(-4d/W)]^{-1}$，
+则 $\lambda$ 对应法向剖面平移 $\Delta d=W\lambda/4$。
+因此代码限制
+\begin{equation}
+ |\lambda|\leq\lambda_{\max}=4d_{\max}/W,
+ \qquad d_{\max}=0.5\quad\text{（默认格子数）}.
+\end{equation}
+
+实际质量函数先将 $z_i$ 转为 \code{f32}，再规范化两端尾部，最后用 \code{f64} 求和。
+对未被端点钳制的自由节点，使用导数近似
+\begin{equation}
+ \mathcal V'(\lambda)=\sum_{i\in\mathcal A_{\rm free}}z_i(1-z_i).
+\end{equation}
+这是带取整单调映射的分段平滑导数估计。
+先检查两端可达体积，再采用有区间保护的 Newton 迭代；
+Newton 候选越界或导数无效时退回二分。
+默认最多 64 次迭代。
+最终对远离端点的自由节点按 $z_i(1-z_i)$ 权重分摊存储残差，最多补偿 8 次。
+接收条件为
+\begin{equation}
+ \left|\sum_{\mathcal F}\phi_i-V_{w,*}^{\ell}\right|
+ \leq\eps_V\max(1,|V_{w,*}^{\ell}|),\qquad \eps_V=10^{-8}.
+\end{equation}
+没有可调界面、超出位移上限或残差无法闭合时抛出异常。
+实现不会在纯水或纯气体内部添加均匀体积源。
+
+每次 $\phi\to\phi'$ 都同步提升分布：
+\begin{align}
+ h_q'&=h_q+h_q^{\rm eq}(\phi',\bm v)-h_q^{\rm eq}(\phi,\bm v),\\
+ f_q'&=f_q+f_q^{\rm eq}(p_d,\rho',\bm v)-f_q^{\rm eq}(p_d,\rho,\bm v).
+ \label{eq:population-lift}
+\end{align}
+这保留原非平衡部分并保持存储速度 $\bm v$。
+另以 $h_0\leftarrow h_0+\phi'-\sum_qh_q'$ 修正零阶矩取整误差。
+若纯相单元的 $\sum_q|h_q|>2$，则用受力速度重新构造其平衡相场分布，
+以清除大幅相消的非水动力矩。
+
+\src{simulator.py:_clip_water_phase_for_projection, _seed_water_projection_interface, _evaluate_water_projection, _apply_water_projection, _correct_water_volume}
+
+\subsection{热水容量与显热的守恒重映射}
+\label{sec:remap}
+热系统的容量同步与上面的相场投影是两个独立算子。
+设同步前总水面积与显热为 $V_\Sigma=\sum_iV_i$、$E_\Sigma=\sum_iE_i$，
+以当前合法湿集合计算基础容量与完整容量
+\begin{equation}
+ B=A\sum_{i\in\mathcal W}\phi_i,\qquad F=A|\mathcal W|.
+\end{equation}
+要求 $0\leq V_\Sigma\leq F$（容差内）。目标面积为
+\begin{equation}
+ V_i^*=\begin{cases}
+ A\phi_i V_\Sigma/B,&V_\Sigma\leq B,\\
+ A\left[\phi_i+(1-\phi_i)\dfrac{V_\Sigma-B}{F-B}\right],&V_\Sigma>B,
+ \end{cases}\qquad i\in\mathcal W,
+ \label{eq:aperture}
+\end{equation}
+集合外取零；退化分母由代码的小量判断处理。
+此式保证目标单元面积不超过 $A$，总面积跟随热系统真实水量。
+当两套水体积已一致时，$V_i^*=A\phi_i$。
+
+令比面积显热 $e_i=E_i/V_i$，单位为 $\mathrm{J/m^3}$。
+仍有水的单元保留 $e_i$；新湿单元搜索半径 1、2、3 的第一圈有水邻域，按
+\begin{equation}
+ \widetilde e_i=\frac{\sum_{j\in\mathcal R_i}E_j/r_{ij}^2}
+ {\sum_{j\in\mathcal R_i}V_j/r_{ij}^2}
+\end{equation}
+重建。完全无邻域供体时使用旧全域平均 $E_\Sigma/V_\Sigma$。
+供体状态在此阶段保持冻结，被新固体覆盖但仍携带旧水状态的节点也可作供体。
+将重建值限制在旧湿单元比显热范围 $[e_{\min},e_{\max}]$ 内，得到
+$\widetilde E_i=V_i^*\widetilde e_i$。
+
+局部重建一般不保持全局显热。令
+\begin{align}
+ D&=E_\Sigma-\sum_i\widetilde E_i,\\
+ H&=\sum_i(e_{\max}V_i^*-\widetilde E_i),\qquad
+ C=\sum_i(\widetilde E_i-e_{\min}V_i^*).
+\end{align}
+最终显热取
+\begin{equation}
+ E_i^*=\begin{cases}
+ \widetilde E_i+\min(1,D/H)(e_{\max}V_i^*-\widetilde E_i),&D>0,\ H>0,\\
+ \widetilde E_i+\max(-1,D/C)(\widetilde E_i-e_{\min}V_i^*),&D<0,\ C>0,\\
+ \widetilde E_i,&\text{其余情形}.
+ \end{cases}
+\end{equation}
+在可行精确算术下，该修正恢复总能量并避免引入新温度极值。
+它包含非局部热量再分配，不能等同于严格局部的几何通量重映射。
+代码同时记录守恒残差与
+\begin{equation}
+ A_E^{\rm remap}=\sum_{\text{历次同步}}|D|,
+\end{equation}
+后者对应 \code{aperture_energy_correction_abs_j_m}。
+即使能量残差很小，$A_E^{\rm remap}$ 较大仍表示较强的数值热量再分配。
+\code{ale_*} 与 \code{phase_aperture_*} 残差读取同一个组合重映射的状态，
+并非两次独立操作。
+
+\src{simulator.py:synchronize_water_aperture, _build_phase_aperture_targets, _apply_phase_aperture_transfer}
+
+\subsection{融化后的质量、质心和惯量}
+重新以格子质量 $\widehat m_a=m_a/(\rho_wA)$ 归约
+\begin{equation}
+ M=\sum_a\widehat m_a,\qquad
+ \bar{\bm X}=\frac{\sum_a\widehat m_a\bm X_a}{M},\qquad
+ I=\sum_a\widehat m_a\left(|\bm X_a-\bar{\bm X}|^2+\frac{s_a}{6}\right).
+\end{equation}
+单元自转项 $\widehat m_as_a/6$ 对应边长 $\sqrt{s_a}$ 的等面积正方形近似。
+若旧、新质心之差在空间坐标中为 $\Delta\bm C$，则剩余材料保留原刚体速度场：
+\begin{equation}
+ \bm U'=\bm U+\omega\rot\Delta\bm C,
+ \qquad \Delta\bm C=R(\bar{\bm X}'-\bar{\bm X}).
+\end{equation}
+参考原点和转角在此热更新中固定；该关系相当于无喷射反冲的材料脱离模型。
+
+质量减小至不可分辨，或惯量低于缩放阈值时，刚体力学状态停用，
+速度与角速度归零、惯量置零；剩余热质量与能量继续保留在材料网格。
+因此 \code{body_active=False} 不必然表示全部质量已经融化。
+双精度归约产生的微小质量变化以及非物理质量增加会被钳制到旧质量性质。
+
+\subsection{融化线动量与角动量闭合}
+在慢过程之前记录流体分布的一阶矩总和及关于固定空间原点的角动量。
+冰在质量更新中失去的量按实际存储的离散状态计算：
+\begin{align}
+ \Delta\bm P_b&=M\bm U-M'\bm U',\\
+ \Delta L_b&=\bm C\times M\bm U+I\omega-
+ (\bm C'\times M'\bm U'+I'\omega').
+\end{align}
+融化、尖锐节点重填和式 \eqref{eq:population-lift} 都可能改变流体动量。
+待水体积投影完成后，测量暂定流体变化 $\Delta\bm P_f^0,\Delta L_f^0$，
+需要补足的量为
+\begin{equation}
+ \bm D_P=\Delta\bm P_b-\Delta\bm P_f^0,\qquad
+ D_L=\Delta L_b-\Delta L_f^0.
+\end{equation}
+在所有合法湿流体节点上使用权重 $w_i=\phi_i$，定义
+\begin{equation}
+ W_s=\sum_iw_i,\qquad
+ \bm x_c=\frac{\sum_iw_i\bm x_i}{W_s},\qquad
+ J_s=\sum_iw_i|\bm x_i-\bm x_c|^2.
+\end{equation}
+补偿节点动量
+\begin{equation}
+ \delta\bm p_i=w_i\left[\frac{\bm D_P}{W_s}+
+ \frac{D_L-\bm x_c\times\bm D_P}{J_s}\rot(\bm x_i-\bm x_c)\right]
+ \label{eq:momentum-correction}
+\end{equation}
+满足 $\sum_i\delta\bm p_i=\bm D_P$、
+$\sum_i\bm x_i\times\delta\bm p_i=D_L$。
+对 D2Q9 作零阶矩为零的提升
+\begin{equation}
+ \delta f_{iq}=3w_q\bm c_q\cdot\delta\bm p_i,
+ \qquad\sum_q\delta f_{iq}=0,\qquad
+ \sum_q\bm c_q\delta f_{iq}=\delta\bm p_i.
+\end{equation}
+同时令 $\bm v_i\leftarrow\bm v_i+\delta\bm p_i/\rho(\phi_i)$。
+完成全湿区修正后，再执行两轮两节点的力—力偶补偿以减小单精度余量。
+若没有合法湿节点，或不足以支持所需角动量修正，则报错。
+这是一种全局离散动量闭合，不能解释为局部融水喷射速度的解析解。
+
+\src{simulator.py:_update_moving_body_mass_properties, _finalize_melt_momentum_coupling, _apply_melt_momentum_correction, _apply_local_melt_momentum_correction}
+
+\subsection{总质量、参考能量与诊断含义}
+权威热质量与参考能量为
+\begin{align}
+ M_{\rm total}&=\sum_a m_a+\rho_w\sum_iV_i,\\
+ E_{\rm total}&=\sum_aS_a+\sum_iE_i+L(M_{i,0}-M_i).
+ \label{eq:energy-total}
+\end{align}
+这里省略了初始水已经具有的常量潜热基准。
+质量残差与能量残差分别为
+\begin{equation}
+ R_M=M_{\rm total}(t)-M_{\rm total}(0),\qquad
+ R_E=E_{\rm total}(t)-E_{\rm total}(0)-Q_\partial(t).
+\end{equation}
+这些量只审计冰和水，不包括空气质量、机械动能、重力势能或黏性发热。
+同样，融化动量残差只审计慢热过程的转移；
+不能用它证明含重力、固定壁和阻尼的全系统总动量守恒。
+
+若绝热、冰初始不高于熔点且最终完全融化，则量热学平衡温度为
+\begin{equation}
+ T_\infty=T_m+\frac{E_{\rm total}(0)-LM_{i,0}}
+ {(M_{w,0}+M_{i,0})c_w},
+ \qquad E_{\rm total}(0)\geq LM_{i,0}.
+ \label{eq:calorimetry}
+\end{equation}
+这是给定热量足够时的平衡参考，不能预测达到平衡或完全融化所需时间。
+若冰初始正好在熔点，绝热时有
+$M_{\rm melt}\leq\min(M_{i,0},E_{\rm total}(0)/L)$。
+低于熔点的冰还需显热加热；非均匀温度下不能把全局初始能量直接作为任意瞬态融化上界。

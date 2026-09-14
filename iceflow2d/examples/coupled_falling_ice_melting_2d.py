@@ -135,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="physical speed represented by the fixed reference speed 0.1 LU",
     )
 
-    parser.add_argument("--end-time-s", type=float, default=3.0)
+    parser.add_argument("--end-time-s", type=float, default=10.0)
     parser.add_argument(
         "--output-interval-s",
         type=float,

@@ -1,0 +1,104 @@
+\section{D2Q9 矩逆变换}
+\label{app:inverse}
+在一维速度集合 $c\in\{-1,0,1\}$ 上，以 $u$ 为中心定义
+$K_a=\sum_c(c-u)^a f_c$，$a=0,1,2$。
+逆变换的三个系数 $B_a(c,u)$ 为
+\begin{equation}
+\begin{array}{c|ccc}
+ c&B_0&B_1&B_2\\\hline
+ 0&1-u^2&-2u&-1\\
+ 1&u(u+1)/2&u+1/2&1/2\\
+ -1&u(u-1)/2&u-1/2&1/2
+\end{array}
+\end{equation}
+二维逆变换是张量积：
+\begin{equation}
+ f_q=\sum_{a=0}^2\sum_{b=0}^2
+ B_a(c_{qx},u_x)B_b(c_{qy},u_y)K_{ab}.
+\end{equation}
+\code{inverse_central_moment_basis} 返回 $B$，
+\code{reconstruct_central_moment_population} 展开九项求和。
+动量路径取 $u_x=u_y=0$，还原原点矩；相场路径取受力速度，还原中心矩。
+同一辅助函数支持两种矩空间，但不能据函数名将它们归为同一种碰撞。
+
+\section{两节点力—力偶余量补偿}
+全湿区修正后，若仍有线动量余量 $\bm r_P$ 和角动量余量 $r_L$，
+选取湿区线性索引最小和最大的两个不同节点 $\bm x_1,\bm x_2$，记
+\begin{equation}
+ \bm d=\bm x_1-\bm x_2,\quad\bm x_m=\tfrac12(\bm x_1+\bm x_2),\quad
+ \bm q=\frac{r_L-\bm x_m\times\bm r_P}{|\bm d|^2}\rot\bm d.
+\end{equation}
+令
+\begin{equation}
+ \delta\bm p_1=\tfrac12\bm r_P+\bm q,\qquad
+ \delta\bm p_2=\tfrac12\bm r_P-\bm q.
+\end{equation}
+则总增量为 $\bm r_P$，总转动增量为
+$\bm x_m\times\bm r_P+\bm d\times\bm q=r_L$。
+代码每次重新归约实际存储结果，共执行两轮此补偿；不应将单精度存储下的残差描述为机器意义上的恒零。
+
+\section{核心符号与代码字段索引}
+\begin{longtable}{L{0.18\linewidth}L{0.39\linewidth}L{0.35\linewidth}}
+\toprule 符号 & 代码字段 & 含义\\\midrule
+\endhead
+$\phi$ & \code{water_phase} & 水—气相场。\\
+$f_q,h_q$ & \code{momentum_populations}, \code{phase_populations} & 压力—动量分布与相场分布。\\
+$\bm v$ & \code{momentum_velocity_lattice} & 分布一阶矩除以材料密度。\\
+$\bm a$ & \code{fluid_acceleration_lattice} & 本步缓存的流体加速度。\\
+$\bm u$ & \code{physical_velocity_lattice} & 半力修正后的格子速度。\\
+$p,p_H,\rho_H$ & \code{pressure_lattice}, \code{reference_pressure_by_row}, \code{reference_density_by_row} & 总压力及冻结行参考场。\\
+$\chi,w,d$ & \code{solid_mask}, \code{wall_mask}, \code{body_signed_distance_m} & 尖锐冰掩码、固定壁掩码、混合几何量。\\
+$m_a,S_a$ & \code{thermal.body_solid_mass}, \code{thermal.body_sensible_energy} & 材料固体质量与显热。\\
+$s_a,C_{ij}$ & \code{thermal.body_solid_fraction}, \code{thermal.world_body_solid_fraction} & 材料比例及空间覆盖率。\\
+$V_i,E_i$ & \code{thermal.water_volume_m2}, \code{thermal.water_sensible_energy} & 物理水面积与显热。\\
+$\bm O,\theta$ & \code{body_reference_origin}, \code{body_angle} & 材料网格权威位姿。\\
+$\bar{\bm X},\bm C$ & \code{body_local_center_of_mass}, \code{body_center} & 材料质心与空间质心。\\
+$\bm U,\omega$ & \code{body_velocity}, \code{body_angular_velocity} & 刚体平动、角速度，格子单位。\\
+$M,I$ & \code{body_mass_lattice}, \code{body_inertia_lattice} & 当前刚体格子质量与惯量。\\
+$V_{w,*}^{\ell}$ & \code{water_volume_target} & 随融化更新的水体积约束。\\
+$Q_\partial$ & \code{thermal.boundary_heat_input} & 累计边界入域热量。\\
+$A_E^{\rm remap}$ & \code{thermal.aperture_energy_correction_abs_j_m} & 重映射全局显热修正的绝对值累积。\\
+\bottomrule
+\end{longtable}
+文中 $M_\phi$ 专指相场迁移率，$M$ 专指刚体质量；$C_s$ 是 Smagorinsky 系数，
+$C_{ij}$ 是空间冰覆盖率，$C_{\max}$ 是 Courant 上界。
+
+\section{按执行职责定位函数}
+以下路径均相对于仓库根目录。由于文档基于工作区快照，优先按函数名定位，
+以免未来插入代码后行号失效。
+
+\begingroup\small
+\begin{longtable}{L{0.24\linewidth}L{0.69\linewidth}}
+\toprule 阅读目标 & 函数组与前文位置\\\midrule
+\endhead
+尺度与验证 & \code{config.py}: \code{LatticeScales}, 各配置类的 \code{__post_init__}, \code{create_iceflow_config}；第 \ref{sec:model}、\ref{sec:program} 节。\\
+初态与调度 & \code{IceFlow2D.__init__}, \code{step}, \code{_warm_start_phase}, \code{_initialize_water_volume}；第 \ref{sec:program} 节。\\
+流体局部模型 & \code{_phase_neighbor}, \code{_fluid_force_viscosity_and_gradient}, \code{_collide_momentum}, \code{_collide_phase}；第 \ref{sec:flow} 节。\\
+分布迁移与恢复 & \code{_stream}, \code{_stream_phase_only}, \code{_update_streamed_macroscopic_fields}, \code{_recover_initial_fluid_moments}, \code{_update_pressure}；第 \ref{sec:flow} 节。\\
+几何映射 & \code{_body_local_coordinates}, \code{_nearest_body_index}, \code{_sample_body_fraction}, \code{_calculate_moving_body_fraction}, \code{_commit_moving_body_raster}, \code{_signed_distance_at}；第 \ref{sec:body} 节。\\
+边界与刚体 & \code{_cut_link_fraction}, \code{_prepare_momentum_cut_links}, \code{_integrate_rigid_ice}, \code{_solve_contact_and_rasterize}, \code{_refill_changed_nodes}；第 \ref{sec:body} 节。\\
+热快慢过程 & \code{_advance_moving_thermal_fast}, \code{_advance_moving_thermal_slow}, \code{MovingBodyThermal2D.advance_fast}, \code{advance_slow}；第 \ref{sec:multirate} 节。\\
+显式步长 & \code{_measure_water_outflow_rate}, \code{required_advection_substeps}, \code{required_diffusion_substeps}, \code{_validate_substep_count}；第 \ref{sec:multirate} 节。\\
+热通量及相变 & \code{_accumulate_body_conduction}, 四个 \code{_compute_water_*_flux_*}, \code{_update_water_advection}, \code{_update_water_conduction}, \code{_exchange_interface_heat}, \code{_apply_body_heat_and_phase_change}；第 \ref{sec:thermal} 节。\\
+融水源 & \code{_freeze_melt_injection_eligibility}, \code{_inject_melt_water}, \code{_measure_melt_fallback_weights}, \code{_apply_melt_fallback}, \code{_distribute_unassigned_melt}；第 \ref{sec:thermal} 节。\\
+热容量同步 & \code{synchronize_water_aperture}, \code{_measure_aperture_partial_sums}, \code{_finish_aperture_measurement}, \code{_build_phase_aperture_targets}, \code{_apply_phase_aperture_transfer}, \code{_finish_phase_aperture_transfer}；第 \ref{sec:remap} 节。\\
+相场体积约束 & \code{_correct_water_volume} 及 \code{_clip_water_phase_for_projection}, \code{_seed_water_projection_interface}, \code{_dilate_water_projection_interface}, \code{_evaluate_water_projection}, \code{_apply_water_projection}, 残差权重与补偿内核；第 \ref{sec:phase-projection} 节。\\
+质量性质与融化动量 & \code{_reduce_moving_body_mass_properties}, \code{_apply_moving_body_mass_properties}, \code{_snapshot_melt_momentum_coupling}, \code{_finalize_melt_momentum_coupling} 及各 \code{_reduce_*melt_momentum}、\code{_apply_*melt_momentum_correction}；第 \ref{sec:constraints} 节。\\
+统计与只读视图 & \code{mass_energy_totals}, \code{total_enthalpy_j_m}, \code{sample_world_fields}, \code{sample_thermal_fields}, \code{_DerivedField}；各 \code{_read_*}、\code{*_numpy} 实现设备或主机读取；第 \ref{sec:constraints}、\ref{sec:program} 节。\\
+示例运行与导出 & 示例中的 \code{build_parser}, \code{derive_geometry}, \code{create_config}, \code{_run_case}, \code{_capture_snapshot}, \code{write_history_csv}, \code{write_fields_npz}, \code{write_metadata}, \code{write_final_plot}；第 \ref{sec:program} 节。\\
+通用图像与进度 & \code{reporting.py}: \code{snapshot_arrays}, \code{_physical_water_velocity}, \code{_water_vorticity_s_1}, \code{_temperature_field_for_plot}, 三个 \code{*SequenceStream}, \code{_StreamingGif}, \code{_TerminalProgress}；第 \ref{sec:program} 节。\\
+性能统计 & \code{benchmarks/benchmark_solver.py}: \code{field_inventory} 对共享字段去重；\code{main} 预热 32 步，再分段计时并调用 \code{ti.sync}；计时排除输出，不代表完整算例端到端耗时。\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\section{文档构建与版本核对}
+本文源文件为 \code{main.tex} 与同目录的七个章节文件。
+使用 XeLaTeX、CTeX、Liberation 字体、Noto CJK 中文字体和 DejaVu Sans Mono 等宽字体。
+在本目录执行
+\begin{lstlisting}[language=bash]
+bash build.sh
+\end{lstlisting}
+即可生成 \code{ProjectIcy_code_algorithm_zh.pdf}；中间文件保存在 \code{.build/}。
+源代码文件哈希保存在 \code{source_manifest.json}，用于判断当前代码是否仍与本文快照一致。
+该清单只描述代码与依赖文件，不使用已有说明文档作为依据。

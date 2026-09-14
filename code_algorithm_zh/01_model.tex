@@ -1,0 +1,141 @@
+\section{问题、变量与物理尺度}
+\label{sec:model}
+
+\subsection{计算对象与模型边界}
+计算域为有壁矩形容器，内部包含空气、水和一块初始矩形冰。
+冰体在重力及流体作用下平动、转动，接触热水后吸热融化。
+冰的剩余材料始终共享一个刚体位姿；融水进入流体，不能重新冻结到冰上。
+因此，当前程序求解的是单个可侵蚀刚体与气液流动、单向融化之间的耦合问题。
+
+流体中空气与水均参与动量演化；热系统只演化水和原始冰材料。
+水—气热界面绝热，空气温度在干单元中仅用作输出或温度读取的默认值。
+空气比热和导热系数虽保留在配置中，当前随体热路径没有空气能量方程。
+程序也没有蒸发、沸腾、辐射、冰体弹性变形或碎裂模型。
+线性 Boussinesq 热浮力仅修正体力，不改变相场定义的材料密度。
+
+\subsection{两套网格与三种相指示量}
+空间网格记为 $\Omega_h$，节点索引 $(i,j)$，单元中心为
+\begin{equation}
+ \bm x_{ij}=\Delta x(i+\tfrac12,j+\tfrac12),
+ \qquad 0\leq i<N_x,\quad 0\leq j<N_y.
+\end{equation}
+冰体材料网格记为 $\mathcal B_h$，索引 $a=(a_x,a_y)$。
+它随冰运动，但其索引始终标识同一份初始材料。
+材料网格不执行空间温度场的旋转插值更新；实际演化的是材料质量和显热。
+
+应首先区分以下三个变量：
+\begin{equation}
+ \phi_{ij}\in[0,1],\qquad s_a\in[0,1],\qquad \chi_{ij}\in\{0,1\}.
+\end{equation}
+$\phi$ 是空气—水相场，$\phi=1$ 为水，$\phi=0$ 为空气；
+$s_a$ 是某个初始冰材料单元的剩余固相比例；
+$\chi$ 是流体求解器使用的尖锐冰体掩码。
+三者分别对应 \code{water_phase}、\code{body_solid_fraction} 和 \code{solid_mask}。
+输出变量 \code{liquid_fraction} 是由材料状态构造的展示量，不等于 $\phi$。
+
+设壁面掩码为 $w_{ij}$，则活动流体集合与热水集合为
+\begin{align}
+ \mathcal F&=\{(i,j):w_{ij}=0,\ \chi_{ij}=0\},\\
+ \mathcal W&=\{(i,j)\in\mathcal F:\phi_{ij}>\eps_\phi\},
+ \qquad \eps_\phi=10^{-3}\quad\text{（默认）}.
+\end{align}
+相场在被冰覆盖的节点中可以保留历史值，作为再次暴露时的后备状态；
+这些值不计入活动流体的水体积。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[>=Stealth,font=\small,
+ box/.style={draw=black!60,rounded corners,align=center,text width=5.3cm,minimum height=14mm},
+ label/.style={font=\scriptsize,fill=white,inner sep=1pt}]
+ \node[box,fill=blue!5] (flow) {空间网格：气液流动\\$f_q,h_q,\phi,\bm u,p$};
+ \node[box,fill=orange!6,right=27mm of flow] (rigid) {刚体位姿与质量性质\\$\bm O,\theta,\bm U,\omega,M,I,\bar{\bm X}$};
+ \node[box,fill=blue!5,below=22mm of flow] (water) {空间网格：水的热状态\\$V_{ij},E_{ij}\ \longrightarrow\ T_{ij}$};
+ \node[box,fill=orange!6,below=22mm of rigid] (body) {材料网格：冰的热状态\\$m_a,S_a\ \longrightarrow\ s_a,T_a$};
+ \draw[->] ($(flow.east)+(0,3mm)$) -- node[label,above] {动量交换} ($(rigid.west)+(0,3mm)$);
+ \draw[->] ($(rigid.west)-(0,3mm)$) -- node[label,below] {几何、壁速} ($(flow.east)-(0,3mm)$);
+ \draw[->] (flow) -- node[label,left] {速度、湿区} (water);
+ \draw[->] ($(water.east)+(0,3mm)$) -- node[label,above] {界面热量} ($(body.west)+(0,3mm)$);
+ \draw[->] ($(body.west)-(0,3mm)$) -- node[label,below] {融水、显热} ($(water.east)-(0,3mm)$);
+ \draw[->] ($(rigid.south)-(5mm,0)$) -- node[label,left] {位姿} ($(body.north)-(5mm,0)$);
+ \draw[->] ($(body.north)+(5mm,0)$) -- node[label,right] {质量性质} ($(rigid.south)+(5mm,0)$);
+\end{tikzpicture}
+\caption{状态之间的主要依赖。融化还通过水体积投影和动量修正反馈到流动分布函数。}
+\end{figure}
+
+\subsection{二维量的单位}
+所有积分量按单位出平面深度定义。令 $A=\Delta x^2$，则
+\begin{equation}
+ [V]=\mathrm{m^2},\quad [m]=\mathrm{kg/m},\quad
+ [E]=\mathrm{J/m},\quad [I]=\mathrm{kg\,m}.
+\end{equation}
+例如材料单元初始质量为 $m_0=\rho_i A$。
+字段名 \code{body_inertia_kg_m} 表示二维转动惯量单位 $\mathrm{kg\,m}$，
+不是三维惯量的 $\mathrm{kg\,m^2}$。
+
+热系统始终使用物理单位；流动和刚体积分主要使用格子单位。
+以下用上标 $\ell$ 标识格子量。取参考密度 $\rho_0=\rho_w$，
+固定参考格子速度 $u_{\mathrm{ref}}^\ell=0.1$，给定物理参考速度 $U_{\mathrm{ref}}$，则
+\begin{equation}
+ \Delta t=\frac{0.1\Delta x}{U_{\mathrm{ref}}},\qquad
+ c_u=\frac{\Delta x}{\Delta t},\qquad
+ \bm u=c_u\bm u^\ell.
+ \label{eq:scales}
+\end{equation}
+其余换算为
+\begin{align}
+ \rho^\ell&=\rho/\rho_0,&
+ \nu^\ell&=\nu\Delta t/\Delta x^2,&
+ \bm g^\ell&=\bm g\Delta t^2/\Delta x,\\
+ \sigma^\ell&=\frac{\sigma\Delta t^2}{\rho_0\Delta x^3},&
+ p&=\rho_0 c_u^2 p^\ell,&
+ \omega&=\omega^\ell/\Delta t,\\
+ M&=\rho_0\Delta x^2 M^\ell,&
+ I&=\rho_0\Delta x^4 I^\ell.&
+\end{align}
+格子总动量与角动量分别乘以
+$\rho_0\Delta x^3/\Delta t$ 和 $\rho_0\Delta x^4/\Delta t$ 得到物理二维量。
+参考速度用于确定单位映射，不是实际流速的截断值。
+
+\src{config.py:LatticeScales; simulator.py:IceFlow2D.__init__}
+
+\subsection{默认算例的数量级}
+\label{sec:defaults}
+命令行示例默认 $N_x\times N_y=100\times200$，物理域为
+$0.025\times0.050\,\mathrm{m^2}$，故
+\begin{equation}
+ \Delta x=2.5\times10^{-4}\,\mathrm m,\quad
+ \Delta t=6.25\times10^{-6}\,\mathrm s,\quad
+ c_u=40\,\mathrm{m/s}.
+\end{equation}
+水面位于 $y=0.030\,\mathrm m$，冰边长 $0.008\,\mathrm m$，占 $32\times32$ 个材料单元；
+冰初始转角为 $5^\circ$，最低角与水面的间距为 $0.0015\,\mathrm m$。
+壁厚为 3 个格子，水池的活动面积为
+\begin{equation}
+ A_{w,0}=(100-6)(120-3)\Delta x^2=6.87375\times10^{-4}\,\mathrm{m^2}.
+\end{equation}
+水和冰的初始温度分别为 $90^\circ\mathrm C$、$0^\circ\mathrm C$，所有容器壁绝热。
+流动密度比 $\rho_w/\rho_a=800$；冰水密度比 $\rho_i/\rho_w=0.917$。
+默认物性如下，其中空气热物性保留在配置中，未进入当前热方程：
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+材料 & $\rho\ (\mathrm{kg/m^3})$ & $\nu\ (\mathrm{m^2/s})$
+ & $c_p\ (\mathrm{J/(kg\,K)})$ & $k\ (\mathrm{W/(m\,K)})$\\
+\midrule
+水 & 1000 & $10^{-6}$ & 4186 & 0.60\\
+冰 & 917 & --- & 2100 & 2.20\\
+空气 & 1.25 & $1.5\times10^{-5}$ & 1005 & 0.026\\
+\bottomrule
+\end{tabular}
+\end{center}
+此外 $L=334000\,\mathrm{J/kg}$，$\sigma=0.072\,\mathrm{N/m}$，
+$|\bm g|=9.8\,\mathrm{m/s^2}$，$\alpha_T=2.1\times10^{-4}\,\mathrm{K^{-1}}$；
+默认格子界面参数为 $W=5$、$M_\phi=0.1$，Smagorinsky 系数为 $C_s=0.1$。
+默认黏性对应
+\begin{equation}
+ \nu_w^\ell=10^{-4},\quad\nu_a^\ell=1.5\times10^{-3},\quad
+ \tau_w=0.5003,\quad\tau_a=0.5045.
+\end{equation}
+实际剪切松弛还包含第 \ref{sec:collision} 节的数值稳定化。
+\code{IceFlowConfig()} 的基础默认网格为 $200\times400$，并非命令行算例默认网格；
+不能将这两组默认值混用。

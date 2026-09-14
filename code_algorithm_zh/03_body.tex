@@ -1,0 +1,152 @@
+\section{冰体几何、边界反射与刚体运动}
+\label{sec:body}
+
+\subsection{材料坐标、参考原点与质心}
+定义二维旋转矩阵及垂直算子
+\begin{equation}
+ R(\theta)=\begin{pmatrix}\cos\theta&-\sin\theta\\\sin\theta&\cos\theta\end{pmatrix},
+ \qquad \rot=\begin{pmatrix}0&-1\\1&0\end{pmatrix}.
+\end{equation}
+本节位置、速度、质量和惯量均采用格子单位。
+材料单元中心为
+\begin{equation}
+ \bm X_a=(a_x+\tfrac12-N_{bx}/2,\ a_y+\tfrac12-N_{by}/2).
+\end{equation}
+参考原点 $\bm O$ 和转角 $\theta$ 定义材料到空间的映射；
+材料质心 $\bar{\bm X}$ 与空间质心 $\bm C$ 满足
+\begin{equation}
+ \bm x=\bm O+R\bm X,\qquad
+ \bm X=R^{\mathsf T}(\bm x-\bm O),\qquad
+ \bm C=\bm O+R\bar{\bm X}.
+ \label{eq:pose}
+\end{equation}
+非均匀融化会改变 $\bar{\bm X}$，因此 $\bm O$ 与 $\bm C$ 不能混用。
+代码以 \code{body_reference_origin} 保存权威位姿，
+\code{body_center} 是由式 \eqref{eq:pose} 计算的视图。
+刚体在任一点的速度为
+\begin{equation}
+ \bm u_b(\bm x)=\bm U+\omega\rot(\bm x-\bm C).
+ \label{eq:wall-velocity}
+\end{equation}
+
+\subsection{连续覆盖率与尖锐掩码}
+将材料固相分数 $s_a=m_a/(\rho_i\Delta x^2)$ 双线性插值到空间单元中心，得
+\begin{equation}
+ C_{ij}=\clip\!\left(\sum_{a\in\mathcal N_{ij}}W_{ij,a}s_a,0,1\right),
+ \quad W_{ij,a}=\max(0,1-|\xi_x-a_x|)\max(0,1-|\xi_y-a_y|).
+\end{equation}
+$\bm\xi$ 是材料网格的连续索引，$\mathcal N_{ij}$ 至多包含四个材料节点。
+壁面处最终将 $C_{ij}$ 清零。
+
+代码中的 \code{body_signed_distance_m} 是用于判号和切链定位的混合几何量。
+在初始矩形内部，定义
+\begin{equation}
+ d_{ij}=\Delta x(s_*-C_{ij}),\qquad s_*=0.5\quad\text{（默认）};
+ \label{eq:pseudo-sdf}
+\end{equation}
+矩形外部使用解析旋转矩形距离
+\begin{equation}
+ d_{\rm box}=\Delta x\left[|\max(\bm\delta,0)|+
+ \min\{\max(\delta_x,\delta_y),0\}\right],\quad
+ \bm\delta=|\bm X|-(N_{bx}/2,N_{by}/2).
+\end{equation}
+式 \eqref{eq:pseudo-sdf} 是覆盖率差乘以网格尺度，通常不满足 $|\nabla d|=1$；
+不能将其解释为侵蚀界面的精确欧氏距离。
+当刚体在力学上有效且不在壁内时，$d_{ij}\leq0$ 定义尖锐冰节点。
+
+体积统计还需区分连续材料体积和尖锐格点体积：
+\begin{equation}
+ V_i^{\rm mat}=\sum_a\frac{m_a}{\rho_i},\qquad
+ V_i^{\rm sharp}=\Delta x^2\sum_{ij}\chi_{ij}.
+\end{equation}
+前者用于质量与融化率；后者反映流动边界的离散拓扑，二者无需逐步相等。
+
+\src{simulator.py:_body_local_coordinates, _sample_body_fraction, _signed_distance_at, _update_solid_mask}
+
+\subsection{切链边界与动量交换}
+从流体节点 $\bm x$ 沿 $\bm c_q$ 指向固体的链路称为切链。
+代码使用截断后的交点比例
+\begin{equation}
+ \lambda_q=\clip\!\left(\frac{\max(d_f,10^{-6})}
+ {\max(d_f,10^{-6})-d_s+10^{-12}},0.05,0.95\right),\qquad
+ \bm x_b=\bm x+\lambda_q\bm c_q.
+\end{equation}
+距离 $d$ 在此以米计；$\bm x_b$ 仍用格子坐标。
+截断保证交点不落在链路两端。
+令 $\widehat f_q$ 为尚未施加边界处理的碰撞后分布，
+以本地碰撞前的非平衡量构造反射分布
+\begin{equation}
+ f_{\bar q}^{\rm ref}=
+ \frac{f_{\bar q}^{\rm eq}(p_d,\rho,\bm u_b)
+ +[f_q-f_q^{\rm eq}(p_d,\rho,\bm u)]
+ +\lambda_q\widehat f_{\bar q}}{1+\lambda_q}.
+ \label{eq:cutlink}
+\end{equation}
+该值暂存于切链的出射槽 $q$，由迁移核写回本节点的 $\bar q$ 槽。
+相场在冰面使用移动壁修正
+\begin{equation}
+ h_{\bar q}^{n+1}(\bm x)=h_q^+(\bm x)
+ -6w_q\phi(\bm c_q\cdot\bm u_b).
+\end{equation}
+固定容器壁采用本地反弹；冰面额外采用式 \eqref{eq:cutlink}。
+
+每条冰面切链向刚体贡献格子冲量
+\begin{align}
+ \Delta\bm P_q={}&(\bm c_q-\bm u_b)\widehat f_q
+ -(-\bm c_q-\bm u_b)f_{\bar q}^{\rm ref}
+ +6w_qp_H(\bm x_b)\bm c_q,\label{eq:impulse}\\
+ \Delta L_q={}&(\bm x_b-\bm C)\times\Delta\bm P_q,
+ \qquad \bm a\times\bm b=a_xb_y-a_yb_x.
+\end{align}
+$p_H(\bm x_b)$ 由链路两端线性插值。
+先在节点内求和，再以双精度归约至 \code{hydrodynamic_impulse} 和
+\code{hydrodynamic_torque}。
+
+\subsection{冻结静水参考场}
+初始化相场后，在每一行的活动流体节点上平均密度，得到 $\rho_H(j)$。
+以初始自由液面 $j_s$ 为参考，构造
+\begin{align}
+ p_H(j_s-1)&=-\tfrac12g_y\rho_H(j_s-1),&
+ p_H(j_s)&=\tfrac12g_y\rho_H(j_s),\\
+ p_H(j)&=p_H(j+1)-\tfrac12g_y[\rho_H(j)+\rho_H(j+1)],&&j<j_s-1,\\
+ p_H(j)&=p_H(j-1)+\tfrac12g_y[\rho_H(j-1)+\rho_H(j)],&&j>j_s.
+\end{align}
+参考场在后续时间步保持冻结。流动分布只承载 $p_d$，体力使用
+$(\rho-\rho_H)\bm g$，切链冲量补回式 \eqref{eq:impulse} 的参考压力牵引。
+三者共同组成静水基态的平衡处理；代码没有再向冰体额外叠加一个独立的
+Archimedes 浮力项。
+
+\src{simulator.py:_build_hydrostatic_reference, _initialize_hydrostatic_equilibrium, _prepare_momentum_cut_links}
+
+\subsection{刚体积分与容器接触}
+令总流体冲量为 $\bm J_h$，总转动冲量为 $K_h$，阻尼系数为 $d_U,d_\omega$。
+每个格子时间步执行
+\begin{align}
+ \bm U^{n+1}&=d_U(\bm U^n+\bm J_h/M+\bm g),\\
+ \omega^{n+1}&=d_\omega(\omega^n+K_h/I),\\
+ \bm C^{n+1}&=\bm C^n+\bm U^{n+1},\qquad
+ \theta^{n+1}=\theta^n+\omega^{n+1},\\
+ \bm O^{n+1}&=\bm C^{n+1}-R(\theta^{n+1})\bar{\bm X}.
+\end{align}
+默认 $d_U=1$，$d_\omega=0.999$。
+该阻尼按格子步应用，改变时间步也会改变单位物理时间内的阻尼效应。
+积分后清空冲量累加器。
+
+接触支撑取自\textbf{尚未进行壁面裁剪}的当前尖锐覆盖节点的四个单元面极值，
+而非初始矩形外包框。
+将质心投影到使这些支撑位于容器内部的区间。
+在左壁处 $U_x\leftarrow\max(U_x,0)$，右壁处
+$U_x\leftarrow\min(U_x,0)$，上下壁同理。
+这是一种整体位置约束与向外平动速度截断，没有求解摩擦冲量、恢复系数或接触转矩。
+位置确实被修正时才重新计算覆盖率。
+
+\subsection{新覆盖与新暴露节点}
+\code{previous_solid_mask} 保存前一次提交的尖锐拓扑。
+新覆盖节点保存原 $\phi$ 和扰动压力 $p_d$，速度改为壁速。
+新暴露节点从八邻域中\textbf{此前已经是流体且现在仍为流体}的节点平均
+$\phi,p_d,\bm v$；无合法邻点时使用被覆盖时的后备值和当前壁速。
+随后加回该空间位置的 $p_H$ 并重建 $f^{\rm eq},h^{\rm eq}$。
+限定读取旧流体节点，使结果不依赖同一 GPU 核中新节点的执行次序。
+该局部重填会改变总体积和动量，相关修正在第 \ref{sec:constraints} 节说明。
+
+\src{simulator.py:_integrate_rigid_ice, _solve_contact_and_rasterize, _project_moving_body_inside_container, _refill_changed_nodes}
