@@ -64,7 +64,7 @@ physical and numerical parameters.
 ## Outputs
 
 Results are written to
-`outputs/iceflow2d/coupled_falling_ice_melting_2d/` by default:
+`iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d/` by default:
 
 - `history.csv`: sampled motion, melt, water-volume, energy, ALE, and momentum diagnostics;
 - `metadata.json`: requested settings, complete validated configuration, scales,
@@ -106,7 +106,7 @@ simulation.step(8)
 CPU-only configuration and output contracts:
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s iceflow2d/tests -v
 ```
 
 CUDA numerical regressions:
@@ -134,4 +134,4 @@ conversions live in `iceflow2d/config.py`. Cheap derived quantities use read-onl
 views instead of persistent GPU fields. See the
 [field audit and validation record](iceflow2d/docs/gpu_state_review.md) for each
 retained allocation, API name changes, numerical checks, and measured timings.
-Run `python benchmarks/benchmark_solver.py` to repeat the warmed step benchmark.
+Run `python iceflow2d/benchmarks/benchmark_solver.py` to repeat the warmed step benchmark.

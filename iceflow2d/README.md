@@ -131,7 +131,7 @@ T_eq = T_m + [m_w c_w (T_w0-T_m) + m_i c_i (T_i0-T_m) - m_i L]
 
 ## 输出
 
-默认目录为 `outputs/iceflow2d/coupled_falling_ice_melting_2d/`：
+默认目录为 `iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d/`：
 
 - `history.csv`：每个采样时刻的一行标量诊断；
 - `metadata.json`：请求参数、完整配置、格子尺度、输出清单和终态结果；
@@ -156,7 +156,7 @@ PNG 与 GIF 逐帧写盘，不在内存中缓存整个序列。只有 `--save-np
 CPU 输出和配置契约：
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s iceflow2d/tests -v
 ```
 
 CUDA 核心守恒回归：

@@ -37,7 +37,7 @@ from iceflow2d.config import (  # noqa: E402
 )
 
 
-DEFAULT_OUTPUT_DIR = "outputs/iceflow2d/coupled_falling_ice_melting_2d"
+DEFAULT_OUTPUT_DIR = "iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d"
 DEFAULT_BOUNDARY_CELLS = 3
 # Representing 4 m/s by 0.1 LU keeps the first-contact transient in the
 # low-Mach lattice envelope at the default 100 x 200 resolution.

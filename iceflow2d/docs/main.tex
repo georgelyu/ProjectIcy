@@ -1426,7 +1426,7 @@ python -m iceflow2d \
 \end{lstlisting}
 
 默认输出目录为
-\path{outputs/iceflow2d/coupled_falling_ice_melting_2d/}。始终写出
+\path{iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d/}。始终写出
 \path{history.csv} 和 \path{metadata.json}；绘图启用时写出速度、涡量、温度 PNG/GIF 及终态图；
 只有显式传入 \code{--save-npz} 才写 \path{fields.npz}。流式图像路径只保留当前帧，峰值内存为
 $O(N_xN_y)$；NPZ 路径保留全部采样场，内存为 $O(N_fN_xN_y)$。

@@ -126,7 +126,7 @@ CUDA Compute Sanitizer `memcheck` 检查整个 CUDA 测试集。Taichi 会用 `c
 
 默认物理工况另外运行 4800 LBM 步至 0.03 s，经历入水并开始融化；CSV、metadata、54 个 NPZ 数组、三组各 4 帧 PNG/GIF 均生成。所有输出数组有限，温度在 0–90 °C；总质量残差约 1.3e-13 kg/m，总热能残差约 5.1e-8 J/m。未把这段短程验证当作完整 3 s 工况的长期稳定性或网格收敛证明。
 
-同一 RTX 5090、Taichi 1.7.4，预热 32 步后分三批各测 128 步，在 CPU 计时前后同步 CUDA；不计初始化、JIT 和输出。原始摘要保存在 [review_results.json](../../benchmarks/review_results.json)。
+同一 RTX 5090、Taichi 1.7.4，预热 32 步后分三批各测 128 步，在 CPU 计时前后同步 CUDA；不计初始化、JIT 和输出。原始摘要保存在 [review_results.json](../benchmarks/review_results.json)。
 
 | 网格 | 原每步中位数 | 修改后 | 耗时减少 | field 有效载荷：原 → 新 |
 |---|---:|---:|---:|---:|
@@ -155,10 +155,10 @@ CUDA Compute Sanitizer `memcheck` 检查整个 CUDA 测试集。Taichi 会用 `c
 ## 复现命令
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s iceflow2d/tests -v
 python -m unittest discover -s iceflow2d -p 'test_*.py' -v
 compute-sanitizer --tool memcheck --report-api-errors no --error-exitcode 99 \
   python -m unittest discover -s iceflow2d -p 'test_*.py' -v
-python benchmarks/benchmark_solver.py --output /tmp/iceflow-benchmark.json
-python benchmarks/benchmark_solver.py --resolution-x 200 --resolution-y 400
+python iceflow2d/benchmarks/benchmark_solver.py --output /tmp/iceflow-benchmark.json
+python iceflow2d/benchmarks/benchmark_solver.py --resolution-x 200 --resolution-y 400
 ```

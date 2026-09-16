@@ -11,7 +11,7 @@ import time
 
 import taichi as ti
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from iceflow2d import IceFlow2D
 from iceflow2d.examples.coupled_falling_ice_melting_2d import create_config, parse_args
 

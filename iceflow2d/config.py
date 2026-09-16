@@ -420,7 +420,7 @@ class IceFlowConfig:
     # affected; ``None`` disables the floor.
     air_interface_relaxation_time: float | None = 0.8
 
-    output_dir: str = "outputs/iceflow2d/coupled_falling_ice_melting_2d"
+    output_dir: str = "iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d"
     show_gui: bool = False
     save_npz: bool = False
 

@@ -86,7 +86,7 @@ class _FakeMovingSimulation:
 class CoupledFallingMeltingExampleTests(unittest.TestCase):
     def test_module_can_be_loaded_while_cuda_simulator_import_is_blocked(self):
         path = (
-            Path(__file__).resolve().parents[1]
+            Path(__file__).resolve().parents[2]
             / "iceflow2d"
             / "examples"
             / "coupled_falling_ice_melting_2d.py"
