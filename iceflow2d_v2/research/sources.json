@@ -1,0 +1,42 @@
+{
+  "retrieved_on": "2026-09-17",
+  "sources": [
+    {
+      "id": "huang2022",
+      "title": "A consistent and conservative Phase-Field model for thermo-gas-liquid-solid flows including liquid-solid phase change",
+      "year": 2022,
+      "doi": "10.1016/j.jcp.2021.110795",
+      "url": "https://arxiv.org/html/2102.06863v3",
+      "review_level": "full-text relevant sections",
+      "local_file": "research/huang_2022.html",
+      "sha256": "46cdbfd4937d27f7dc78f708edf69813d1c27a7384a10b59452d52f7b857d522"
+    },
+    {
+      "id": "weber2026",
+      "title": "A consistent and scalable framework suitable for boiling flows using the conservative diffuse interface method",
+      "year": 2026,
+      "doi": "10.1016/j.jcp.2026.114680",
+      "url": "https://publikationen.bibliothek.kit.edu/1000190025",
+      "review_level": "full-text relevant sections; energy limitation checked",
+      "local_file": "research/weber_2026.pdf",
+      "sha256": "6c30098ee28b2b331560767c4566a7e13499eb1e41b042215a665970ef905813"
+    },
+    {
+      "id": "berger2024",
+      "title": "A New Provably Stable Weighted State Redistribution Algorithm",
+      "year": 2024,
+      "doi": "10.1137/23M1597484",
+      "url": "https://epubs.siam.org/doi/abs/10.1137/23M1597484",
+      "review_level": "publisher abstract and metadata; not a proof for the proposed LBM coupling"
+    },
+    {
+      "id": "song2026",
+      "title": "A conservative coupling method of sharp-interface and multi-species model for compressible reacting gas-liquid flows with phase change",
+      "year": 2026,
+      "url": "https://arxiv.org/html/2609.03509v1",
+      "review_level": "abstract and interface-coupling discussion; preprint outside ice-melting application",
+      "local_file": "research/song_2026.html",
+      "sha256": "b28adcef0655b4c5b24e0a63051619516173e31e8c29734571d20fa8a915c934"
+    }
+  ]
+}

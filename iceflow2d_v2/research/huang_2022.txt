@@ -1,0 +1,932 @@
+A consistent and conservative Phase-Field model for thermo-gas-liquid-solid flows including liquid-solid phase change
+Report GitHub Issue
+×
+Title:
+Content selection saved. Describe the issue below:
+Description:
+Submit without GitHub
+Submit in GitHub
+arXiv is now an independent nonprofit!
+Learn more
+×
+Back to arXiv
+Why HTML?
+Report Issue
+Back to Abstract
+Download PDF
+Abstract
+1 Introduction
+2 Governing equations
+2.1 The proposed model
+2.1.1 The Cahn-Hilliard equation
+2.1.2 The phase change equation
+2.1.3 The volume fractions and material properties
+2.1.4 The mass conservation
+2.1.5 The momentum equation
+2.1.6 The energy equation
+2.2 Properties
+3 Discretization of the governing equations
+4 Results
+4.1 Verification
+4.1.1 Large-Density-Ratio advection
+4.1.2 Couette flow
+4.1.3 Stefan problem
+4.1.4 The mass conservation and volume change
+4.1.5 Performances of surface tension and drag force models
+4.2 Melting of gallium in a rectangular cavity
+4.3 Rising bubbles with solidification
+4.4 Melting and solidification
+5 Conclusion and future work
+References
+License: CC BY-NC-ND 4.0
+arXiv:2102.06863v3 [physics.comp-ph] 15 Nov 2021
+A consistent and conservative Phase-Field model for thermo-gas-liquid-solid flows including liquid-solid phase change
+© < 2021 > . This manuscript version is made available under the CC-BY-NC-ND 4.0 license \urlhttp://creativecommons.org/licenses/by-nc-nd/4.0/. This manuscript was accepted for publication in Journal of Computational Physics, Vol 449, Ziyang Huang, Guang Lin, Arezoo M. Ardekani, A consistent and conservative Phase-Field model for thermo-gas-liquid-solid flows including liquid-solid phase change, Page 110795, Copyright Elsevier (2021).
+Ziyang Huang
+††thanks: Email: huan1020@purdue.edu; ziyangh@umich.edu. Present address: Mechanical Engineering, University of Michigan, Ann Arbor, MI 48109, USA
+Affiliation:
+School of Mechanical Engineering, Purdue University, West Lafayette, IN 47907, USA
+Guang Lin
+††thanks: Email: guanglin@purdue.edu; Corresponding author
+Affiliation:
+School of Mechanical Engineering, Purdue University, West Lafayette, IN 47907, USA
+Affiliation:
+Department of Mathematics, Purdue University, West Lafayette, IN 47907, USA
+Arezoo M. Ardekani
+††thanks: Email: ardekani@purdue.edu; Corresponding author
+Affiliation:
+School of Mechanical Engineering, Purdue University, West Lafayette, IN 47907, USA
+Abstract
+In the present study, a consistent and conservative Phase-Field model is developed to study thermo-gas-liquid-solid flows with liquid-solid phase change. The proposed model is derived with the help of the consistency conditions and exactly reduces to the consistent and conservative Phase-Field method for incompressible two-phase flows, the fictitious domain Brinkman penalization (FD/BP) method for fluid-structure interactions, and the Phase-Field model of solidification of pure material. It honors the mass conservation, defines the volume fractions of individual phases unambiguously, and therefore captures the volume change due to phase change. The momentum is conserved when the solid phase is absent, but it changes when the solid phase appears due to the no-slip condition at the solid boundary. The proposed model also conserves the energy, preserves the temperature equilibrium, and is Galilean invariant. A novel continuous surface tension force to confine its contribution at the gas-liquid interface and a drag force modified from the Carman-Kozeny equation to reduce solid velocity to zero are proposed. The issue of initiating phase change in the original Phase-Field model of solidification is addressed by physically modifying the interpolation function. The corresponding consistent scheme is developed to solve the model, and the numerical results agree well with the analytical solutions and the existing experimental and numerical data. Two challenging problems having a wide range of material properties and complex dynamics are conducted to demonstrate the capability of the proposed model.
+Keywords: Consistent model;
+Phase change;
+Solidification/Melting;
+Multiphase flow;
+Fluid-Structure interaction;
+Phase-Field;
+1 Introduction
+Liquid-Solid phase change (or solidification/melting) and its interaction with the surrounding air
+are ubiquitous in various natural and/or industrial processes, e.g., latent thermal energy storage (LTES) systems (81, 89), welding (66, 13, 103, 75), casting (19, 36), and additive manufacturing (AM) (65, 32, 53). This motivates researchers to develop physical and high-fidelity models to further understand the complex physics and dynamics, and to accurately predict behaviors of materials in order to produce high-quality products. Such a problem includes many challenging factors, such as a wide range of material properties, evolution of the liquid-solid interface due to solidification/melting, deformation of the gas-liquid interface due to fluid (gas/liquid) motions and surface tension, heat transfer that drives the phase change, and fluid-structure interaction between the fluid and solid, and all these factors are coupled and can be influential. In the present study, we call the problem thermo-gas-liquid-solid flows with liquid-solid phase change.
+In spite of the complexity of the problem, it can be separated into two basic problems which are the two-phase incompressible flow and the solidification with convection. Modeling these two individual problems has been actively studied.
+For the two-phase incompressible flow,
+the front-tracking method [88, 86],
+the level-set method [63, 83, 78, 30],
+the conservative level-set method [61, 62, 17],
+the volume-of-fluid (VOF) method [33, 77, 64],
+the THINC method [94, 42, 96, 69], and
+the Phase-Field (or Diffuse-Interface) method [3, 43, 80, 39] have been developed to locate different phases.
+The smoothed surface stress method [31],
+the continuous surface force (CSF) [8],
+the ghost fluid method (GFM) [25, 51],
+the conservative and well-balanced surface tension model [58], and
+the Phase-Field method derived from the energy balance or the least-action principle [43, 100]
+have been developed to model the surface tension, and a balanced-force method (28) is proposed to incorporate the surface tension model to the fluid motion. Interested readers should refer to [68, 87, 80, 57, 67].
+For the solidification problem with convection, one of the most popular methods is the enthalpy-porosity technique (90, 91, 9, 92, 72), which can be implemented in a fixed grid. The liquid fraction of the phase change material is algebraically related to the local temperature. Therefore, the enthalpy change due to phase change can be evaluated and becomes a source in the energy equation. A drag force proportional to the velocity is added to the momentum equation to stop the solid motion, which is the same idea as the fictitious domain Brinkman penalization (FD/BP) method for fluid-structure interactions (4, 6). The most popularly used drag force in the enthalpy-porosity technique is modified from the Carman-Kozeny equation (12) for the porous medium.
+Another popular method for solidification is the Phase-Field method (7, 15, 24, 48, 84, 46, 55), where the liquid-solid interface has a small but finite thickness. Different from the enthalpy-porosity technique using an algebraic relation, the Phase-Field method introduces an additional equation to govern the evolution of the liquid fraction of the phase change material, and therefore is flexible to include more complicated physics, e.g., anisotropy and solute transport in an alloy. After coupling the Phase-Field method with the hydrodynamics, the melt convection can be modeled (60, 5, 14, 102).
+Other methods for modeling the liquid-solid phase change are reviewed in (74, 76, 93, 35, 23, 20, 82).
+Most existing models for the thermo-gas-liquid-solid flows with liquid-solid phase change follow a similar procedure: The deforming gas-liquid interface is located by a certain interface capturing method and the continuous surface tension force is added, while the enthalpy-porosity technique is directly applied without any further changes to adapt to the appearance of a new phase. The volume-of-fluid method is the most popular choice and is used, e.g., in (81, 75, 49, 98, 65, 89, 32). The level-set and conservative level set methods are recently used in (97) and (53), respectively. Some additional physics are introduced to the models, e.g., the thermo-capillary effect (65, 97, 32, 53) and recoil pressure (65, 32, 53). Another recent model (101) follows the same strategy but instead uses the Phase-Field model in (71) for anisotropic solidification and the conservative Phase-Field method (18) as the interface capturing method. In spite of its widespread applications, such a well-accepted modeling strategy has the following critical issues.
+(i) The volume fractions of the phases are ambiguously defined. In the models applying the enthalpy-porosity technique, the liquid fraction is meaningful only inside the phase change material, while it directly appears in the energy equation defined in the entire domain including the gas phase. As a result, the meaningless value of the liquid fraction in the gas phase is also counted in the energy equation. Another example is in (101), where two liquid fractions are defined for the same liquid phase, one from the solidification model and the other from the interface capturing method. Since the solidification model and the interface capturing method have no explicit/direct connection, these two liquid fractions may inconsistently label the liquid location.
+(ii) The surface tension and drag forces can appear at wrong locations because the volume fractions, which are not clearly defined, are needed to compute the forces. Based on the formulations, e.g., in (75, 65, 97, 53, 32), the surface tension at the gas-liquid interface will falsely appear at the gas-solid interface, and the drag force will falsely appear in the gas phase when the local temperature is lower than the solidus temperature. Some artificial operations need to be added but they have seldom been mentioned in the literature. An exception is in (101) where a bounce-back scheme near the gas-solid interface is employed since the gas-solid interface is unable to be effectively labeled by the model, but details of the bounce-back scheme are not provided.
+(iii) Physical principles can be violated, depending on material properties. The most obvious example is the mass conservation. In, e.g., (72, 65, 98, 97, 101, 32, 49), the velocity is divergence-free, implying that both the volumes of the gas and phase change material will not change. This restricts applications of the models only to problems having matched liquid and solid densities. However, the problems studied in (49, 53) are outside that category, and therefore the volume of the phase change material needs to change in order to satisfy the mass conservation. It should be noted that the volume change in (53) is from evaporation, not solidification/melting, and the velocity is divergence-free without evaporation. As a result, the divergence-free velocity is contradicting the mass conservation. Although the studies in (79, 81, 34, 89) captures the volume change, detail formulations, i.e., the divergence of the velocity, are not provided. Other physical principles, e.g., the momentum and energy conservation and the Galilean invariance of the models, have never been examined.
+(iv) The problem of interest often has a large density ratio, which can be O(10^{4}) between the gas and liquid. It has been well-known that the so-called consistent method [73, 10, 16, 64, 70, 59, 95, 39, 38] needs to be implemented to produce physical results for multiphase flows, while this has never been considered in the existing models for the problem of interest.
+The aforementioned issues in the existing models for the problem of interest are originated in simply “combining”, not physically “coupling”, the models for solidification and two-phase flow.
+In the present study, those critical issues are properly addressed and a consistent and conservative Phase-Field model is developed for the thermo-gas-liquid-solid flows with liquid-solid phase change. All the dependent variables are defined in a fixed regular domain, which is convenient for numerical implementation.
+The novelty of the present study is multi-fold and the proposed model enjoys the following physical properties:
+•
+In deriving the proposed model, several consistency conditions proposed in our previous works (39, 38, 37, 41, 40) are considered. Our earlier works do not include phase change or temperature variations in the fluids, and the present study is the first implementation of the consistency conditions to phase change problems, which further demonstrates their generality.
+•
+The proposed model exactly recovers the consistent and conservative Phase-Field method for incompressible two-phase flows (39) when the solid phase is absent, the fictitious domain Brinkman penalization (FD/BP) method for fluid-structure interactions (4, 6) when the liquid-phase is absent, and the Phase-Field model of solidification of a pure material (7) when the gas phase is absent.
+•
+The proposed model defines the volume fractions of the individual phases unambiguously and ensures their summation to be unity everywhere. The local mass conservation is strictly satisfied, from which the divergence of the velocity is non-zero, and therefore the volume change during solidification/melting is captured.
+•
+The momentum is conserved when the solid phase is absent, and the no-slip condition at the solid boundary results in the momentum change. The energy conservation and Galilean invariance are also satisfied by the proposed model.
+•
+The momentum transport is consistent with the mass transport of the gas-liquid-solid mixture, which greatly improves the robustness of the model for large-density-ratio problems and avoids unrealistic interface deformation.
+•
+Isothermal (or temperature equilibrium) solutions are admissible, thanks to satisfying the consistency conditions, which prevents producing any fictitious fluctuations of the temperature.
+•
+Novel continuous surface tension and drag force models are proposed, which are activated only at proper locations.
+The interpolation function in the solidification model (7) is modified to include the capability of initiating phase change when there is only the liquid/solid-state of the phase change material.
+These physical properties of the proposed model are independent of material properties. The proposed model is verified and its capability is demonstrated using a consistent numerical scheme.
+The proposed model includes all the basic ingredients and challenging aspects of the problem, and additional physics can be incorporated conveniently following the same framework.
+The rest of the paper is organized as follows.
+In Section 2, the proposed model and its properties are elaborated in detail.
+In Section 3, the numerical procedure to solve the proposed model is introduced.
+In Section 4, various numerical tests are performed to verify the properties of the proposed model, and challenging problems are simulated to demonstrate the capability of the proposed model.
+In Section 5, the present study is concluded and possible future works are discussed.
+2 Governing equations
+The problem considered includes two materials, which are a gas “ G ” and a phase change material “ M ” experiencing solidification or melting. Therefore, in the entire domain \Omega , there are three phases: the gas phase including only “ G ”, and the liquid and solid phases of “ M ”. The liquid-solid phase change is driven by temperature. The part of \Omega occupied by “ G ” is denoted by \Omega_{G} , and similarly, we use \Omega_{M} , \Omega_{M}^{L} , and \Omega_{M}^{S} to denote the domains occupied by “ M ”, the liquid phase, and the solid phase of “ M ”, respectively. As a result, we have \Omega=\Omega_{G}\cup\Omega_{M}=\Omega_{G}\cup\Omega_{M}^{L}\cup\Omega_{M}^{S} . In addition, boundaries of the domains are denoted with “ \partial ” in front of the corresponding domains, for example, \partial\Omega is the boundary of \Omega . Material properties of the gas phase “ G ” and the liquid and solid phases of “ M ” are assumed to be constant and denoted by \beta_{G} , \beta_{M}^{L} , and \beta_{M}^{S} , respectively, where \beta can be the density \rho , viscosity \mu , specific heat C_{p} , and heat conductivity \kappa .
+The proposed consistent and conservative model for thermo-gas-liquid-solid flows including liquid-solid phase change is elaborated in Section 2.1. Then in Section 2.2, the physical properties and the relations of the proposed model to some other multiphase models are analyzed. When the proposed model is derived in Section 2.1, several consistency conditions will be applied so that the proposed model is able to produce physical results. The definitions of the consistency conditions are:
+•
+Consistency of reduction: The multiphase system should be able to recover the corresponding systems including fewer phases.
+•
+Consistency of volume fraction conservation: The phase change equation should be consistent with the
+governing equation for the volume fraction of “ M ”, when “ M ” is in a fully liquid/solid-state.
+•
+Consistency of mass conservation: The mass conservation equation should be consistent with the governing equation for the volume fraction of “ M ”, the phase change equation, and the density of the multiphase mixture. The mass flux and the divergence of the velocity in the mass conservation equation should lead to a zero mass source.
+•
+Consistency of mass and momentum transport: The momentum flux in the momentum equation should be computed as a tensor product between the mass flux and the velocity, where the mass flux should be identical to the one in the mass conservation equation.
+These consistency conditions are generalized from their correspondences for isothermal multimaterial incompressible flows (39, 38, 37, 41, 40) to include effects of phase change and temperature variation.
+It should be noted that any thermo-gas-liquid-solid problems locally are gas-liquid, gas-solid, or liquid-solid problems and can be isothermal. Therefore, all these circumstances should be admissible by a thermo-gas-liquid-solid model in order to produce correct physical dynamics, which is emphasized by the consistency of reduction.
+To physically understand the meaning of the rest of the consistency conditions, one needs to first realize that the Phase-Field method includes relative motions of the materials, modeled as a diffusive process. The consistency conditions are general principles to incorporate the mass, momentum, and energy transports due to the relative motions of the materials into the conservation equations.
+2.1 The proposed model
+2.1.1 The Cahn-Hilliard equation
+The interfacial dynamics of “ G ” and “ M ” is modeled by the Cahn-Hilliard equation (11) with convection:
+\displaystyle\frac{\partial\varphi}{\partial t}+\nabla\cdot(\mathbf{u}\varphi)=\nabla\cdot(M_{\varphi}\nabla\xi_{\varphi})+\varphi\nabla\cdot\mathbf{u}\quad\mathrm{in}\quad\Omega,
+(1)
+\displaystyle\xi_{\varphi}=\lambda_{\varphi}\left(\frac{1}{\eta_{\varphi}^{2}}g^{\prime}(\varphi)-\nabla^{2}\varphi\right),
+\displaystyle\lambda_{\varphi}=3\sqrt{2}\eta_{\varphi}\sigma,\quad g(\varphi)=\varphi^{2}(1-\varphi)^{2},
+\displaystyle\mathbf{m}_{\varphi}=\mathbf{u}\varphi-M_{\varphi}\nabla\xi_{\varphi},
+\displaystyle\mathbf{n}\cdot\nabla\xi_{\varphi}=\mathbf{n}\cdot\nabla\varphi=0\quad\mathrm{at}\quad\partial\Omega.
+Here, \varphi is the order parameter of the Cahn-Hilliard equation and is considered as the volume fraction of “ M ” in \Omega . \mathbf{u} is the velocity, whose divergence can be nonzero. M_{\varphi} and \xi_{\varphi} are the mobility and chemical potential of \varphi , respectively. \lambda_{\varphi} is the mixing energy density of \varphi , which is proportional to both
+the thickness of “ G - M ” interface \eta_{\varphi} and the surface tension at the gas-liquid interface \sigma . g(\varphi) is the double-well potential, having minimums at \varphi=0 or \varphi=1 , and g^{\prime}(\varphi) is the derivative of g(\varphi) with respect to \varphi . \mathbf{m}_{\varphi} is the Phase-Field flux of \varphi , including both the convection and diffusion fluxes in the Cahn-Hilliard equation. Unless otherwise specified, the homogeneous Neumann boundary condition is applied.
+The Cahn-Hilliard equation Eq.(1) is derived from the Ginzburg-Landau free energy functional using the H^{-1} gradient flow, and the chemical potential \xi_{\varphi} in Eq.(1) is the functional derivative of the Ginzburg-Landau free energy functional with respect to the order parameter \varphi . The Cahn-Hilliard equation has been widely used in modeling two-phase incompressible flows, e.g., in (43, 21, 1, 39), and its derivation has already been given in many references, e.g., in (80, 26, 100).
+2.1.2 The phase change equation
+In the present study, we consider the Allen-Cahn Phase-Field model for the solidification of a pure material (7) and the convection term is added:
+\displaystyle\frac{\partial\phi}{\partial t}+\nabla\cdot(\mathbf{u}\phi)=-M_{\phi}\left(\frac{\lambda_{\phi}}{\eta_{\phi}^{2}}g^{\prime}(\phi)-\lambda_{\phi}\nabla^{2}\phi+\frac{\rho_{M}^{L}L}{T_{M}}p^{\prime}(\phi)(T_{M}-T)\right)+\phi\nabla\cdot\mathbf{u}\quad\mathrm{in}\quad\Omega_{M},
+(2)
+\displaystyle\lambda_{\phi}=\frac{3\sqrt{2}\rho_{M}^{L}L}{T_{M}}\Gamma_{\phi}\eta_{\phi},\quad M_{\phi}=\frac{\mu_{\phi}\Gamma_{\phi}}{\lambda_{\phi}},
+\displaystyle p(\phi)=\phi^{3}(6\phi^{2}-15\phi+10),
+\displaystyle\mathbf{n}\cdot\nabla\phi=0\quad\mathrm{at}\quad\partial\Omega_{M}.
+Notice that Eq.(2) is defined in \Omega_{M} . Here, \phi is the order parameter of the Allen-Cahn dynamics, and is considered as the volume fraction of the liquid phase of “ M ” in \Omega_{M} . M_{\phi} is the mobility of \phi . \Gamma_{\phi} and \mu_{\phi} are the Gibbs-Thomson and linear kinetic coefficients, respectively, in the Gibbs-Thomson equation of the liquid-solid interface. \lambda_{\phi} is the mixing energy density of \phi , which is related to the thickness of the liquid-solid interface \eta_{\phi} . L is the latent heat of the liquid-solid phase change. T is the temperature and T_{M} is the melting temperature of the phase change. p(\phi) is the interpolation function, monotonically increasing from 0 to 1 and having extreme points at \phi=0 and \phi=1 , and p^{\prime}(\phi) is the derivative of p(\phi) with respect to \phi . g(\phi) is the double-well potential function defined identically to the one in Eq.(1). Unless otherwise specified, the homogeneous Neumann boundary condition is applied.
+This solidification/melting model Eq.(2) is the basis of many more complicated models including, e.g., components and/or anisotropy (7, 15, 46, 48, 14, 102). The model can be derived either thermodynamically from a free energy functional using the L^{2} gradient flow or geometrically from the Gibbs-Thomson equation, and details are available in (7, 5, 2). The first two terms in the parentheses on the right-hand side of Eq.(2) models the curvature driven effect on the phase change, while they are, at the same time, competing with each other to maintain the thickness of the liquid-solid interface. The effect of the temperature is modeled by the last term in the parentheses.
+Solving Eq.(2) is very challenging because it is defined in \Omega_{M} which is evolving with time. It would be more convenient if we can obtain an equivalent equation to Eq.(2) but defined in \Omega . Therefore, the diffuse domain approach (52) is applied, and we use \varphi , the volume fraction of “ M ”, as an approximation to the indicator function of \Omega_{M} whose value is 1 in \Omega_{M} but 0 elsewhere. The equivalence of Eq.(2) in \Omega is
+\displaystyle\frac{\partial(\varphi\phi)}{\partial t}+\nabla\cdot(\mathbf{u}\varphi\phi)=-M_{\phi}\left(\frac{\lambda_{\phi}}{\eta_{\phi}^{2}}\varphi g^{\prime}(\phi)-\lambda_{\phi}\nabla\cdot(\varphi\nabla\phi)+\frac{\rho_{M}^{L}L}{T_{M}}\varphi p^{\prime}(\phi)(T_{M}-T)\right)+\varphi\phi\nabla\cdot\mathbf{u}\quad\mathrm{in}\quad\Omega,
+(3)
+\displaystyle\mathbf{n}\cdot\nabla\phi=0\quad\mathrm{at}\quad\partial\Omega.
+We directly apply the formulations of the diffuse domain approach in (52) to obtain Eq.(3) from Eq.(2), and details of the approach are available in (52). Two modifications will be performed to Eq.(3) to address the following two issues.
+The first issue is about initiating the phase change. It should be noted that the terms in the parentheses on the right-hand side of Eq.(2), which are the driving forces for the phase change, are nonzero only at 0<\phi<1 . In other words, given “ M ” in fully solid (liquid) state at the beginning, melting (solidification) will never happen no matter how high (low) the temperature is. This issue is originated in the definition of p(\phi) in Eq.(2) whose extreme points are \phi=0 and \phi=1 , i.e., p^{\prime}(0)=p^{\prime}(1)=0 . These extreme points are the same as the equilibrium states of \phi . Defining p(\phi) in this way, as mentioned in (7), is an improvement from using p(\phi)=\phi , e.g., in (45), in the sense that the equilibrium state of \phi is always 0 or 1 , independent of the temperature. However, defining p(\phi)=\phi preserves the driving force from the temperature when \phi=0 or \phi=1 . The equilibrium states of \phi should depend on the temperature. If the temperature is larger than the melting point, the equilibrium state should be \phi=1 (liquid), while it should be \phi=0 (solid) if T<T_{M} . To achieve this property, we propose \tilde{p}^{\prime}(\phi) defined in Eq.(4) in the present study, which combines the advantages of p(\phi)=\phi^{3}(6\phi^{2}-15\phi+10) in (7) and p(\phi)=\phi in (45), but avoids their disadvantages. Only when \phi=1 (liquid) and T<T_{M} (undercool) or when \phi=0 (solid) and T>T_{M} (overheat), \tilde{p}^{\prime}(\phi) is 1 , so that the effect of the temperature on the phase change is included. In other cases, \tilde{p}^{\prime}(\phi) is the same as p^{\prime}(\phi) with p(\phi)=\phi^{3}(6\phi^{2}-15\phi+10) . As a result, the equilibrium state of \phi when T<T_{M} is \phi=0 (solid), and it is \phi=1 (liquid) when T>T_{M} .
+The second issue is about the existence of fully liquid/solid state of “ M ”. For example, given, \phi=1 and T>T_{M} , we obtain \partial\phi/\partial t=0 from Eq.(2), which implies \phi\equiv 1 . In other words, Eq.(2) admits the existence of fully liquid state of “ M ”, when the temperature is larger than the melting temperature and there is no solid phase at the beginning. This property should be inherited by Eq.(3), while this is not the case. Using the same condition, we are unable to obtain \phi\equiv 1 from Eq.(3). To address this issue, we apply the consistency of volume fraction conservation. After comparing Eq.(3) along with \phi=1 and T>T_{M} to Eq.(1), we discover that the convection velocity \mathbf{u}\varphi in Eq.(3) needs to be replaced with \mathbf{m}_{\varphi} . As a result, we have \partial\varphi/\partial t+\nabla\cdot\mathbf{m}_{\varphi} on the left-hand side and \varphi\nabla\cdot\mathbf{u} on the right-hand side, given \phi=1 and T>T_{M} , and these two sides are equal to each other from the Cahn-Hilliard equation Eq.(1). Therefore, the existence of fully liquid state of “ M ” is admitted by Eq.(3) after the modification. The same is also true for the solid state of “ M ”.
+After applying the above mentioned modifications to Eq.(3) to address those two issues, we obtain the phase change equation:
+\displaystyle\frac{\partial(\varphi\phi)}{\partial t}+\nabla\cdot(\mathbf{m}_{\varphi}\phi)=-M_{\phi}\xi_{\phi}+\varphi\phi\nabla\cdot\mathbf{u}\quad\mathrm{in}\quad\Omega,
+(4)
+\displaystyle\xi_{\phi}=-\lambda_{\phi}\nabla\cdot(\varphi\nabla\phi)+\frac{\lambda_{\phi}}{\eta_{\phi}^{2}}\varphi g^{\prime}(\phi)+\frac{\rho_{M}^{L}L}{T_{M}}\varphi\tilde{p}^{\prime}(\phi)(T_{M}-T),
+\displaystyle\lambda_{\phi}=\frac{3\sqrt{2}\rho_{M}^{L}L}{T_{M}}\Gamma_{\phi}\eta_{\phi},\quad M_{\phi}=\frac{\mu_{\phi}\Gamma_{\phi}}{\lambda_{\phi}},
+\displaystyle p(\phi)=\phi^{3}(6\phi^{2}-15\phi+10),\quad\tilde{p}^{\prime}(\phi)=\left\{\begin{array}[]{ll}1,\quad\phi=0\quad\mathrm{and}\quad T\geqslant T_{M},\\
+1,\quad\phi=1\quad\mathrm{and}\quad T\leqslant T_{M},\\
+p^{\prime}(\phi),\quad\mathrm{else},\end{array}\right.
+\displaystyle\mathbf{m}_{\varphi\phi}=\mathbf{m}_{\varphi}\phi,
+\displaystyle\mathbf{n}\cdot\nabla\phi=0,\quad\mathrm{at}\quad\partial\Omega.
+Here, \xi_{\phi} is called the chemical potential of \phi , \tilde{p}^{\prime}(\phi) is modified from p^{\prime}(\phi) to initiate the phase change, and \mathbf{m}_{\varphi\phi} is the Phase-Field flux of (\varphi\phi) .
+2.1.3 The volume fractions and material properties
+Based on the Cahn-Hilliard equation Eq.(1) and the phase change equation Eq.(4), the volume fractions of the gas, liquid, and solid phases in the proposed model are defined unambiguously. The volume fraction of the gas phase (or “ G ”) in \Omega is \alpha_{G}=(1-\varphi) , and they are \alpha_{L}=(\varphi\phi) and \alpha_{S}=(\varphi-\varphi\phi) for the liquid and solid phases, respectively. The volume fraction of “ M ” in \Omega is \alpha_{M}=\alpha_{L}+\alpha_{S}=\varphi . It is clear that \alpha_{G}+\alpha_{M}=\alpha_{G}+\alpha_{L}+\alpha_{S}=1 is always true in the entire domain.
+With the volume fractions of the phases in hand, the material properties of the gas-liquid-solid mixture and their fluxes are computed as
+\displaystyle\beta=\beta_{G}+(\beta_{M}^{S}-\beta_{G})\varphi+(\beta_{M}^{L}-\beta_{M}^{S})(\varphi\phi),
+(9)
+\displaystyle\mathbf{m}_{\beta}=\beta_{G}\mathbf{u}+(\beta_{M}^{S}-\beta_{G})\mathbf{m}_{\varphi}+(\beta_{M}^{L}-\beta_{M}^{S})\mathbf{m}_{\varphi\phi}.
+Here, \beta represents a certain material property, e.g., the density \rho , and \mathbf{m}_{\varphi} and \mathbf{m}_{\varphi\phi} are the Phase-Field fluxes defined in Eq.(1) and Eq.(4), respectively.
+2.1.4 The mass conservation
+To determine the mass transport of the model, the consistency of mass conservation is applied. First, the density of the multiphase mixture is obtained following Eq.(9)
+\rho=\rho_{G}+(\rho_{M}^{S}-\rho_{G})\varphi+(\rho_{M}^{L}-\rho_{M}^{S})(\varphi\phi).
+(10)
+After combining Eq.(10) with the Cahn-Hilliard equation, Eq.(1), and the phase change equation, Eq.(4), the mass of the multiphase mixture is governed by
+\frac{\partial\rho}{\partial t}+\nabla\cdot\mathbf{m}_{\rho}=\rho\nabla\cdot\mathbf{u}-M_{\phi}(\rho_{M}^{L}-\rho_{M}^{S})\xi_{\phi},
+(11)
+where \mathbf{m}_{\rho} is the consistent mass flux defined in Eq.(9).
+Finally, to obtain a zero mass source in Eq.(11), the divergence of the velocity should satisfy
+\displaystyle\nabla\cdot\mathbf{u}=\frac{M_{\phi}(\rho_{M}^{L}-\rho_{M}^{S})}{\rho}\xi_{\phi}.
+(12)
+Eq.(12) illustrates the volume change due to the liquid-solid phase change.
+As a result, the mass conservation equation of the model is
+\frac{\partial\rho}{\partial t}+\nabla\cdot\mathbf{m}_{\rho}=0.
+(13)
+Therefore, the mass of the gas-liquid-solid mixture is locally conserved, even though the phase change happens. This is achieved at the expense of changing the volume of “ M ”, as indicated in Eq.(12). On the other hand, if the densities of the liquid and solid phases of “ M ” are the same, the volume of “ M ” remains the same, and therefore the divergence of the velocity is zero, which can also be seen in Eq.(12).
+It should be noted that the mass conservation equation Eq.(13) is not an independent equation in the model. Instead, it is derived from Eq.(9) and Eq.(12), as elaborated in this section. Therefore, we don’t need to explicitly solve the mass conservation equation Eq.(13).
+2.1.5 The momentum equation
+The motion of the phases (or materials) is governed by the momentum equation:
+\displaystyle\frac{\partial(\rho\mathbf{u})}{\partial t}+\nabla\cdot(\mathbf{m}_{\rho}\otimes\mathbf{u})=-\nabla P+\nabla\cdot[\mu(\nabla\mathbf{u}+\nabla\mathbf{u}^{T})]+\rho\mathbf{g}+\mathbf{f}_{s}+\mathbf{f}_{d},
+(14)
+\displaystyle\mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi,\quad\mathbf{f}_{d}=A_{d}(\mathbf{u}_{S}-\mathbf{u}),\quad A_{d}=C_{d}\frac{\alpha_{S}^{2}}{(1-\alpha_{S})^{3}+e_{d}}.
+Here, P is the pressure, and \mathbf{g} is the gravity. As all the gas-liquid, gas-solid, and liquid-solid interfaces are immersed in \Omega , their effects are modeled as volumetric forces, i.e., \mathbf{f}_{s} and \mathbf{f}_{d} , in the momentum equation Eq.(14). \mathbf{f}_{s} is the surface tension force, modeling the surface tension at the gas-liquid interface, while \mathbf{f}_{d} is the drag force, modeling the no-slip boundary condition at the gas-solid and liquid-solid interfaces by enforcing \mathbf{u}=\mathbf{u}_{S} in the solid phase. A_{d} is the drag coefficient of \mathbf{f}_{d} , and C_{d} and e_{d} are model parameters of A_{d} . \mathbf{u}_{S} is the given solid velocity and is set to be zero unless otherwise specified.
+Note that the momentum is transported with the consistent mass flux \mathbf{m}_{\rho} that also appears in the mass conservation equation Eq.(13). This follows the consistency of mass and momentum transport, and is essential to obtain the kinetic energy conservation (when only the pressure gradient is present on the right-hand side of Eq.(14)) and the Galilean invariance, as analyzed in (39).
+To model the surface tension at the gas-liquid interface, we apply the commonly used Phase-Field formulation \xi_{\varphi}\nabla\varphi , which can be derived from either the energy balance [43, 38] or the least-action principle [100, 80]. However, \xi_{\varphi}\nabla\varphi is activated at all “ G - M ” interfaces, including both the gas-liquid and gas-solid interfaces. To remove its contribution at the gas-solid interface, \xi_{\varphi}\nabla\varphi is multiplied by \phi so that the surface tension force remains to be \xi_{\varphi}\nabla\varphi at the gas-liquid interface and smoothly reduces to zero away from it. As a result, we obtain \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi in Eq.(14).
+To more clearly illustrate the distribution of the surface tension force, we consider a gas bubble at the center of a unit domain with a radius 0.2 , the bottom half of which is in contact with the solid phase while the upper half is in contact with the liquid phase. Fig.1 schematically shows the magnitude of the surface tension forces. We will further investigate the surface tension force in Section 4.1.5. It should be noted that the thermo-capillary effect has not been considered in the present study and the surface tension \sigma is treated as a constant.
+Figure 1: Magnitude of the surface tension force |\mathbf{f}_{s}| . a) The proposed surface tension force \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi , b) The original surface tension force \mathbf{f}_{s}=\xi_{\varphi}\nabla\varphi . The proposed surface tension force shown in a) removes its contribution at the gas-solid interface, compared to the original formulation shown in b).
+To model the no-slip boundary condition at both the gas-solid and liquid-solid interfaces, the velocity inside the solid phase needs to be the given value \mathbf{u}_{S} . We add a drag force, formulated as \mathbf{f}_{d}=A_{d}(\mathbf{u_{S}}-\mathbf{u}) , to the momentum equation Eq.(14), where the drag coefficient A_{d} can be considered as a penalty coefficient that enforces \mathbf{u}=\mathbf{u}_{S} inside the solid phase. A_{d} should depend on the volume fraction of the solid phase in such a way that it is zero away from the solid phase and increases to a large enough value that overwhelms the inertia and viscous effects inside the solid phase. As a result, around the gas-solid and liquid-solid interfaces, the momentum equation Eq.(14) reduces to Darcy’s law (90). Voller and Prakash (91) modified the well-known Carman-Kozeny equation (12), by adding a small constant, denoted by e_{d} here, at the denominator to avoid division by zero, and obtained A_{d}=C_{d}\frac{(1-\phi)^{2}}{\phi^{3}+e_{d}} in \Omega_{M} , where C_{d} should be a large number and \phi is the volume fraction of the liquid phase of “ M ” in \Omega_{M} as a reminder. Such a definition of A_{d} has been popularly used, e.g., in (9, 81, 72, 65, 89). It should be noted that Voller and Prakash (91) did not consider the gas phase and formulated A_{d} in terms of the volume fraction of the liquid phase. Therefore, their formulation is only applicable in \Omega_{M} . To obtain A_{d} in \Omega , we directly use the volume fraction of the solid phase in \Omega as the dependent variable of A_{d} , i.e., A_{d}=C_{d}\frac{\alpha_{S}^{2}}{(1-\alpha_{S})^{3}+e_{d}} , as shown in Eq.(14).
+Another popular option of enforcing \mathbf{u}=0 is to assign a large viscosity inside the solid phase, e.g., in (90, 98, 97). Although it looks simpler, our numerical tests in Section 4.1.5 show that this is not an effective choice and adding a drag force is recommended.
+2.1.6 The energy equation
+The enthalpy of the multiphase mixture is \int_{\Omega}\left((\rho C_{p})T+\rho_{M}^{L}L(\varphi\phi)\right)d\Omega , and only the heat conductivity is considered in the present study. As a result, we obtain the following energy equation:
+\frac{\partial((\rho C_{p})T)}{\partial t}+\nabla\cdot(\mathbf{u}(\rho C_{p})T)+\rho_{M}^{L}L\left[\frac{\partial(\varphi\phi)}{\partial t}+\nabla\cdot(\mathbf{u}\varphi\phi)\right]=\nabla\cdot(\kappa\nabla T)+Q_{T}.
+(15)
+Here, (\rho C_{p}) and \kappa denote the volumetric heat and the heat conductivity, respectively, and they are computed from Eq.(9). It should be noted that (\rho C_{p}) here is considered as a single quantity, which is different from the product of \rho and C_{p} that are computed individually from Eq.(9). Q_{T} is the heat source, and is neglected unless otherwise specified.
+The terms in the bracket on the left-hand side of Eq.(15) represents the effect of the phase change to the enthalpy. Therefore, without the phase change, i.e., \phi\equiv 1 and T>T_{M} or \phi\equiv 0 and T<T_{M} , these terms should disappear. To achieve this goal, \nabla\cdot(\mathbf{u}\varphi\phi) in Eq.(15) needs to be replaced by \nabla\cdot(\mathbf{m}_{\varphi}\phi) or \nabla\cdot(\mathbf{m}_{\varphi\phi}) , due to the consistency of volume fraction conservation. As a result, the terms in the bracket in Eq.(15) after the modification are identical to those on the left-hand side of Eq.(4).
+Further, the physical energy equation should admit isothermal (or temperature equilibrium) solutions when the phase change does not happen. Plugging T\equiv T_{0} in Eq.(15), we obtain T_{0}\left[\frac{\partial(\rho C_{p})}{\partial t}+\nabla\cdot(\mathbf{u}(\rho C_{p}))\right] on the left-hand side and 0 on the right-hand side. However, \left[\frac{\partial(\rho C_{p})}{\partial t}+\nabla\cdot(\mathbf{u}(\rho C_{p}))\right] is not zero with (\rho C_{p}) computed from Eq.(9). Therefore, the isothermal solution, i.e., T\equiv T_{0} , is not admissible by Eq.(15). Following the derivation from the consistency of mass conservation in Section 2.1.4 and replacing \rho with (\rho C_{p}) , we can show that \left[\frac{\partial(\rho C_{p})}{\partial t}+\nabla\cdot\mathbf{m}_{(\rho C_{p})}\right] is zero, where \mathbf{m}_{(\rho C_{p})} is the flux of volumetric heat defined in Eq.(9) as well, by noticing that the velocity is divergence-free when there is no phase change. Therefore, on the left-hand side of Eq.(15), \nabla\cdot(\mathbf{u}(\rho C_{p})T) needs to be replaced by \nabla\cdot(\mathbf{m}_{(\rho C_{p})}T) .
+Combining the above modifications to Eq.(15), we obtain the consistent energy equation:
+\frac{\partial((\rho C_{p})T)}{\partial t}+\nabla\cdot(\mathbf{m}_{(\rho C_{p})}T)+\rho_{M}^{L}L\left(\frac{\partial(\varphi\phi)}{\partial t}+\nabla\cdot\mathbf{m}_{\varphi\phi}\right)=\nabla\cdot(\kappa\nabla T)+Q_{T}.
+(16)
+2.2 Properties
+Eq.(1), Eq.(4), Eq.(9), Eq.(12), Eq.(14), and Eq.(16) complete the consistent and conservative model for thermo-gas-liquid-solid flows including liquid-solid phase change, and the proposed model honors many physical properties. From Eq.(13), Eq.(14), and Eq.(16), it is obvious that the mass and enthalpy of the multiphase mixture are conserved, and the momentum (neglecting the gravity) is conserved without the appearance of the solid phase, by noticing that \mathbf{f}_{s}=\xi_{\varphi}\nabla\varphi is equivalent to \nabla\cdot(-\lambda_{\varphi}\nabla\varphi\otimes\nabla\varphi) , see (44, 43, 80, 37), and \mathbf{f}_{d}=\mathbf{0} , in this circumstance. When there is the solid phase, the momentum is not necessarily conserved due to the no-slip boundary condition at the solid boundary.
+The Galilean invariance is also satisfied by the proposed model. The proof is straightforward, using the Galilean transformation, and examples are available in (39, 40). The subtle part of the proof is related to the left-hand side of the momentum equation, and we need to emphasize that the consistency conditions are playing a critical role there.
+More importantly, the proposed model is reduction consistent with (i) the isothermal consistent and conservative Phase-Field method for two-phase incompressible flows in (39) when the solid phase is absent and the initial homogeneous temperature is larger than the melting temperature, (ii) the isothermal fictitious domain Brinkman penalization (FD/BP) method for fluid-structure interactions in (4, 6) when the liquid phase is absent and the initial homogeneous temperature is lower than the melting temperature, and (iii) the Phase-Field model of solidification in (7) when both the gas phase and the flow are absent and the material properties of the liquid and solid phases are matched (except the thermal conductivities).
+Theorem 2.1.
+The proposed model in Section 2.1 is consistent with the isothermal consistent and conservative Phase-Field method for two-phase incompressible flows in (39).
+Proof.
+Given \phi=1 and T=T_{0}>T_{M} at t=0 , as already analyzed in Section 2.1.2 and Section 2.1.6, we obtain \phi=1 and therefore \mathbf{m}_{\varphi\phi}=\mathbf{m}_{\varphi} and \xi_{\phi}=0 from Eq.(4), and T=T_{0} from Eq.(16), at \forall t>0 . As a result, the velocity is divergence-free from Eq.(12), and the last term on the right-hand side of the Cahn-Hilliard equation Eq.(1) vanishes. From Eq.(9), we obtain \beta=\beta_{G}+(\beta_{M}^{L}-\beta_{G})\varphi and \mathbf{m}_{\beta}=\beta_{G}\mathbf{u}+(\beta_{M}^{L}-\beta_{G})\mathbf{m}_{\varphi} , showing that the contribution of \beta_{M}^{S} disappears. Finally in Eq.(14), \mathbf{f}_{s} becomes \xi_{\varphi}\nabla\varphi , and \mathbf{f}_{d}=\mathbf{0} due to \alpha_{S}=(\varphi-\varphi\phi)=0 . Therefore, the temperature remains its homogeneous initial value, and the simplified system from the proposed model in Section 2.1 with the given condition is equivalent to the consistent and conservative Phase-Field method for two-phase incompressible flows in (39), by noticing that \tilde{\varphi}=2\varphi-1 is the order parameter of the Cahn-Hilliard equation in (39).
+∎
+Theorem 2.2.
+The proposed model in Section 2.1 is consistent with the isothermal fictitious domain Brinkman penalization (FD/BP) method for fluid-structure interactions in (4, 6).
+Proof.
+Given \phi=0 and T=T_{0}<T_{M} at t=0 , as already analyzed in Section 2.1.2 and Section 2.1.6, we obtain \phi=0 and therefore \mathbf{m}_{\varphi\phi}=\mathbf{0} and \xi_{\phi}=0 from Eq.(4), and T=T_{0} from Eq.(16), at \forall t>0 . As a result, the velocity is divergence-free from Eq.(12), and the last term on the right-hand side of the Cahn-Hilliard equation Eq.(1) vanishes. In Eq.(14), \mathbf{f}_{s} becomes \mathbf{0} , and \mathbf{f}_{d}=A_{d}(\mathbf{u}_{S}-\mathbf{u}) with \alpha_{S}=\varphi . In this case, the gas phase should be understood as an arbitrary incompressible fluid and the solid phase represents the fictitious domain, where the material properties are the same as the fluid ones without loss of generality. As a result, we obtain \beta=\beta_{G} and \mathbf{m}_{\beta}=\beta_{G}\mathbf{u} from Eq.(9). Therefore, the temperature remains its initial homogeneous value, and the simplified system from the proposed model in Section 2.1 with the given condition is equivalent to the FD/BP method for fluid-structure interactions in (4, 6). Notice that A_{d} is defined proportional to \alpha_{S} in (4, 6), different from the one in Eq.(14), and the level-set method, instead of the Cahn-Hilliard equation, is used in (6) for the volume fraction of the fictitious domain (or the solid phase).
+∎
+Theorem 2.3.
+The proposed model in Section 2.1 is consistent with the Phase-Field model of solidification in (7).
+Proof.
+Given \varphi=1 and \mathbf{u}=\mathbf{0} at t=0 , we have \xi_{\varphi}=0 and therefore \partial\varphi/\partial t=0 from Eq.(1), which implies \varphi=1 and \mathbf{m}_{\varphi}=\mathbf{u} at \forall t>0 . Further requiring that the material properties of the liquid and solid phases of “ M ” are identical, we obtain \nabla\cdot\mathbf{u}=0 and \partial\mathbf{u}/{\partial t}=\mathbf{0} from Eq.(12) and Eq.(14), respectively. Therefore, we obtain \mathbf{u}=\mathbf{0} at \forall t>0 , and all the convection terms are dropped. Putting all these to the phase change equation Eq.(4) and the energy equation Eq.(16), they become the same as those in (7), except that p^{\prime}(\phi) is replaced with \tilde{p}^{\prime}(\phi) in the present study.
+∎
+Remark:
+In the proofs of Theorem 2.1, Theorem 2.2, and Theorem 2.3, the given conditions are assumed to be true at t=0 in the entire domain for convenience. Actually, we only need those conditions to be true locally at any moment, and Theorem 2.1, Theorem 2.2, and Theorem 2.3 will again be valid. In other words, the proposed model in Section 2.1 will automatically reduce to the corresponding multiphase models whenever one of the phases is locally absent.
+3 Discretization of the governing equations
+The numerical procedure to solve the proposed model in Section 2.1 is introduced in this section. The differential operators are discretized with the conservative finite difference method as those in (39), such that the convection terms are discretized by the 5th-order WENO scheme [47], while the divergence, gradient, and Laplacian operators are approximated by the 2nd-order central difference (27). These discrete operators have been carefully verified in various studies (39, 38, 37, 41, 40). Following the notations in (39), the discrete operators are denoted by \tilde{(\cdot)} , and time levels are indicated by superscript.
+We use \frac{\gamma_{t}f^{n+1}-\hat{f}}{\Delta t} to denote the discretization of the time derivative \frac{\partial f}{\partial t} , and f^{*,n+1} to denote the approximation of f^{n+1} from previous time levels. Here, \gamma_{t}=1 , \hat{f}=f^{n} , and f^{*,n+1}=f^{n} in the 1st-order case, while they are \gamma_{t}=1.5 , \hat{f}=2f^{n}-0.5f^{n-1} , and f^{*,n+1}=2f^{n}-f^{n-1} in the 2nd order case. Unless otherwise specified, we use the 2nd-order scheme.
+The major concern is reproducing the physical connections among the governing equations, discussed in Section 2.1, at the discrete level, following the consistency conditions.
+First, the Cahn-Hilliard equation Eq.(1) is solved with the convex splitting scheme in (22, 39), along with the consistent and conservative boundedness mapping (38). Then, the fully-discretized Cahn-Hilliard equation is recovered and rearranged to be
+\frac{\gamma_{t}\varphi^{n+1}-\hat{\varphi}}{\Delta t}+\tilde{\nabla}\cdot\tilde{\mathbf{m}}_{\varphi}=\varphi^{*,n+1}\tilde{\nabla}\cdot\mathbf{u}^{*,n+1}.
+(17)
+Therefore, we obtain \varphi^{n+1} and the discrete Phase-Field flux \tilde{\mathbf{m}}_{\varphi} after solving the Cahn-Hilliard equation.
+Second, we proceed to solve the phase change equation Eq.(4). To preserve the consistency of volume fraction conservation on the discrete level, it should be noted that \varphi^{n+1} and \tilde{\mathbf{m}}_{\varphi} in Eq.(17) are inputs to solve the phase change equation. The fully-discretized phase change equation is
+\displaystyle\frac{\gamma_{t}(\varphi^{n+1}\phi^{n+1})-\widehat{(\varphi\phi)}}{\Delta t}+\tilde{\nabla}\cdot(\tilde{\mathbf{m}}_{\varphi}\tilde{\phi}^{*,n+1})=-M_{\phi}\tilde{\xi}_{\phi}+\varphi^{*,n+1}\phi^{*,n+1}\tilde{\nabla}\cdot\mathbf{u}^{*,n+1},
+(18)
+\displaystyle\tilde{\xi}_{\phi}=-\lambda_{\phi}\tilde{\nabla}\cdot(\overline{\varphi^{n+1}}\tilde{\nabla}\phi^{n+1})+\frac{\lambda_{\phi}}{\eta_{\phi}^{2}}\varphi^{n+1}\tilde{g}^{\prime}(\phi^{n+1})+\frac{\rho_{M}^{L}L}{T_{M}}\varphi^{n+1}\tilde{p}^{\prime}(\phi^{*,n+1})(T_{M}-T^{*,n+1}),
+\displaystyle\tilde{\mathbf{m}}_{\varphi\phi}=\tilde{\mathbf{m}}_{\varphi}\tilde{\phi}^{*,n+1},
+where \tilde{\phi} represents the WENO reconstruction, \overline{\varphi} denotes the linear interpolation, and \tilde{g}^{\prime}(\phi^{n+1}) is linearized g^{\prime}(\phi^{n+1}) around \phi^{*,n+1} from Taylor expansion.
+After solving Eq.(17) and Eq.(18), (\rho C_{p}) , \tilde{\mathbf{m}}_{(\rho C_{p})} , and \kappa are obtained from Eq.(9), noticing that \mathbf{u}^{*,n+1} is applied to Eq.(9) due to the consistency of reduction, see (37). Then, the temperature is updated from the following fully-discretized energy equation:
+\displaystyle\frac{\gamma_{t}(\rho C_{p})^{n+1}T^{n+1}-\widehat{(\rho C_{p})T}}{\Delta t}+\tilde{\nabla}\cdot(\tilde{\mathbf{m}}_{(\rho C_{p})}\tilde{T}^{*,n+1})+\rho_{M}^{L}L\left[\frac{\gamma_{t}(\varphi^{n+1}\phi^{n+1})-\widehat{(\varphi\phi)}}{\Delta t}+\tilde{\nabla}\cdot\tilde{\mathbf{m}}_{\varphi\phi}\right]
+(19)
+\displaystyle=\tilde{\nabla}\cdot(\overline{\kappa^{n+1}}\tilde{\nabla}T^{n+1})+Q_{T}^{n+1},
+where \tilde{T} represents the WENO reconstruction and \overline{\kappa} denotes the linear interpolation.
+It should be noted that the terms in the bracket in Eq.(19) are identical to the left-hand side of the fully-discretized phase change equation in Eq.(18). This numerical correspondence is consistent with the derivation in Section 2.1.6.
+Finally, the momentum equation Eq.(14) is solved, majorly based on the 2nd-order projection scheme on a collocated grid (39), which has been carefully analyzed and successfully applied to two- and multi-phase problems [39, 37, 38].
+Again, \rho , \tilde{\mathbf{m}}_{\rho} , and \mu in the momentum equation are directly computed from Eq.(9) and the surface tension force \mathbf{f}_{s}^{n+1} is computed from its definition in Eq.(14) with the balanced-force method (39, 28), while the drag force \mathbf{f}_{d} is treated implicitly. As mentioned in Section 2.1.5, \mathbf{f}_{d} should be predominant over either the inertial or viscous effect inside the solid phase. In other words, from Eq.(14), A_{d}|_{\alpha_{S}=1}=C_{d}/e_{d} should be much larger than \rho/\Delta t (inertia) or \mu/h^{2} (viscous). Here h denotes the grid size. To achieve this goal, we set C_{d} as (\rho^{n+1}/\Delta t+\mu^{n+1}/h^{2}) , and e_{d} is fixed to be 10^{-3} . Therefore, \mathbf{f}_{d} will always be thousand times larger than both the inertial and viscous effects inside the solid phase, regardless of the numerical setup or material properties.
+The divergence of the velocity at the new time level, which appears in the projection scheme, is determined from Eq.(12), i.e.,
+\displaystyle\tilde{\nabla}\cdot\mathbf{u}^{n+1}=\frac{M_{\phi}(\rho_{M}^{L}-\rho_{M}^{S})}{\rho^{n+1}}\xi_{\phi}^{n+1},
+(20)
+where \xi_{\phi}^{n+1} is obtained from its definition in Eq.(4).
+On the continuous level, as discussed in Section 2.1.4, with \rho and \mathbf{m}_{\rho} from Eq.(9) and \nabla\cdot\mathbf{u} in Eq.(12), Eq.(13) is implied. However, this is not necessarily true after discretization when the phase change happens and the densities of the liquid and solid phases are not the same. As a result, the consistency of mass conservation and consistency of mass and momentum transport are violated. In order to remedy this issue, a momentum source S_{m}\mathbf{u}^{*,n+1} is added to the momentum equation, where S_{m} is the residual of the fully-discretized mass conservation equation, i.e.,
+S_{m}=\frac{\gamma_{t}\rho^{n+1}-\hat{\rho}}{\Delta t}+\tilde{\nabla}\cdot\tilde{\mathbf{m}}_{\rho}.
+(21)
+It should be noted that S_{m} only appears on the discrete level due to discretization errors, and it is exactly zero away from the liquid-solid interface.
+Following the above steps, the physical connections among different parts of the proposed model are correctly captured at the discrete level. With similar analyses to those in the proofs of Theorem 2.1, Theorem 2.2, and Theorem 2.3 in Section 2.2, one can easily show that those theorems remain intact on the discrete level. This will be numerically verified in Section 4.1.
+4 Results
+In this section, various numerical tests are performed to verify and demonstrate the proposed model in Section 2.1. Then, the predictions from the proposed model are compared to experimental data and other simulations. Finally, two challenging setups are performed to illustrate the capability of the proposed model. The formal order of accuracy and the conservation property of the discrete operators in Section 3 have been carefully verified in (39, 38, 37) and therefore those verifications are not repeated here. Unless otherwise specified, the initial velocity is zero, and \eta_{\varphi}=\eta_{\phi}=h and M_{\varphi}\lambda_{\varphi}=10^{-9} are set, where h denotes the grid/cell size.
+All the upcoming numerical tests initialize the order parameters with a hyperbolic tangent profile, i.e., \frac{1}{2}\left(1+\tanh\left(\frac{\mathcal{D}}{\sqrt{2}\eta}\right)\right) . Here, \mathcal{D} is the signed distance function of “ G - M ” interface with \eta=\eta_{\varphi} when initializing \varphi , while it is the signed distance function of the liquid-solid interface with \eta=\eta_{\phi} to initialize \phi . When the liquid phase is initially absent, \phi|_{t=0}=0 is set, while \phi|_{t=0}=1 is used when there is no solid phase at the beginning. Similarly, if the gas phase is initially absent, we have \varphi|_{t=0}=1 . The signed distance function in the present study is determined analytically, for example, it is \mathcal{D}_{c}=r_{c}-\sqrt{(x-x_{c})^{2}+(y-y_{c})^{2}} for a circle centered at (x_{c},y_{c}) with a radius of r_{c} , and it is \mathcal{D}_{h}=y_{h}-y for a horizontal line at y_{h} . Further, \mathcal{D}=\min(\mathcal{D}_{h},-\mathcal{D}_{c}) is the signed distance function positive below the horizontal line but outside the circle.
+4.1 Verification
+We first verify the theorems in Section 2.2 with problems having analytical solutions. Then, the correspondence of the mass conservation and the volume change of the phase change material “ M ” is illustrated. Finally, the effectiveness of the proposed surface tension and drag forces is demonstrated.
+4.1.1 Large-Density-Ratio advection
+We consider a large-density-ratio advection problem to verify Theorem 2.1 where the solid phase is absent and the temperature is above the melting temperature.
+The unit domain considered is doubly periodic. A circular drop, whose density is \rho_{M}^{L}=10^{4} , is initially at the center of the domain with a radius 0.2 , surrounded by a gas whose density is \rho_{G}=1 . The specific heats of the phases are 1\times 10^{3} , and the material properties of the liquid phase are shared with the solid phase. The viscosity, heat conduction, surface tension, and gravity are neglected. Other parameters are \Gamma_{\phi}=2.41\times 10^{-7} , \mu_{\phi}=2.6\times 10^{-5} , T_{M}=2 , L=100 , and \eta_{\varphi}=\eta_{\phi}=3h .
+The solid phase is initially absent, i.e., \alpha_{S}=\varphi-\varphi\phi=0 , and therefore we have initial \phi being 1 . The initial velocity and temperature are \mathbf{u}_{0}=\{u_{0},v_{0}\}=\{1,1\} and T_{0}=3>T_{M} , respectively.
+The domain is discretized by 128\times 128 grid cells, and the time step is determined from u_{0}\Delta t/h=0.1 .
+From Theorem 2.1, the solid phase remains absent, i.e., \alpha_{S}=\varphi-\varphi\phi=0 or \phi=1 at \forall t>0 , the temperature remains homogeneous, i.e., T=T_{0} at \forall t>0 , and the two-phase flow solution is produced, with the above setup.
+Expected results are obtained and shown in Fig.2. In this setup, the circular drop is translated by the homogeneous velocity. Therefore, there should not be any changes to the shape of the drop and the velocity.
+From Fig.2 a), we observe that the drop correctly returns to its initial location at t=1 , without any deformation, and the streamlines at t=1 remain straight and homogeneous. Quantitatively, the difference of the velocity from its initial value is the round-off error, as shown in Fig.2 b).
+Fig.2 b) also shows that Theorem 2.1 is true due to \phi=1 and T=T_{0} at \forall t>0 .
+It is worth mentioning that the density ratio in this case is 10^{4} , and there are no physical effects, e.g., viscosity and thermal conduction, to homogenize the solution. Without satisfying the consistency conditions, the drop will suffer from unphysical deformations, and the velocity and order parameter \phi will become fluctuating, which are observed in (39, 38, 37, 40). The same will happen to the temperature if Eq.(15) is applied, instead of the proposed Eq.(16) that satisfies the consistency conditions, as analyzed in Section 2.1.6.
+Figure 2: Results of the large-density-ratio advection. a) Streamlines at t=1 and interface of the drop ( \varphi=0.5 ) at t=0 and t=1 . Blue arrow lines: streamlines at t=1 , Black solid line: interface at t=0 , Red dashed line: interface at t=1 . The drop returns to its original location at t=1 without deformation. b) L_{\infty} norms of (\phi-1) , (u-u_{0}) , (v-v_{0}) , and (T-T_{0}) versus time. The velocity preserves its initial value, the solid phase remains absent, and the temperate equilibrium is maintained exactly, which verify Theorem 2.1.
+4.1.2 Couette flow
+A Couette flow problem is solved to verify Theorem 2.2 where the liquid phase is absent and the temperature is below the melting temperature.
+The unit domain considered is periodic along the x axis while is no-slip along the y axis. Both the top and bottom boundaries are adiabatic but the top one is moving with a unit horizontal velocity, i.e., u_{top}=1 . The solid phase is at the bottom below y=0.3 , while the gas phase fills the rest of the domain. The input parameters are \rho=1 , \mu=0.15 , C_{p}=10^{3} , \kappa=0 , \Gamma_{\phi}=2.41\times 10^{-7} , \mu_{\phi}=2.6\times 10^{-5} , T_{M}=2 , L=100 , \sigma=10^{-2} , and \mathbf{g}=\mathbf{0} .
+The liquid phase is initially absent, i.e., \alpha_{L}=\varphi\phi=0 , and therefore we have \phi=0 . The initial temperature is T_{0}=1 which is lower than the melting temperature T_{M}=2 .
+The domain is discretized by 128\times 128 grid cells, and the time step is determined by u_{top}\Delta t/h=0.1 .
+The above setup is equivalent to the following Couette flow:
+\frac{\partial u}{\partial t}=\nu\frac{\partial^{2}u}{\partial y^{2}},\quad u=u_{0}\quad\mathrm{at}\quad y=y_{0},\quad u=u_{1}\quad\mathrm{at}\quad y=y_{1},\quad u|_{t=0}=0,\quad\nu=0.15,
+(22)
+where u_{0}=0 , u_{1}=u_{top}=1 , y_{0}=0.3 , and y_{1}=1 .
+The exact solution of Eq.(22) is
+u_{E}=\left\{\begin{array}[]{cc}\sum_{\alpha=1}^{\infty}\frac{2(u_{1}\cos(\alpha\pi)-u_{0})}{\alpha\pi}\exp\left[-\nu\left(\frac{\alpha\pi}{y_{1}-y_{0}}\right)^{2}t\right]\sin\left[\frac{\alpha\pi}{y_{1}-y_{0}}(y-y_{0})\right]\\
++\frac{u_{1}-u_{0}}{y_{1}-y_{0}}(y-y_{0})+u_{0},\quad y_{0}\leqslant y\leqslant y_{1},\\
+0,\quad\mathrm{else},\end{array}\right.
+(23)
+derived from separation of variables.
+Theorem 2.2 implies that the liquid phase remains absent, i.e., \alpha_{L}=\varphi\phi=0 or \phi=0 at \forall t>0 , the temperature remains homogeneous, i.e., T=T_{0} at \forall t>0 , and the solution in Eq.(23) is produced (or approximated) by the FD/BP FSI formulation, with the present setup.
+Expected results are obtained and shown in Fig.3. First in Fig.3 a), the profile of the solid fraction (\alpha_{S}=\varphi-\varphi\phi=\varphi) at t=1 overlaps the one at t=0 , representing that the solid phase is stationary. Moreover, the profiles of the solution from the proposed model are indistinguishable from the exact solution in Eq.(23), noticing that the summation in Eq.(23) is from \alpha=1 to \alpha=10^{6} .
+Theorem 2.2 is true, as shown in Fig.3 b) that \phi=0 and T=T_{0} at \forall t>0 . In addition, the unidirectional condition, which is required to obtain Eq.(22), is also demonstrated, as shown in Fig.3 b) that v=0 at \forall t>0 .
+Figure 3: Results of the Couette flow. a) Profile of \varphi at t=0 and t=1 , and profiles of u_{E} and u at t=0 , t=0.1 , t=0.3 , t=0.6 , and t=1 . Here, u_{E} is the exact solution of the Couette flow in Eq.(23), and the numerical predictions and analytical solutions are overlapped. b) L_{\infty} norms of \phi , v , and (T-T_{0}) versus time. The liquid phase remains absent, the temperature equilibrium is preserved, and the unidirectional flow condition is produced, which verify Theorem 2.2.
+4.1.3 Stefan problem
+The Stefan problem is performed to verify Theorem 2.3 where both the gas phase and the flow are absent and the liquid and solid phases have matched material properties (except the thermal conductivities). The setup in (45) is followed. The unit domain is periodic along the x direction. Both the top and bottom boundaries are free-slip and adiabatic. The material properties are: \rho=1 , \mu=1 , C_{p}=1 , \kappa_{M}^{L}=0.05 , \kappa_{M}^{S}=1 , T_{M}=1 , L=0.53 , and \mathbf{g}=\mathbf{0} . Other parameters are \eta_{\phi}=\sqrt{2a_{\phi}}\zeta_{\phi} , M_{\phi}=1/(\nu_{\phi}\zeta_{\phi}^{2}L) , and \lambda_{\phi}=1/(\nu_{\phi}M_{\phi}) , where a_{\phi}=0.0625 , \nu_{\phi}=1 , and \zeta_{\phi}=0.002 , the same as those in (45). Initially, the liquid-solid interface is at y=s_{0}=0.2 , above which there is the solid phase having a temperature T_{0}^{S}=1.1 , while below which there is the liquid phase having a temperature T_{0}^{L}=1.53 . The domain is discretized by 5\times 2000 grid cells, and the time step is \Delta t=5\times 10^{-6} .
+The above setup is to produce the following Stefan problem (45) (based on \Delta T=T-T_{M} ):
+\displaystyle\frac{\partial\Delta T}{\partial t}=\frac{\partial}{\partial y}\left(\kappa_{M}^{L}\frac{\partial\Delta T}{\partial y}\right)\quad y\in(-\infty,s(t)),\quad\frac{\partial\Delta T}{\partial t}=\frac{\partial}{\partial y}\left(\kappa_{M}^{S}\frac{\partial\Delta T}{\partial y}\right)\quad y\in(s(t),+\infty),
+(24)
+\displaystyle\Delta T=T_{0}^{L}-T_{M}\quad\mathrm{at}\quad y\rightarrow-\infty,\quad\Delta T=T_{0}^{S}-T_{M}\quad\mathrm{at}\quad y\rightarrow+\infty,
+\displaystyle\Delta T=0,\quad\mathrm{at}\quad y=s(t),
+\displaystyle L\frac{ds}{dt}=\kappa_{M}^{S}\frac{\partial\Delta T}{\partial y}|_{y=s^{+}}-\kappa_{M}^{L}\frac{\partial\Delta T}{\partial y}|_{y=s^{-}},
+where s(t) is the location of the liquid-solid interface. Eq.(24) has an analytical self-similar solution (56, 45):
+\displaystyle s_{E}(t)=s_{0}+2\alpha\sqrt{t},
+(25)
+\displaystyle T_{E}-T_{M}=\left\{\begin{array}[]{cc}(T_{0}^{L}-T_{M})\left[\frac{\mathrm{erfc}\left(\frac{y-s_{0}}{2\sqrt{\kappa_{M}^{L}t}}\right)-\mathrm{erfc}\left(\frac{\alpha}{\sqrt{\kappa_{M}^{L}}}\right)}{2-\mathrm{erfc}\left(\frac{\alpha}{\sqrt{\kappa_{M}^{L}}}\right)}\right]&y<s(t),\\
+(T_{0}^{S}-T_{M})\left[1-\frac{\mathrm{erfc}\left(\frac{y-s_{0}}{2\sqrt{\kappa_{M}^{S}t}}\right)}{\mathrm{erfc}\left(\frac{\alpha}{\sqrt{\kappa_{M}^{S}}}\right)}\right]&y>s(t),\end{array}\right.
+\displaystyle\alpha=\frac{\sqrt{\kappa_{M}^{S}}}{\sqrt{\pi}L}\frac{T_{M}^{S}-T_{M}}{\mathrm{erfc}(\alpha/\sqrt{\kappa_{M}^{S}})}\exp\left(-\frac{\alpha^{2}}{\kappa_{M}^{S}}\right)+\frac{\sqrt{\kappa_{M}^{L}}}{\sqrt{\pi}L}\frac{T_{M}^{L}-T_{M}}{2-\mathrm{erfc}\left(\alpha/\sqrt{\kappa_{M}^{L}}\right)}\exp\left(-\frac{\alpha^{2}}{\kappa_{M}^{L}}\right).
+Numerical results are compared to the exact solution Eq.(25), and shown in Fig.4. The interface location is specified as the 0.5 contour of (\varphi\phi) from the numerical results. Both the temperature and interface location agree with the exact solution very well. Minor discrepancy is observed near the domain boundary at t=0.1 in Fig.4 a) because in practice the domain is not infinite. Moreover, the L_{\infty} norms of (\varphi-1) , u , and v are on the orders of 10^{-16} , 10^{-33} , and 10^{-34} , respectively, at the end of the simulation, which demonstrates Theorem 2.3.
+Figure 4: Results of the Stefan problem. a) Profiles of the temperature at different time. Here, T_{E} is the exact solution of the Stefan problem in Eq.(25). b) Location of the liquid-solid interface versus time. The numerical prediction agrees well with the analytical solution, which verifies Theorem 2.3.
+4.1.4 The mass conservation and volume change
+Here, we consider the effect of the mass conservation, which leads to the non-divergence-free velocity, i.e., Eq.(12), when the phase change happens and the liquid and solid phases have different densities. Such an effect has been overlooked by many existing models.
+The unit domain considered is periodic along the x axis. The bottom boundary is no-slip and has a fixed temperature T_{bottom}=5 , while the top one is an outflow boundary having a fixed pressure P_{top}=0 and zero heat flux.
+At the bottom of the domain below y=0.3 is the liquid phase, whose material properties are \rho_{M}^{L}=1000 , \mu_{M}^{L}=1\times 10^{-3} , (C_{p})_{M}^{L}=1 , and \kappa_{M}^{L}=200 . Floating on the liquid phase is the solid phase, whose material properties are \rho_{M}^{S}=900 , \mu_{M}^{S}=1\times 10^{-3} , (C_{p})_{M}^{S}=1 , and \kappa_{M}^{S}=300 . Above y=0.6 is the gas phase, whose material properties are \rho_{G}=1 , \mu_{G}=2\times 10^{-5} , (C_{p})_{G}=0.1 , and \kappa_{G}=100 . Other parameters are T_{M}=1 , L=20 , \sigma=0.0728 , \rho_{M}^{L}L\Gamma_{\phi}/T_{M}=10 , M_{\phi}=5\times 10^{-4} , and \mathbf{g}=(0,-9.8) . The initial temperature is T_{0}=0.5 . The domain is discretized by 128\times 128 grid cells, and the time step is \Delta t=10^{-3} .
+The materials are heated by the bottom wall whose temperature is higher than the melting temperature. As a result, the solid phase will melt and finally disappear. Since the liquid density is 10% larger than the solid phase, the final volume of the phase change material should be smaller than its initial value, in order to honor the mass conservation.
+Results are shown in Fig.5 and match the expectation.
+From Fig.5 a), the liquid-solid interface is moving upward while at the same time the gas-solid interface is moving downward. At the beginning, the volume (area) of “ M ”, including its liquid and solid phases, is 0.6 . At the end of the simulation, there is only the liquid phase of “ M ” in the domain, and the gas-liquid interface stays horizontally below y=0.6 , indicating that the volume of “ M ” is smaller than its initial value.
+Quantitative data are reported in Fig.5 b) where the displacements of the liquid-solid and gas-solid interfaces versus time are plotted. The gas-solid interface is defined as the 0.5 contour of \varphi , while the liquid-solid interface is the 0.5 contour of (\varphi\phi) . We observe that the liquid-solid interface actually moves downward at the very beginning because the initial temperature is below the melting temperature. As a result, solidification happens in that period. As the materials are heated from the bottom wall, the solid melts, leading to the rise of the liquid-solid interface but fall of the gas-solid interface, as expected. The melting process ends before t=4 . We estimate the mass of the phase change material “ M ” simply by [\rho_{M}^{L}s_{LS}+\rho_{M}^{S}(s_{GS}-s_{LS})] , where s_{LS} and s_{GS} denote the locations of the liquid-solid and gas-solid interfaces, respectively, illustrated in the first snapshot in Fig.5 a). As plotted in Fig.5 b), the change of [s_{GS}+(\rho_{M}^{L}/\rho_{M}^{S}-1)s_{LS}] is negligible, which implies that the movements of the interfaces are constrained by the mass conservation. One can expect a more obvious displacement of the gas-solid interface, induced by the phase change, to appear if the density difference of the liquid and solid phases of the phase change material is larger than the present setup.
+Although the proposed model strictly satisfies the mass conservation, i.e., Eq.(13), the present scheme does not always do, as discussed in Section 3. Fig.5 c) shows the relative changes of the total mass ( \int_{\Omega}\rho d\Omega ) and the mass of “ M ” ( \int_{\Omega}\rho_{M}d\Omega ) versus time. Here, \rho_{M}=\rho_{M}^{L}(\varphi\phi)+\rho_{M}^{S}(\varphi-\varphi\phi) and the integral is computed from the mid-point rule. It should be noted that the total mass in this case is not conserved, and its change is related to the volume change of “ M ” during the phase change. The initial decrease of the total mass corresponds to the solidification process, where the volume of “ M ” expands and therefore the gas is squeezed out. As melting occurs, the total mass increases because the volume of “ M ” reduces, and the gas moves into the domain. When melting is completed, the total mass stops changing as well. On the other hand, the mass of “ M ” should be conserved even though the phase change happens, while it is not exactly true due to numerical errors. Nonetheless, its relative change is very small, on the order of 10^{-5} , which is satisfactory. It should be noted that as long as the velocity is divergence-free, i.e., in the present work the phase change is absent or the densities of the liquid and solid phases are the same, the present scheme exactly conserves the mass of “ M ” as well as “ G ” on the discrete level, see (39, 38).
+In summary, the proposed model automatically and physically captures the volume change induced by the phase change, and therefore the mass conservation, thanks to the consistency of mass conservation. This physical behavior is not correctly captured in many existing models, where the velocity is assumed to be divergence-free.
+Figure 5: Results of the mass conservation and volume change. a) Snapshots of the phases at t=0.0 , t=2.5 , and t=5.0 , and schematic of the locations of the liquid-solid ( s_{LS} ) and gas-solid ( s_{GS} ) interfaces. White: the gas phase, Orange: the liquid phase, Blue: the solid phase. b) Displacements of the gas-solid and liquid-solid interfaces versus time. The displacements of the interfaces are constrained by the mass conservation, quantified by \Delta[s_{GS}+(\rho_{M}^{L}/\rho_{M}^{S}-1)s_{LS}]=0 . c) Relative changes of the total mass and the mass of the phase change material “ M ” versus time. The total mass is changing because the gas moves in and out of the domain following the volume change of the phase change material. The mass of the phase change material changes slightly (less than 0.004 %) due to numerical errors.
+4.1.5 Performances of surface tension and drag force models
+Here, we demonstrate the performances of the surface tension force \mathbf{f}_{s} , which models the surface tension at the gas-liquid interface, and the drag force \mathbf{f}_{d} , which enforces zero velocity in the solid phase and therefore the no-slip condition at the solid boundary, in the momentum equation Eq.(14). Unless otherwise specified in this section, the following setup is employed. The material properties are \rho_{M}^{L}=2.70\times 10^{3}\mathrm{kg/m^{3}} , \mu_{M}^{L}=1.4\times 10^{-3}\mathrm{Pa\cdot s} , (C_{p})_{M}^{L}=1.0424\times 10^{3}\mathrm{J/(K\cdot kg)} , \kappa_{M}^{L}=91\mathrm{W/(m\cdot K)} , \rho_{M}^{S}=2.70\times 10^{3}\mathrm{kg/m^{3}} , \mu_{M}^{S}=1.4\times 10^{-3}\mathrm{Pa\cdot s} , (C_{p})_{M}^{S}=0.91\times 10^{3}\mathrm{J/(K\cdot kg)} , \kappa_{M}^{S}=211\mathrm{W/(m\cdot K)} , \rho_{G}=0.4\mathrm{kg/m^{3}} , \mu_{G}=4\times 10^{-5}\mathrm{Pa\cdot s} , (C_{p})_{G}=1.1\times 10^{3}\mathrm{J/(K\cdot kg)} , \kappa_{G}=61\times 10^{-3}\mathrm{W/(m\cdot K)} , \Gamma_{\phi}=1.3\times 10^{-3}\mathrm{m\cdot K} , \mu_{\phi}=1.3\times 10^{-3}\mathrm{m/(s\cdot K)} , T_{M}=933.6\mathrm{K} , L=3.8384\times 10^{5}\mathrm{J/kg} , \sigma=0.87\mathrm{N/m} , and \mathbf{g}=(0,-9.8) . The governing equations are non-dimensionalized by a density scale 1\mathrm{kg/m^{3}} , a length scale 0.01\mathrm{m} , an acceleration scale 1\mathrm{m/s^{2}} , and a temperature scale 933.6\mathrm{K} . The domain considered is [1\times 1] , and all the boundaries are no-slip and adiabatic except that the bottom one has a fixed temperature T_{bottom}=0.5 . The center of a circular bubble having a radius 0.125 is at (0.5,0.275) . The solid phase is below y=0.1 , while the liquid phase fills the rest of the domain. The initial temperature is 0.5 inside the solid phase, while is 1.1 elsewhere. Notice that the non-dimensinalized melting temperature is 1 . The domain is discretized by 128\times 128 grid cells, and the time step is \Delta t=1\times 10^{-4} .
+In the first two cases, the drag force is zero, i.e., \mathbf{f}_{d}=\mathbf{0} , while the solid viscosity becomes 1\mathrm{Pa\cdot s} , which is about 1000 times larger than the liquid phase. In case 1, we employ the proposed surface tension force \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi in Eq.(14), while it is \mathbf{f}_{s}=\xi_{\varphi}\nabla\varphi in case 2.
+Results are shown in Fig.6, and the difference between case 1 ( \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi ) and case 2 ( \mathbf{f}_{s}=\xi_{\varphi}\nabla\varphi ) is obvious. In case 1, the surface tension force only acts at the upper part of the bubble, contacting the liquid phase, which is desirable. As a result, the bottom part of the bubble is easier to be deformed, while the upper part tends to be flattened. On the other hand in case 2, the surface tension force acts on the entire bubble interface, no matter whether the bubble is contacting the liquid or solid phase. Consequently, the bubble remains circular even after it is contacted by the solid phase at its bottom part. The above analysis is demonstrated in Fig.7, where the magnitude of the surface tension forces, i.e., |\mathbf{f}_{s}| , at t=0.20 in cases 1 and 2 is shown. It can be learned from Fig.6 that the surface tension force can be influential to the results, and Fig.7 demonstrates that the proposed surface tension force, i.e., \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi in case 1, is the one that should be chosen. An alternative formulation, i.e., \mathbf{f}_{s}=\xi_{\varphi}\nabla(\varphi\phi) , has also been tested, and it produced an unstable solution.
+Another issue, observed in Fig.6, is that the solid phase behaves like a fluid, even though it is about 1000 times more viscous than the liquid phase, and 2.5\times 10^{4} times more than the gas phase. In the ideal situation, the viscous force is infinite inside the solid phase, which in turn enforces zero velocity gradient there. In other words, after discretization, \tilde{\mu}_{M}^{S}/h^{2}>>\tilde{\rho}_{M}^{S}/\Delta t should be true, where \tilde{\mu} and \tilde{\rho} are the non-dimensionalized viscosity and density, and in this specific case, \mu_{M}^{S}>>1.6479\mathrm{Pa\cdot s} . We again tried \mu_{M}^{S}=1000\mathrm{Pa\cdot s} and it quickly became unstable. Therefore, increasing the solid viscosity is not an effective way to enforce zero velocity in the solid phase. This is the reason the drag force \mathbf{f}_{d} is introduced in the proposed model.
+Figure 6: Results of cases 1 and 2 at t=0.00 , t=0.05 , t=0.20 , t=0.30 , and t=0.50 . White: the gas phase, Orange: the liquid phase, Blue: the solid phase. Top: case 1 using the proposed surface tension force \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi . Bottom: case 2 using the original surface tension force \mathbf{f}_{s}=\xi_{\varphi}\nabla\varphi . The original surface tension force (case 2) also appears at the gas-solid interface and therefore the bubble is less deformable than the one in case 1. The solid behaves like a fluid although its viscosity is about 1000 times larger than the liquid phase.
+Figure 7: Magnitude of the surface tension forces |\mathbf{f}_{s}| at t=0.20 . a) Case 1: \mathbf{f}_{s}=\phi\xi_{\varphi}\nabla\varphi , b) Case 2: \mathbf{f}_{s}=\xi_{\varphi}\nabla\varphi . The proposed surface tension force in case 1 appears only at the gas-liquid interface, while the original one in case 2 mistakenly appears at the gas-solid interface.
+Next, the drag force \mathbf{f}_{d} is activated. In case 3, we apply the formulation of A_{d} in Eq.(14), while in case 4, an alternative definition of A_{d} , i.e., A_{d}=\varphi C_{d}\frac{(1-\phi)^{2}}{\phi^{3}+e_{d}} , is considered. The alternative A_{d} can be easily derived from the drag force model in \Omega_{M} proposed by Voller and Prakash (91) and the diffuse domain approach (52). Results are shown in Fig.8. It is obvious that the solid movement is suppressed after comparing Fig.8 to Fig.6, and this has also been quantitatively demonstrated in Section 4.1.2. As long as the bubble is “caught” by the solid from the bottom, it stops rising, unlike the one in Fig.6. Although both cases 3 and 4 produce similar results, one can observe that the bubble in case 4 is less deformed than the one in case 3 using the proposed formulation. This implies that the alternative A_{d} in case 4 has a larger effective region to enforce the velocity to be zero, while its influence on the overall dynamics is negligible. We conclude that both choices of A_{d} are valid, but we keep using the one in Eq.(14) in the present study because it is equivalent to the Carman-Kozeny equation (12).
+Figure 8: Results of cases 3 and 4 at t=0.00 , t=0.05 , t=0.50 , t=1.00 , and t=3.40 . White: the gas phase, Orange: the liquid phase, Blue: the solid phase. Top: case 3 using A_{d}=C_{d}\frac{\alpha_{S}^{2}}{(1-\alpha_{S})^{3}+e_{d}} . Bottom: case 4 using A_{d}=\varphi C_{d}\frac{(1-\phi)^{2}}{\phi^{3}+e_{d}} . Both choices of A_{d} successfully suppress the solid motion and produce similar results, but the one in case 4 has a larger effective region resulting in a less-deformed bubble.
+4.2 Melting of gallium in a rectangular cavity
+Here, we compare results from the proposed model to the experimental (29) and numerical (9, 50) results. Details of the setup have been given in (29, 9), and we follow those in the present study.
+A rectangular cavity, whose width is 8.89\mathrm{cm} and height is 6.35\mathrm{cm} , is initially filled with solid gallium whose temperature is 301.45\mathrm{K} . The left wall has a fixed temperature 311.15\mathrm{K} , it is 301.45\mathrm{K} at the right wall, while both the top and bottom walls are adiabatic. The material properties of gallium are: density 6093\mathrm{kg/m^{3}} , viscosity 1.81\times 10^{-3}\mathrm{Pa\cdot s} , specific heat 381.5\mathrm{J/(K\cdot kg)} , thermal conductivity 32\mathrm{W/(m\cdot K)} , melting temperature 302.93\mathrm{K} , and latent heat 80160\mathrm{J/kg} . The gravity is \mathbf{g}=(0,-9.8)\mathrm{kg/m^{2}} , and the buoyancy force is computed from the Boussinesq approximation, i.e., \mathbf{F}_{g}=-\rho_{0}\beta(T-T_{0})\mathbf{g} , where \rho_{0}=6095\mathrm{kg/m^{3}} , T_{0}=302.93\mathrm{K} , and \beta=1.2\times 10^{-4}\mathrm{/K} is the thermal expansion coefficient. \Gamma_{\phi} and \mu_{\phi} are chosen to be 1.2\times 10^{-4}\mathrm{m\cdot K} and 1.2\times 10^{-4}\mathrm{m/(s\cdot K)} .
+The governing equations are non-dimensionalized by a density scale 6095\mathrm{kg/m^{3}} , a length scale 0.01\mathrm{m} , an acceleration scale 0.01\mathrm{m/s^{2}} , and a temperature scale 302.93\mathrm{K} . The domain is discretized by 126\times 96 grid cells. The initial time step is \Delta t=0.05 and adaptively changes to be 0.5h/\max(u,v) .
+Results are shown in Fig.9 where the liquid-solid interface at selected moments is presented, and a reasonable agreement is reached with the experimental and numerical data. Both (9) and (50) employed the enthalpy-porosity technique where the liquid fraction is algebraically determined by the local temperature. The results from (9) is smoother but moves slower, probably attributed to neglecting the convection of the liquid fraction in the energy equation. The present results are close to those in (50). Both predict a similar melting speed but a more vertical interface than the experimental one.
+It is worth mentioning that the melting will not happen if the unmodified interpolation function p(\phi) in Eq.(2) is applied, because its derivative is zero in the solid-state. This demonstrates the significance of using the proposed \tilde{p}^{\prime}(\phi) in Eq.(4) in realistic problems. The more detailed analysis has been provided in Section 2.1.2.
+It is preferable to understand \mu_{\phi} and \Gamma_{\phi} as tunable parameters of the proposed model, instead of their physical meaning, since the practical interface thickness is much larger than the physical value. In practice, we tune \mu_{\phi} and \Gamma_{\phi} so that the numerical result matches the experimental one at t=2\mathrm{min} , and obtain the rest of the results with those parameters. When tuning \mu_{\phi} and \Gamma_{\phi} , we discover that \mu_{\phi} controls the speed of the phase change, while \Gamma_{\phi} affects the interface thickness. A larger \mu_{\phi} gives a larger M_{\phi} , and as a result accelerates the phase change. We observe an over-compressed interface when \Gamma_{\phi} is too small, while a too large \Gamma_{\phi} casts difficulty to initialize the interface. This can be explained by the energy mechanism in the Phase-Field model of solidification Eq.(2). \lambda_{\phi} controls the net effect of the thermodynamical compression and diffusion that preserve the interface thickness. A too small \lambda_{\phi} , resulting from a small \Gamma_{\phi} , basically removes those compression and diffusion effects and leads to a sharp interface. On the other hand, a large \lambda_{\phi} strengthens those effects, and a larger overheat is therefore needed to drive the order parameter, jumping from one equilibrium state to another across the double-well potential. We suggest \mu_{\phi} and \Gamma_{\phi} sharing the same value. We also test the effect of e_{d} in the drag force \mathbf{f}_{d} , and little difference is observed when reducing e_{d} from the default value 10^{-3} to 10^{-6} .
+Figure 9: Results of melting of gallium in a rectangular cavity and the liquid-solid interface is presented. Both Brent et al. (1988) (9) and Kim et al. (2011) (50) use the enthalpy-porosity technique but Brent et al. (1988) (9) neglect the convection of the liquid fraction in the energy equation. The present results behave similarly to those in Kim et al. (2011) (50) and a stronger melt convection is predicted. Nevertheless, all the numerical predictions are consistent with the experimental data.
+4.3 Rising bubbles with solidification
+Here, we consider a complicated case including interactions among the gas, liquid, and solid phases. The material properties of the liquid phase are \rho_{M}^{L}=2.475\times 10^{3}\mathrm{kg/m^{3}} , \mu_{M}^{L}=1.4\times 10^{-3}\mathrm{Pa\cdot s} , (C_{p})_{M}^{L}=1.0424\times 10^{3}\mathrm{J/(K\cdot kg)} , and \kappa_{M}^{L}=91\mathrm{W/(m\cdot K)} . They are \rho_{M}^{S}=2.70\times 10^{3}\mathrm{kg/m^{3}} , \mu_{M}^{S}=1.4\times 10^{-3}\mathrm{Pa\cdot s} , (C_{p})_{M}^{S}=0.91\times 10^{3}\mathrm{J/(K\cdot kg)} , and \kappa_{M}^{S}=211\mathrm{W/(m\cdot K)} for the solid phase, and \rho_{G}=0.4\mathrm{kg/m^{3}} , \mu_{G}=4\times 10^{-5}\mathrm{Pa\cdot s} , (C_{p})_{G}=1.1\times 10^{3}\mathrm{J/(K\cdot kg)} , and \kappa_{G}=61\times 10^{-3}\mathrm{W/(m\cdot K)} for the gas phase. The melting temperature is T_{M}=933.6\mathrm{K} , latent heat is L=3.8384\times 10^{5}\mathrm{J/kg} , the surface tension is \sigma=0.87\mathrm{N/m} , the gravity is \mathbf{g}=(0,-9.8)\mathrm{m/s^{2}} , and the Gibbs-Thomson and linear kinetic coefficients are chosen to be \Gamma_{\phi}=1.3\times 10^{-3}\mathrm{m\cdot K} and \mu_{\phi}=1.3\times 10^{-3}\mathrm{m/(s\cdot K)} , respectively. The governing equations are non-dimensionalized by a density scale 1\mathrm{kg/m^{3}} , a length scale 0.01\mathrm{m} , an acceleration scale 1\mathrm{m/s^{2}} , and a temperature scale 933.6\mathrm{K} the same as the melting temperature.
+A unit domain is considered. Both the left and right boundaries are no-slip and adiabatic walls. The bottom boundary is no-slip with a fixed temperature T_{bottom}=0.5 . The top boundary has a fixed pressure P_{top}=0 and a zero heat flux. The domain is discretized by 128\times 128 cells, and the time step is \Delta t=10^{-4} . The initial condition of the phases is illustrated in the first snapshot of Fig.10. Above y=0.75 is the gas phase, while the solid phase is at the bottom below y=0.1 . In the middle of the domain is the liquid phase inside which there are three circular gas bubbles. The radii of the bubbles from left to right are 0.075 , 0.125 , and 0.1 , and their centers are at (0.175,0.225) , (0.5,0.3) , and (0.8,0.26) , respectively. The initial temperature is 0.5, the same as T_{bottom} , inside the solid phase, while it is 1.1 elsewhere. Note that the non-dimensionalized melting temperature is 1 .
+Results are shown in Fig.10. The gas, liquid, and solid phases are filled by the white, orange, and blue colors, and the solid phase becomes green when the phase change is finished. The bubbles are moving upward due to the buoyancy effect, and, at the same time, the liquid is solidifying as its temperature is cooled down by the bottom wall. The motion of the bubbles drives the liquid and produces melt convection. As a result, the liquid below the bubbles solidifies faster than its neighbor, and the liquid-solid interface first “catches” the left bubble then the right one. As the largest bubble at the middle rises, the gas-liquid interface above starts to be perturbed, which, in turn, deviates the bubble rising from its vertical line. When the middle bubble merges the gas-liquid interface, a strong capillary wave is produced due to the surface tension. As the capillary wave travels back and forth, the liquid-solid interface keeps moving upward. Since the heat conductivity of the gas is much smaller than the liquid or solid, the solidification is slower right above the two trapped gas bubbles, and the liquid-solid interface forms a “V” shape there. As the liquid-solid interface gets closer to the gas-liquid one, the capillary wave is quickly attenuated by the viscosity, due to the zero velocity of the solid. At the end of the simulation, the liquid completely solidifies with two hollows formed by the right and left bubbles.
+Figure 10: Results of rising bubbles with solidification. White: the gas phase, Orange: the liquid phase, Blue: the solid phase, Green: the solid phase when the phase change is finished. From left to right and top to bottom, t=0.00 , t=0.05 , t=0.10 , t=0.15 , t=0.20 , t=0.30 , t=0.40 , t=0.50 , t=0.60 , t=0.70 , t=0.80 , t=0.90 , t=1.00 , t=1.10 , t=1.20 , t=1.40 , t=1.60 , t=1.80 , t=2.00 , t=2.20 , t=2.50 , t=3.00 , t=3.50 , t=4.00 , and t=5.00 .
+4.4 Melting and solidification
+Here, we consider melting a solid rectangle and solidifying it again. The material properties and setup are identical to those in Section 4.3, except that the thermal conductivity of the gas is \kappa_{G}=100\mathrm{W/(m\cdot K)} and that the bottom wall becomes adiabatic, and the temperature at the other boundaries is 2 before t=2 then 0.5 . The initial condition of the phases is illustrated in the first snapshot of Fig.11. A rectangular solid with a width 0.6 and height 0.4 is sitting above the bottom wall, and it traps two circular gas bubbles whose radii are 0.075 and 0.1 , and centers are located at (0.65,0.1) and (0.35,0.25) , respectively. The initial temperature is 0.8 inside the solid rectangle including the gas bubbles, while it is 2 elsewhere. Recall that the non-dimensionalized melting temperature is 1 .
+Results are shown in Fig.11. The two top corners of the solid rectangle first melt, and then the lateral edges. The gas in the larger bubble is released to the ambient, and the melted liquid covers the solid and flows downward to the bottom wall. The solid phase gradually disappears and the smaller gas bubble is finally released. The smaller bubble slides on the bottom wall back and forth, following the capillary wave above, and finally reaches the right wall. As the temperature at the boundaries becomes lower than the melting temperature, solidification first appears at the lateral walls, and the front of the liquid-solid interface moves towards the middle, along with the capillary wave moving up and down. At the end of the simulation, the melted liquid completely solidifies with the smaller gas bubble trapped at the bottom-right corner.
+Figure 11: Results of melting and solidification. White: the gas phase, Orange: the liquid phase, Blue: the solid phase, Green: the solid phase when the phase change is finished. From left to right and top to bottom, t=0.00 , t=0.05 , t=0.10 , t=0.15 , t=0.20 , t=0.30 , t=0.40 , t=0.50 , t=0.60 , t=0.70 , t=0.80 , t=0.90 , t=1.00 , t=1.10 , t=1.20 , t=1.40 , t=1.60 , t=1.80 , t=2.00 , t=2.10 , t=2.20 , t=2.30 , t=2.40 , t=2.50 , t=2.60 , t=3.00 , t=3.25 , t=3.50 , t=3.75 , and t=4.00 .
+5 Conclusion and future work
+In the present work, we consider the thermo-gas-liquid-solid flows, where the liquid and solid phases are experiencing solidification/melting. A novel consistent and conservative Phase-Field model is developed for such a kind of problem.
+The ingredients of the proposed model are the consistent and conservative Phase-Field method for incompressible two-phase flows (39), the fictitious domain Brinkman penalization (FD/BP) method for fluid-structure interactions (4, 6), and the Phase-Field model of solidification in (7). These successful models are physically coupled using the consistency of reduction, consistency of volume fraction conservation, consistency of mass conservation, and consistency of mass and momentum transport. These consistency conditions, which have been successfully applied in isothermal, multiphase, multicomponent, immiscible, and incompressible flows (39, 38, 37, 41, 40), are used in problems having variable temperature and phase changes for the first time, and are demonstrated to play an essential role in the present study.
+The Cahn-Hilliard equation Eq.(1) is applied to locate the gas and phase change material.
+The phase change equation Eq.(4) is derived from the solidification model in (7) using the diffuse domain approach (52). Then the consistency of volume fraction conservation is applied to admit the fully liquid/solid-state of the phase change material. The interpolation function in (7) is also modified so that the equilibrium states of the order parameter in the model depend on the temperature in a physical sense, which resolves the issue of initiating the phase change when the phase change material is fully liquid/solid at the beginning.
+After applying the consistency of mass conservation, we not only obtain the consistent mass flux, which appears in the momentum equation following the consistency of mass and momentum transport, but also the divergence of the velocity Eq.(12), which quantifies the volume change induced by the solidification/melting.
+Isothermal (or temperature equilibrium) solutions are admissible by the proposed energy equation Eq.(16) when the phase change is absent, after incorporating the consistency of mass conservation and the consistency of volume fraction conservation.
+To confine the surface tension effect on the gas-liquid interface only, we propose a new continuous surface tension force based on the one in (39). The Carman-Kozeny equation (12) is modified to enforce zero velocity in the solid phase. These two additional forces are added to the momentum equation Eq.(14).
+The proposed model defines the volume fractions of the gas, liquid, and solid phases unambiguously, and the volume change due to solidification/melting is included. The mass and energy conservation is always true, while the momentum conservation is honored if the solid phase is absent due to the no-slip condition at the solid boundary. The proposed model also satisfies the Galilean invariance. Moreover, we show in Theorem 2.1, Theorem 2.2, and Theorem 2.3 that the proposed model will automatically recover the corresponding two-phase models in (39, 4, 6, 7) when one of the phases is locally absent.
+The proposed model is numerically solved with a scheme that reproduces the physical connections in the model on the discrete level, and various numerical tests have been performed to verify and demonstrate the proposed model.
+Theorem 2.1, Theorem 2.2, and Theorem 2.3 are verified with the large-density-ratio advection, the Couette flow, and the Stefan problem, whose exact solutions are available. The results from the proposed model not only agree very well with the exact solutions but also match the expectations from the theorems.
+The volume change resulting from the phase change is illustrated, and it is quantitatively demonstrated to be consistent with the mass conservation. This physical behavior has not been captured in many existing models by assuming the divergence-free velocity all the time. The numerical error of mass conservation is very small, and therefore the present scheme conserves the mass satisfactorily, although not exactly.
+We illustrate that the surface tension force can affect the results significantly, especially when the velocity in the solid phase is not reduced to zero effectively, and the proposed surface tension force successfully confines its effective region at the gas-liquid interface and produces stable solutions. We also demonstrate that defining a solid viscosity much larger than the liquid one is not adequate to stop the movement of the solid phase. A new criterion, based on the scaling of the discretized inertial and viscous forces, is proposed. The solid viscosity needed to stop the solid motion is usually too large to obtain a stable solution. Therefore, increasing the solid viscosity is not an effective way to enforce zero velocity in the solid phase, and adding a drag force is preferable.
+In addition to the proposed drag force, an alternative modification on the Carman-Kozeny equation (12) is studied. Both the proposed one and the alternative one effectively leave to zero velocity in the solid phase and produce similar results, while the effective region of the alternative one is larger. We also analyze the scaling of the discretized inertial and viscous forces to determine the parameter C_{d} in the drag force model.
+After verifying the proposed model, a comparison to experimental and other numerical data is conducted, and the proposed model produces results that agree well with those data. We discover that the Gibbs-Thomson and linear kinetic coefficients, i.e., \Gamma_{\phi} and \mu_{\phi} , need to be carefully selected to obtain a quantitative agreement. \mu_{\phi} and \Gamma_{\phi} is positively correlated to the speed of phase change and the interface thickness, respectively, which can be explained by the energy mechanism of the Phase-Field model of solidification in (7). In practice, calibration may be needed to determine \mu_{\phi} , and we suggest that \mu_{\phi} and \Gamma_{\phi} take the same value.
+Finally, two challenging problems, including a wide range of material properties and strong interactions among different phases, are set up and successfully solved, which illustrates the capability of the model.
+The present study proposes a practical framework to incorporate the solidification/melting of a pure material into liquid-gas flows. This method can be extended to include more complicated physics, e.g., the thermo-capillary effect, anisotropy or dendritic growth, and solute transport during the solidification.
+One may notice that the proposed surface tension force in Eq.(14) for the thermo-gas-liquid-solid flows can be written as \mathbf{f}_{s}=\phi\mathbf{f}_{s}^{\prime} , where \mathbf{f}_{s}^{\prime} denotes the original surface tension model for two-phase flows without considering the solid phase, and the present study uses the Phase-Field formulation, i.e., \mathbf{f}_{s}^{\prime}=\xi_{\varphi}\nabla\varphi . Therefore, a possible way to include the thermo-capillary effect in the proposed model is to choose \mathbf{f}_{s}^{\prime} which incorporates that effect in two-phase flows, such as the one in (54). Another interesting but also practical direction to extend the proposed model is to include discrete particulate materials, due to their frequent appearance in industrial processes, like selective laser melting (SLM) which is an additive manufacturing (AM) method. Different from freezing the solid motion in the present study, the discrete particulate materials are allowed to move, driven by interaction forces between the particles and the fluids. A possible strategy is to follow the recent development in (99), where the interaction forces are provided in detail and the discrete particulate materials are modeled by the Discrete Element Method (DEM) to update their locations and velocities. The developed scheme preserves many physical properties of the proposed model on the discrete level, which helps to reduce the interference from numerical errors and therefore is preferred in the present study for verification and demonstration purposes. However, efficiency is less considered, and parallelization has not been implemented. Because of that, only two-dimensional results are presented, although both the model and scheme can be directly extended to three-dimensional problems. Efficiency becomes a critical issue when implementing the present method to practical problems, since those problems are usually three-dimensional and require long-time simulations. Although the developed scheme is decoupled and solves only linear systems, which is favorable for efficiency, the coupling among the governing equations of the proposed model is still strong. Developing an efficient parallelization strategy that honors the physical connections in the proposed model is an ongoing research. Adaptive grid refinement and time stepping are attractive directions to improve numerical simulations, while limiting computational cost. However, the physical properties of the model need to be preserved on the discrete level to avoid unphysical behaviors. This is a non-trivial problem and deserves further investigation.
+Acknowledgments
+A.M. Ardekani would like to acknowledge the financial support from the National Science Foundation (CBET-1705371). This work used the Extreme Science and Engineering Discovery Environment (XSEDE) [85], which is supported by the National Science Foundation grant number ACI-1548562 through allocation TG-CTS180066 and TG-CTS190041.
+G. Lin would like to acknowledge the support from National Science Foundation (DMS-1555072 and DMS-1736364, CMMI-1634832 and CMMI-1560834), and Brookhaven National Laboratory Subcontract 382247, ARO/MURI grant W911NF-15-1-0562, and U.S. Department of Energy (DOE) Office of Science Advanced Scientific Computing Research program DE-SC0021142.
+References
+[1]
+H. Abels, H. Garcke, and G. Grun.
+Thermodynamically consistent, frame indifferent diffuse interface
+models for incompressible two-phase flows with different densities.
+Mathematical Models and Methods in Applied Sciences,
+22:1150013, 2012.
+[2]
+S.M. Allen and J.W. Cahn.
+A microscopic theory for antiphase boundary motion and its
+application to antiphase domain coarsening.
+Acta Metallurgica, 27:1085–1095, 1979.
+[3]
+D.M. Anderson, G.B. McFadden, and A.A. Wheeler.
+Diffuse-interface methods in fluid mechanics.
+Annu. Rev. Fluid Mech., 30:139–165, 1998.
+[4]
+P. Angot, C.-H. Bruneau, and P. Fabrie.
+A penalization method to take into account obstacles in
+incompressible viscous flows.
+Numerische Mathematik, 81(4):497–520, 1999.
+[5]
+C. Beckermann, H.-J. Diepers, I. Steinbach, A. Karma, and X. Tong.
+Modeling melt convection in phase-field simulations of
+solidification.
+Journal of Computational Physics, 154(2):468–496, 1999.
+[6]
+M. Bergmann and A. Iollo.
+Modeling and simulation of fish-like swimming.
+Journal of Computational Physics, 230(2):329–348, 2011.
+[7]
+W.J. Boettinger, J.A. Warren, C. Beckermann, and A. Karma.
+Phase-field simulation of solidification.
+Annual review of materials research, 32(1):163–194, 2002.
+[8]
+J.U. Brackbill, D.B. Kothe, and C. Zemach.
+A continuum method for modeling surface tension.
+J. Comput. Phys., 100:335–354, 1992.
+[9]
+A.D. Brent, V.R. Voller, and K.T.J. Reid.
+Enthalpy-porosity technique for modeling convection-diffusion phase
+change: application to the melting of a pure metal.
+Numerical Heat Transfer, Part A Applications, 13(3):297–318,
+1988.
+[10]
+M. Bussmann, D.B. Kothe, and J.M. Sicilian.
+Modeling high density ratio incompressible interfacial flows.
+In Proceedings of the ASME 2002 Joint U.S.-European Fluids
+Engineering Division Conference, Volume 1: Fora, Parts A and B. Montreal,
+Quebec, Canada. July 14–18, 2002, pages 707–713. ASME, 2002.
+[11]
+J.W. Cahn and J.E. Hilliard.
+Free energy of a nonuniform system, i interfacial free energy.
+J. Chem. Phys., 28:258–267, 1958.
+[12]
+P.C. Carman.
+Fluid flow through granular beds.
+Chemical Engineering Research and Design, 75:S32–S48, 1997.
+[13]
+C. Chan, J. Mazumder, and M.M. Chen.
+A two-dimensional transient model for convection in laser melted
+pool.
+Metallurgical Transactions A, 15(12):2175–2184, 1984.
+[14]
+C. Chen and X. Yang.
+Efficient numerical scheme for a dendritic solidification phase field
+model with melt convection.
+Journal of Computational Physics, 388:41–62, 2019.
+[15]
+L.-Q. Chen.
+Phase-field models for microstructure evolution.
+Annual review of materials research, 32(1):113–140, 2002.
+[16]
+V.L. Chenadec and H. Pitsch.
+A monotonicity preserving conservative sharp interface flow solver
+for high density ratio two-phase flows.
+J. Comput. Phys., 249:185–203, 2013.
+[17]
+R. Chiodi and O. Desjardins.
+A reformulation of the conservative level set reinitialization
+equation for accurate and robust simulation of complex multiphase flows.
+J. Comput. Phys., 343:186–200, 2017.
+[18]
+P-H Chiu and Y-T Lin.
+A conservative phase-field method for solving incompressible
+two-phase flows.
+J. Comput. Phys., 230:185–204, 2011.
+[19]
+J.A. Dantzig and M. Rappaz.
+Solidification: -Revised & Expanded.
+EPFL press, 2016.
+[20]
+N.S. Dhaidan and J.M. Khodadadi.
+Melting and convection of phase change materials in different shape
+containers: A review.
+Renewable and Sustainable Energy Reviews, 43:449–477, 2015.
+[21]
+H. Ding, P.D.M. Spelt, and C. Shu.
+Diffuse interface model for incompressible two-phase flows with large
+density ratios.
+J. Comput. Phys., 226:2078–2095, 2007.
+[22]
+S. Dong and J. Shen.
+A time-stepping scheme involving constant coefficient matrices for
+phase-field simulations of two-phase incompressible flows with large density
+ratios.
+J. Comput. Phys., 231:5788–5804, 2012.
+[23]
+Y. Dutil, D.R. Rousse, N.B. Salah, S. Lassue, and L. Zalewski.
+A review on phase-change materials: Mathematical modeling and
+simulations.
+Renewable and sustainable Energy reviews, 15(1):112–130, 2011.
+[24]
+B. Echebarria, R. Folch, A. Karma, and M. Plapp.
+Quantitative phase-field model of alloy solidification.
+Physical review E, 70(6):061604, 2004.
+[25]
+R.P. Fedkiw, T. Aslam, B. Merriman, and S. Osher.
+A non-oscillatory eulerian approach to interfaces in multimaterial
+flows (the ghost fluid method).
+J. Comput. Phys., 152:457–492, 1999.
+[26]
+J.J. Feng, C. Liu, J. Shen, and P. Yue.
+An energetic variational formulation with phase field methods for
+interfacial dynamics of complex fluids: advantages and challenges.
+In Modeling of soft matter, pages 1–26. Springer, 2005.
+[27]
+J.H. Ferziger and M. Peric.
+Computational Methods for Fluid Dynamics.
+Springer Berlin / Heidelberg, third rev. edition, 2001.
+[28]
+M.M. Francois, J.S. Cummins, E.D. Dendy, D.B. Kothe, M.J. Sicilian, and W.W.
+Williams.
+A balanced-force algorithm for continuous and sharp interfacial
+surface tension models within a volume tracking framework.
+J. Comput. Phys., 213:141–173, 2006.
+[29]
+C. Gau and R. Viskanta.
+Melting and solidification of a pure metal on a vertical wall.
+Journal of Heat Transfer, 108:174–181, 1986.
+[30]
+F. Gibou, R. Fedkiw, and S. Osher.
+A review of level-set methods and some recent applications.
+J. Comput. Phys., 353:82–109, 2018.
+[31]
+D. Gueyffier, J. Li, A. Nadim, R. Scardovelli, and S. Zaleski.
+Volume-of-fluid interface tracking with smoothed surface stress
+methods for three-dimensional flows.
+J. Comput. Phys., 152:423–456, 1999.
+[32]
+Q. He, H. Xia, J. Liu, X. Ao, and S. Lin.
+Modeling and numerical studies of selective laser melting: Multiphase
+flow, solidification and heat transfer.
+Materials & Design, 196:109115, 2020.
+[33]
+C.W. Hirt and B.D. Nichols.
+Volume of fluid (vof) method for the dynamics of free boundaries.
+J. Comput. Phys., 39:201–225, 1981.
+[34]
+S.F. Hosseinizadeh, F.L. Tan, and S.M. Moosania.
+Experimental and numerical studies on performance of pcm-based heat
+sink with different configurations of internal fins.
+Applied Thermal Engineering, 31(17-18):3827–3838, 2011.
+[35]
+H. Hu and S.A. Argyropoulos.
+Mathematical modelling of solidification and melting: a review.
+Modelling and Simulation in Materials Science and Engineering,
+4(4):371, 1996.
+[36]
+T.-H. Huang, T.-H. Huang, Y.-S. Lin, C.-H. Chang, P.-Y. Chen, S.-W. Chang, and
+C.-S. Chen.
+Phase-field modeling of microstructural evolution by freeze-casting.
+Advanced Engineering Materials, 20(3):1700343, 2018.
+[37]
+Z. Huang, G. Lin, and A.M. Ardekani.
+A consistent and conservative phase-field method for multiphase
+incompressible flows.
+arXiv:2010.01099, 2020.
+[38]
+Z. Huang, G. Lin, and A.M. Ardekani.
+Consistent and conservative scheme for incompressible two-phase flows
+using the conservative allen-cahn model.
+J. Comput. Phys., 420:109718, 2020.
+[39]
+Z. Huang, G. Lin, and A.M. Ardekani.
+Consistent, essentially conservative and balanced-force phase-field
+method to model incompressible two-phase flows.
+J. Comput. Phys., 406:109192, 2020.
+[40]
+Z. Huang, G. Lin, and A.M. Ardekani.
+A consistent and conservative model and its scheme for
+n-phase-m-component incompressible flows.
+Journal of Computational Physics, 434:110229, 2021.
+[41]
+Z. Huang, G. Lin, and A.M. Ardekani.
+A consistent and conservative volume distribution algorithm and its
+applications to multiphase flows using phase-field models.
+International Journal of Multiphase Flow, 142:103727, 2021.
+[42]
+Satoshi Ii, Kazuyasu Sugiyama, Shintaro Takeuchi, Shu Takagi, Yoichiro
+Matsumoto, and Feng Xiao.
+An interface capturing method with a continuous function: The thinc
+method with multi-dimensional reconstruction.
+J. Comput. Phys., 231(5):2328–2358, 2012.
+[43]
+D. Jacqmin.
+Calculation of two-phase navier-stokes flows using phase-field
+modeling.
+J. Comput. Phys., 155:96–127, 1999.
+[44]
+D. Jamet, D. Torres, and J.U. Brackbill.
+On the theory and computation of surface tension: The elimination of
+parasitic currents through energy conservation in the second-gradient method.
+J. Comput. Phys., 182:262–276, 2002.
+[45]
+E. Javierre, C. Vuik, F.J. Vermolen, and S. Van der Zwaag.
+A comparison of numerical models for one-dimensional stefan problems.
+Journal of Computational and Applied Mathematics,
+192(2):445–459, 2006.
+[46]
+Y. Ji, L. Chen, and L.-Q. Chen.
+Understanding microstructure evolution during additive manufacturing
+of metallic alloys using phase-field modeling.
+In Thermo-Mechanical Modeling of Additive Manufacturing, pages
+93–116. Elsevier, 2018.
+[47]
+G-S Jiang and C-W Shu.
+Efficient implementation of weighted eno schemes.
+J. Comput. Phys., 126:202–228, 1996.
+[48]
+S.G. Kim and W.T. Kim.
+Phase-field modeling of solidification.
+In Handbook of materials modeling, pages 2105–2116. Springer,
+2005.
+[49]
+Y. Kim, A. Hossain, and Y. Nakamura.
+Numerical study of melting of a phase change material (pcm) enhanced
+by deformation of a liquid–gas interface.
+International Journal of Heat and Mass Transfer, 63:101–112,
+2013.
+[50]
+Y.K. Kim, A. Hossain, S. Kim, and Y. Nakamura.
+A numerical study on time-dependent melting and deformation processes
+of phase change material (pcm) induced by localized thermal input.
+Two phase flow phase change and numerical modeling, 23, 2011.
+[51]
+B. Lalanne, L.R. Villegas, S. Tanguy, and F. Risso.
+On the computation of viscous terms for incompressible two-phase
+flows with level set/ghost fluid method.
+J. Comput. Phys., 301:289–307, 2015.
+[52]
+X. Li, J. Lowengrub, A. Ratz, and A. Voigt.
+Solving pdes in complex geometries: A diffuse domain approach.
+Commun. Math. Sci., 1:81–107, 2009.
+[53]
+S. Lin, Z. Gan, J. Yan, and G.J. Wagner.
+A conservative level set method on unstructured meshes for modeling
+multiphase thermo-fluid flow in additive manufacturing processes.
+Computer Methods in Applied Mechanics and Engineering,
+372:113348, 2020.
+[54]
+H. Liu, A.J. Valocchi, Y. Zhang, and Q. Kang.
+Lattice boltzmann phase-field modeling of thermocapillary flows in a
+confined microchannel.
+Journal of Computational Physics, 256:334–356, 2014.
+[55]
+L.-X. Lu, N. Sridhar, and Y.-W. Zhang.
+Phase field simulation of powder bed-based additive manufacturing.
+Acta Materialia, 144:801–809, 2018.
+[56]
+James M.H.
+One-dimensional Stefan problems: an introduction, volume 31.
+Longman Sc & Tech, 1987.
+[57]
+S. Mirjalili, S. Jain, and Dodd M.S.
+Interface-capturing methods for two-phase flows: An overview and
+recent developments.
+Center for Turbulence Research Annual Research Briefs, pages
+117–135, 2017.
+[58]
+Abu-Al-Saud M.O., S. Popinet, and H.A. Tchelepi.
+A conservative and well-balanced surface tension model.
+J. Comput. Phys., 371:896–931, 2018.
+[59]
+N. Nangia, E.G. Boyce, N.A. Patankar, and A.P.S. Bhalla.
+A robust incompressible navier-stokes solver for high density ratio
+multiphase flows.
+J. Comput. Phys., 390:548–594, 2019.
+[60]
+B. Nestler, A.A. Wheeler, L. Ratke, and C. Stöcker.
+Phase-field model for solidification of a monotectic alloy with
+convection.
+Physica D: Nonlinear Phenomena, 141(1-2):133–154, 2000.
+[61]
+E. Olsson and G. Kreiss.
+A conservative level set method for two phase flow.
+J. Comput. Phys., 210:225–246, 2005.
+[62]
+E. Olsson, G. Kreiss, and S. Zahedi.
+A conservative level set method for two phase flow ii.
+J. Comput. Phys., 225:785–807, 2007.
+[63]
+S. Osher and A.J. Sethian.
+Fronts propagating with curvature-dependent speed: Algorithms based
+on hamilton-jacobi formulations.
+J. Comput. Phys., 79:12–49, 1988.
+[64]
+M. Owkes and O. Desjardins.
+A mass and momentum conserving unsplit semi-lagrangian framework for
+simulating multiphase flows.
+J. Comput. Phys., 332:21–46, 2017.
+[65]
+C. Panwisawas, C. Qiu, M.J. Anderson, Y. Sovani, R.P. Turner, M.M. Attallah,
+J.W. Brooks, and H.C. Basoalto.
+Mesoscale modelling of selective laser melting: Thermal fluid
+dynamics and microstructural evolution.
+Computational Materials Science, 126:479–490, 2017.
+[66]
+W. Pitscheneder, T. DebRoy, K. Mundra, and R. Ebner.
+Role of sulfur and processing variables on the temporal evolution of
+weld pool geometry during multikilowatt laser beam welding of steels.
+Welding Journal (Miami, Fla), 75(3):71s–80s, 1996.
+[67]
+S. Popinet.
+Numerical models for surface tension.
+Annu. Rev. Fluid Mech., 50:49–75, 2018.
+[68]
+A. Prosperetti and G. Tryggvason.
+Computational Methods for Multiphase Flow.
+Cambridge University Press, 2007.
+[69]
+L. Qian, Y. Wei, and F. Xiao.
+Coupled thinc and level set method: A conservative interface
+capturing scheme with high-order surface representations.
+J. Comput. Phys., 373:284–303, 2018.
+[70]
+M. Raessi and H. Pitsch.
+Consistent mass and momentum transport for simulating incompressible
+interfacial flows with large density ratios using the level set method.
+Comput. Fluids, 63:70–81, 2012.
+[71]
+J.C. Ramirez, C. Beckermann, A.s. Karma, and H.-J. Diepers.
+Phase-field modeling of binary alloy solidification with coupled heat
+and solute diffusion.
+Physical Review E, 69(5):051607, 2004.
+[72]
+F. Rösler and D. Brüggemann.
+Shell-and-tube type latent heat thermal energy storage: numerical
+analysis and comparison with experiments.
+Heat and mass transfer, 47(8):1027, 2011.
+[73]
+M. Rudman.
+A volume-tracking method for incompressible multifluid flows with
+large density variations.
+Int. J. Numer. Methods. Fluids, 28:357–378, 1998.
+[74]
+M. Salcudean and Z. Abdullah.
+On the numerical modelling of heat transfer during solidification
+processes.
+International journal for numerical methods in engineering,
+25(2):445–473, 1988.
+[75]
+Zaki Saptari Saldi.
+Marangoni driven free surface flows in liquid weld pools.
+PhD thesis, Delft University of Technology, 2012.
+[76]
+A.A. Samarskii, P.N. Vabishchevich, O.P. Iliev, and A.G. Churbanov.
+Numerical simulation of convection/diffusion phase change
+problems—a review.
+International journal of heat and mass transfer,
+36(17):4095–4106, 1993.
+[77]
+R. Scardovelli and S. Zaleski.
+Direct numerical simulation of free-surface and interfacial flow.
+Annu. Rev. Fluid Mech., 31:567–603, 1999.
+[78]
+J.A. Sethian and P. Smereka.
+Level set method for fluid interfaces.
+Annu. Rev. Fluid Mech., 35:341–372, 2003.
+[79]
+V. Shatikian, G. Ziskind, and R. Letan.
+Numerical investigation of a pcm-based heat sink with internal fins.
+International journal of heat and mass transfer,
+48(17):3689–3706, 2005.
+[80]
+J Shen.
+Modeling and numerical approximation of two-phase incompressible
+flows by a phase-field approach.
+Multiscale Modeling and Analysis for Materials Simulation,
+22:147–195, 2011.
+[81]
+H. Shmueli, G. Ziskind, and R. Letan.
+Melting in a vertical cylindrical tube: Numerical investigation and
+comparison with experiments.
+International Journal of Heat and Mass Transfer,
+53(19-20):4082–4091, 2010.
+[82]
+K.R. Sultana, S.R. Dehghani, K. Pope, and Y.S. Muzychka.
+Numerical techniques for solving solidification and melting phase
+change problems.
+Numerical Heat Transfer, Part B: Fundamentals, 73(3):129–145,
+2018.
+[83]
+M. Sussman, P. Smereka, and S. Osher.
+A level set approach for computing solutions to incompressible
+two-phase flow.
+J. Comput. Phys., 114:146–159, 1994.
+[84]
+W. Tan, N.S. Bailey, and Y.C. Shin.
+A novel integrated model combining cellular automata and phase field
+methods for microstructure evolution during solidification of multi-component
+and multi-phase alloys.
+Computational Materials Science, 50(9):2573–2585, 2011.
+[85]
+J. Towns, T. Cockerill, M. Dahan, I. Foster, K. Gaither, A. Grimshaw,
+V. Hazlewood, S. Lathrop, D. Lifka, G.D. Peterson, R. Roskies, J.R. Scott,
+and N. Wilkins-Diehr.
+Xsede: accelerating scientific discovery.
+Comput. Sci. Eng., 16:62–74, 2014.
+[86]
+G. Tryggvason, B. Bunner, A. Esmaeeli, D. Juric, N. Al-Rawahi, W. Tauber,
+J. Han, S. Nas, and Y.J. Jan.
+A front-tracking method for the computations of multiphase flow.
+J. Comput. Phys., 169:708–759, 2001.
+[87]
+G. Tryggvason, R. Scardovelli, and S. Zaleski.
+Direct Numerical Simulations of Gas-Liquid Multiphase Flows.
+Cambridge University Press, 2011.
+[88]
+S.O. Unverdi and G. Tryggvason.
+A front-tracking method for viscous, incompressible, multi-fluid
+flows.
+J. Comput. Phys., 100:25–37, 1992.
+[89]
+J. Vogel and A. Thess.
+Validation of a numerical model with a benchmark experiment for
+melting governed by natural convection in latent thermal energy storage.
+Applied Thermal Engineering, 148:147–159, 2019.
+[90]
+V.R. Voller, M. Cross, and N.C. Markatos.
+An enthalpy method for convection/diffusion phase change.
+International journal for numerical methods in engineering,
+24(1):271–284, 1987.
+[91]
+V.R. Voller and C. Prakash.
+A fixed grid numerical modelling methodology for convection-diffusion
+mushy region phase-change problems.
+International Journal of Heat and Mass Transfer,
+30(8):1709–1719, 1987.
+[92]
+V.R. Voller and C.R. Swaminathan.
+Eral source-based method for solidification phase change.
+Numerical Heat Transfer, Part B Fundamentals, 19(2):175–189,
+1991.
+[93]
+W. Voller.
+An overview of numerical methods for solving phase change problems.
+Advances in numerical heat transfer, 1:341, 1996.
+[94]
+F Xiao, Y Honma, and T Kono.
+A simple algebraic interface capturing scheme using hyperbolic
+tangent function.
+Int. J. Numer. Meth. Fluids, 48(9):1023–1040, 2005.
+[95]
+B. Xie, Jin P., Du. Y., and S. Liao.
+A consistent and balanced-force model for incompressible multiphase
+flows on polyhedral unstructured grids.
+International Journal of Multiphase Flow, 122:103125, 2020.
+[96]
+B. Xie and F. Xiao.
+Toward efficient and accurate interface capturing on arbitrary hybrid
+unstructured grids: The thinc method with quadratic surface representation
+and gaussian quadrature.
+J. Comput. Phys., 349:415–440, 2017.
+[97]
+J. Yan, W. Yan, S. Lin, and G.J. Wagner.
+A fully coupled finite element formulation for liquid–solid–gas
+thermo-fluid flow with melting and solidification.
+Computer Methods in Applied Mechanics and Engineering,
+336:444–470, 2018.
+[98]
+W. Yan, W. Ge, Y. Qian, S. Lin, B. Zhou, W.K. Liu, F. Lin, and G.J. Wagner.
+Multi-physics modeling of single/multiple-track defect mechanisms in
+electron beam selective melting.
+Acta Materialia, 134:324–333, 2017.
+[99]
+T. Yu and J.D. Zhao.
+Semi-coupled resolved cfd-dem simulation of powder-based selective
+laser melting for additive manufacturing.
+Computer Methods in Applied Mechanics and Engineering,
+377:113707, 2021.
+[100]
+P. Yue, J.J. Feng, C. Liu, and J. Shen.
+A diffuse-interface method for simulating two-phase flows of complex
+fluids.
+J. Fluid Mech., 515:293–317, 2004.
+[101]
+A. Zhang, J. Du, X. Zhang, Z. Guo, Q. Wang, and S. Xiong.
+Phase-field modeling of microstructure evolution in the presence of
+bubble during solidification.
+Metallurgical and Materials Transactions A, 51(3):1023–1037,
+2020.
+[102]
+J. Zhang and X. Yang.
+A fully decoupled, linear and unconditionally energy stable numerical
+scheme for a melt-convective phase-field dendritic solidification model.
+Computer Methods in Applied Mechanics and Engineering,
+363:112779, 2020.
+[103]
+H. Zhao, W. Niu, B. Zhang, Y. Lei, M. Kodama, and T. Ishide.
+Modelling of keyhole dynamics and porosity formation considering the
+adaptive keyhole shape and three-phase coupling during deep-penetration laser
+welding.
+Journal of Physics D: Applied Physics, 44(48):485302, 2011.
+Experimental support, please
+view the build logs
+for errors. Generated by
+L
+A
+T
+E
+xml
+.
+Instructions for reporting errors
+We are continuing to improve HTML versions of papers, and your feedback helps enhance accessibility and mobile
+support. To report errors in the HTML that will help us improve conversion and rendering, choose any of the
+methods listed below:
+Click the "Report Issue" (
+) button, located in the page header.
+Tip: You can select the relevant text first, to include it in your report.
+Our team has already identified the following issues. We appreciate your time reviewing and reporting rendering errors we
+may not have found yet. Your efforts will help us improve the HTML versions for all readers, because disability
+should not be a barrier to accessing research. Thank you for your continued support in championing open access for
+all.
+Have a free development cycle? Help support accessibility at arXiv! Our collaborators at LaTeXML maintain a list of packages that need conversion, and welcome developer contributions.
+We gratefully acknowledge support from
+our major funders,
+member institutions, ,
+and all contributors.
+About
+·
+Help
+·
+Contact
+·
+Subscribe
+·
+Copyright
+·
+Privacy
+·
+Accessibility
+·
+Operational Status (opens in new tab)
+Major funding support from

@@ -1,0 +1,8 @@
+{
+  "max_temperature_error": 1.1874362826347351e-07,
+  "max_fraction_error": 2.8405338525772095e-08,
+  "max_enthalpy_error": 1.1874362826347351e-07,
+  "heat_then_cool_error": 0.0,
+  "passes": true,
+  "runtime_seconds": 0.6951971490634605
+}

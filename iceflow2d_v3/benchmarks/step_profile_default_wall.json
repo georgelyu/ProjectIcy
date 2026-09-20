@@ -1,0 +1,377 @@
+{
+  "timestamp_utc": "2026-09-20T10:51:27.859128+00:00",
+  "mode": "wall",
+  "python": "3.13.9 | packaged by Anaconda, Inc. | (main, Oct 21 2025, 19:16:10) [GCC 11.2.0]",
+  "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.35",
+  "taichi_version": [
+    1,
+    7,
+    4
+  ],
+  "gpu": "NVIDIA GeForce RTX 5090, 570.211.01",
+  "solver_source": "/home/georgelyu/Repos/ProjectIcy/iceflow2d_v3/simulator.py",
+  "solver_sha256": "71356139c37c6674d6f50d5a53e34e3945c4611850ce80c92df58cf5f4ae9946",
+  "config": {
+    "resolution": [
+      200,
+      400
+    ],
+    "dx": 0.000125,
+    "reference_velocity": 4.0,
+    "rho_water": 1000.0,
+    "rho_air": 1.25,
+    "rho_ice": 917.0,
+    "viscosity_water": 1e-06,
+    "viscosity_air": 1.5e-05,
+    "sigma": 0.072,
+    "gravity": [
+      0.0,
+      -9.8
+    ],
+    "smagorinsky_constant": 0.1,
+    "interface_width": 5.0,
+    "mobility": 0.1,
+    "phase_warmup_steps": 500,
+    "thermal": {
+      "properties": {
+        "melting_temperature_c": 0.0,
+        "specific_heat_water_j_kg_k": 4186.0,
+        "specific_heat_ice_j_kg_k": 2100.0,
+        "specific_heat_air_j_kg_k": 1005.0,
+        "conductivity_water_w_m_k": 0.6,
+        "conductivity_ice_w_m_k": 2.2,
+        "conductivity_air_w_m_k": 0.026,
+        "latent_heat_j_kg": 334000.0
+      },
+      "boundaries": {
+        "left": {
+          "kind": "adiabatic",
+          "value": 0.0
+        },
+        "right": {
+          "kind": "adiabatic",
+          "value": 0.0
+        },
+        "bottom": {
+          "kind": "adiabatic",
+          "value": 0.0
+        },
+        "top": {
+          "kind": "adiabatic",
+          "value": 0.0
+        }
+      },
+      "initial_water_temperature_c": 90.0,
+      "initial_ice_temperature_c": 0.0,
+      "initial_air_temperature_c": 20.0,
+      "advection_enabled": true,
+      "water_air_interface_adiabatic": true,
+      "update_interval_lbm_steps": 8,
+      "solid_liquid_threshold": 0.5,
+      "max_fourier_number": 0.15,
+      "max_courant_number": 0.5,
+      "max_substeps_per_update": 64,
+      "water_buoyancy_model": "linear",
+      "thermal_expansion_water_1_k": 0.00021,
+      "buoyancy_reference_temperature_c": 90.0,
+      "scheme": "enthalpy_fv",
+      "moving_body_scheme": "body_ale"
+    },
+    "well_balanced_hydrostatics": true,
+    "water_width_fraction": 0.9875,
+    "water_height_fraction": 0.60125,
+    "ice_width_fraction": 0.3225,
+    "ice_height_fraction": 0.16125,
+    "ice_base_y_cells": 254.6672141068609,
+    "boundary_cells": 3,
+    "ice_initial_velocity": [
+      0.0,
+      0.0
+    ],
+    "ice_initial_angle": 0.08726646259971647,
+    "ice_initial_angular_velocity": 0.0,
+    "ice_fixed": false,
+    "rigid_boundary_scheme": "unified",
+    "linear_damping": 1.0,
+    "angular_damping": 0.999,
+    "volume_projection_tolerance": 1e-08,
+    "volume_projection_interface_cutoff": 0.001,
+    "volume_projection_max_shift": 0.5,
+    "volume_projection_max_iterations": 64,
+    "air_interface_relaxation_time": 0.8,
+    "output_dir": "iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d",
+    "show_gui": false,
+    "save_npz": false
+  },
+  "start_state": {
+    "step": 32,
+    "physical_time_s": 0.0001,
+    "body_center_cells": [
+      100.0,
+      286.66680908203125
+    ],
+    "body_mass_lattice": 3756.0319999997605,
+    "melted_mass_lattice": 2.396518539171666e-10,
+    "thermal_totals": {
+      "initial_body_mass_kg_m": 0.058688,
+      "solid_body_mass_kg_m": 0.05868799999999556,
+      "melted_mass_kg_m": 4.433953204596719e-15,
+      "water_mass_kg_m": 0.7184062478107777,
+      "total_mass_kg_m": 0.7770942478107732,
+      "body_sensible_energy_j_m": 0.0,
+      "water_sensible_energy_j_m": 270652.36980009405,
+      "latent_energy_j_m": 1.4809403703353041e-09,
+      "total_energy_j_m": 270652.3698000955
+    }
+  },
+  "steps_per_repeat": 128,
+  "repeats": 3,
+  "measurement": {
+    "baseline_ms_per_step": [
+      2.153180078125,
+      2.1504362812499997,
+      2.1453878359375
+    ],
+    "baseline_median_ms_per_step": 2.1504362812499997,
+    "instrumented_ms_per_step": [
+      2.3566550625,
+      2.35797565625,
+      2.3464885859374998
+    ],
+    "instrumented_median_ms_per_step": 2.3566550625,
+    "stage_total_ms_per_step": 2.341539450520833,
+    "stages": [
+      {
+        "name": "_advance_moving_thermal_fast",
+        "source_line": 2233,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.5925067291666667,
+        "median_ms_per_call": 0.574668,
+        "amortized_ms_per_step": 0.5925067291666667,
+        "percent_of_stage_time": 25.304153173027867,
+        "repeat_ms_per_step": [
+          0.590437578125,
+          0.60035059375,
+          0.586732015625
+        ]
+      },
+      {
+        "name": "_synchronize_moving_water_aperture",
+        "source_line": 2288,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.5390809088541666,
+        "median_ms_per_call": 0.51092,
+        "amortized_ms_per_step": 0.5390809088541667,
+        "percent_of_stage_time": 23.02249952415954,
+        "repeat_ms_per_step": [
+          0.5373464921875,
+          0.54088740625,
+          0.539008828125
+        ]
+      },
+      {
+        "name": "_collide_momentum",
+        "source_line": 3370,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.33702849479166663,
+        "median_ms_per_call": 0.315692,
+        "amortized_ms_per_step": 0.33702849479166663,
+        "percent_of_stage_time": 14.393457890137224,
+        "repeat_ms_per_step": [
+          0.337897046875,
+          0.3341920390625,
+          0.33899639843749996
+        ]
+      },
+      {
+        "name": "_correct_water_volume",
+        "source_line": 4494,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.20614549739583332,
+        "median_ms_per_call": 0.146702,
+        "amortized_ms_per_step": 0.20614549739583332,
+        "percent_of_stage_time": 8.803844724887295,
+        "repeat_ms_per_step": [
+          0.207366109375,
+          0.208636015625,
+          0.2024343671875
+        ]
+      },
+      {
+        "name": "_advance_moving_thermal_slow",
+        "source_line": 2249,
+        "calls": 48,
+        "calls_per_step": 0.125,
+        "mean_ms_per_call": 1.6263324375,
+        "median_ms_per_call": 1.4834255,
+        "amortized_ms_per_step": 0.20329155468750001,
+        "percent_of_stage_time": 8.681961546378451,
+        "repeat_ms_per_step": [
+          0.20128846875,
+          0.2031993828125,
+          0.2053868125
+        ]
+      },
+      {
+        "name": "_finalize_melt_momentum_coupling",
+        "source_line": 2989,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.17807469010416666,
+        "median_ms_per_call": 0.001762,
+        "amortized_ms_per_step": 0.17807469010416666,
+        "percent_of_stage_time": 7.605026260162183,
+        "repeat_ms_per_step": [
+          0.179208125,
+          0.17542989843749998,
+          0.179586046875
+        ]
+      },
+      {
+        "name": "_solve_contact_and_rasterize",
+        "source_line": 4082,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.10763774739583333,
+        "median_ms_per_call": 0.096938,
+        "amortized_ms_per_step": 0.10763774739583333,
+        "percent_of_stage_time": 4.596879517528149,
+        "repeat_ms_per_step": [
+          0.1094725078125,
+          0.1096323515625,
+          0.10380838281249999
+        ]
+      },
+      {
+        "name": "_collide_phase",
+        "source_line": 3554,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.04103204427083333,
+        "median_ms_per_call": 0.0215585,
+        "amortized_ms_per_step": 0.04103204427083333,
+        "percent_of_stage_time": 1.752353318741074,
+        "repeat_ms_per_step": [
+          0.0431988046875,
+          0.038005015625,
+          0.0418923125
+        ]
+      },
+      {
+        "name": "_stream",
+        "source_line": 3699,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.03297474479166666,
+        "median_ms_per_call": 0.023552,
+        "amortized_ms_per_step": 0.03297474479166666,
+        "percent_of_stage_time": 1.4082506610910197,
+        "repeat_ms_per_step": [
+          0.029287109375,
+          0.031054687499999997,
+          0.0385824375
+        ]
+      },
+      {
+        "name": "_update_streamed_macroscopic_fields",
+        "source_line": 3787,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.022538539062499998,
+        "median_ms_per_call": 0.0183045,
+        "amortized_ms_per_step": 0.022538539062499998,
+        "percent_of_stage_time": 0.9625521815353871,
+        "repeat_ms_per_step": [
+          0.0226877734375,
+          0.024365296874999998,
+          0.020562546875
+        ]
+      },
+      {
+        "name": "_update_pressure",
+        "source_line": 3860,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.021730182291666667,
+        "median_ms_per_call": 0.0178415,
+        "amortized_ms_per_step": 0.021730182291666664,
+        "percent_of_stage_time": 0.9280297321846607,
+        "repeat_ms_per_step": [
+          0.022591031249999997,
+          0.021781492187499998,
+          0.0208180234375
+        ]
+      },
+      {
+        "name": "_refill_changed_nodes",
+        "source_line": 3163,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.020315486979166665,
+        "median_ms_per_call": 0.015987,
+        "amortized_ms_per_step": 0.020315486979166665,
+        "percent_of_stage_time": 0.8676124151847132,
+        "repeat_ms_per_step": [
+          0.020481757812499998,
+          0.021859476562499997,
+          0.0186052265625
+        ]
+      },
+      {
+        "name": "_integrate_rigid_ice",
+        "source_line": 3973,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.020163369791666667,
+        "median_ms_per_call": 0.015704999999999997,
+        "amortized_ms_per_step": 0.020163369791666667,
+        "percent_of_stage_time": 0.8611159545990861,
+        "repeat_ms_per_step": [
+          0.021017546874999998,
+          0.0194795390625,
+          0.0199930234375
+        ]
+      },
+      {
+        "name": "_update_solid_mask",
+        "source_line": 2713,
+        "calls": 384,
+        "calls_per_step": 1.0,
+        "mean_ms_per_call": 0.0190194609375,
+        "median_ms_per_call": 0.015638,
+        "amortized_ms_per_step": 0.0190194609375,
+        "percent_of_stage_time": 0.8122631003833595,
+        "repeat_ms_per_step": [
+          0.0221452265625,
+          0.017076671874999998,
+          0.017836484375
+        ]
+      }
+    ]
+  },
+  "end_state": {
+    "step": 160,
+    "physical_time_s": 0.0005,
+    "body_center_cells": [
+      100.0,
+      286.6573791503906
+    ],
+    "body_mass_lattice": 3756.0319999997605,
+    "melted_mass_lattice": 2.396518539171666e-10,
+    "thermal_totals": {
+      "initial_body_mass_kg_m": 0.058688,
+      "solid_body_mass_kg_m": 0.05868799999999556,
+      "melted_mass_kg_m": 4.433953204596719e-15,
+      "water_mass_kg_m": 0.7184062478101167,
+      "total_mass_kg_m": 0.7770942478101123,
+      "body_sensible_energy_j_m": 0.0,
+      "water_sensible_energy_j_m": 270652.36979977705,
+      "latent_energy_j_m": 1.4809403703353041e-09,
+      "total_energy_j_m": 270652.3697997785
+    }
+  }
+}

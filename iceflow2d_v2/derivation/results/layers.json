@@ -1,0 +1,30 @@
+{
+  "rows": [
+    {
+      "n": 64,
+      "steps": 24576,
+      "max_temperature_error": 3.3378601071998304e-07,
+      "left_flux_relative_error": 1.6119027301808586e-06,
+      "right_flux_relative_error": 4.102753761170419e-07,
+      "energy_balance_per_cell": 1.0710209608078003e-08
+    },
+    {
+      "n": 128,
+      "steps": 98304,
+      "max_temperature_error": 5.483627318891848e-07,
+      "left_flux_relative_error": 2.657780879822269e-06,
+      "right_flux_relative_error": 6.529598569615658e-07,
+      "energy_balance_per_cell": 5.4169504437595606e-09
+    },
+    {
+      "n": 256,
+      "steps": 393216,
+      "max_temperature_error": 3.3974647521972656e-06,
+      "left_flux_relative_error": 1.687122648530437e-05,
+      "right_flux_relative_error": 2.793657976285502e-06,
+      "energy_balance_per_cell": 1.3603312254417688e-08
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 22.322865958092734
+}

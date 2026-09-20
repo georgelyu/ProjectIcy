@@ -1,0 +1,1987 @@
+                                                      Journal of Computational Physics 551 (2026) 114680
+
+
+
+                                                             Contents lists available at ScienceDirect
+
+
+                                                Journal of Computational Physics
+                                                     journal homepage: www.elsevier.com/locate/jcp
+
+
+
+
+A consistent and scalable framework suitable for boiling ﬂows
+using the conservative diﬀuse interface method
+                            a,∗                                     b                                     a                            b,c
+Lorenz Weber                    , Aritra Mukherjee                      , Andreas G. Class                    , Luca Brandt
+a Institute for Thermal Energy Technology and Safety (ITES), Karlsruhe Institute of Technology (KIT), Hermann-Von-Helmholtz-Platz 1,
+
+Eggenstein-Leopoldshafen, 76344, Germany
+b
+  Department of Energy and Process Engineering, Norwegian University of Science and Technology (NTNU), 229 Strømningstekniske laboratorier
+Gløshaugen, Trondheim, 7034, Norway
+c Department of Environment, Land and Infrastructure Engineering (DIATI), Politecnico di Torino, Corso Duca degli Abruzzi 24, Torino, 10129, Italy
+
+
+
+
+a r t i c l e           i n f o                            a b s t r a c t
+
+Keywords:                                                  Interface-resolved simulations are essential for predicting and understanding boiling heat trans-
+Phase ﬁeld                                                 fer phenomena. Such simulations generally come at a high computational cost, which continues
+Boiling                                                    to motivate the development of eﬃcient frameworks. In recent years, conservative second-order
+Conservative diﬀuse interface
+                                                           phase ﬁeld methods have gained popularity due to their eﬃcient representation of phase in-
+Phase change
+FluTAS
+                                                           terfaces. However, their potential for simulating complex boiling phenomena has not yet been
+                                                           explored. To address this gap, we develop a consistent and highly eﬃcient framework suitable
+                                                           for simulating large-scale boiling ﬂows. We derive a set of mixture equations to describe the
+                                                           two-phase ﬂow. The mixture equations are coupled with the accurate conservative diﬀuse inter-
+                                                           face method [1] to capture the interface. We present additional terms in the momentum balance
+                                                           equation and demonstrate that the proposed momentum balance modiﬁcations are mandatory for
+                                                           accurately capturing phase-change-induced pressure jumps. To solve the set of equations, an al-
+                                                           ternative Fast Fourier Transform (FFT)-based pressure solution scheme is proposed. Additionally,
+                                                           a modiﬁed kinetic phase change model is utilized that does not involve calculating temperature
+                                                           gradients and avoids problem-dependent parameters. The framework is tested against a variety
+                                                           of benchmark simulations, both with and without phase change. Moreover, we achieve improved
+                                                           accuracy when simulating bubble dynamics without phase change at high density ratios. We
+                                                           show that the proposed FFT-based pressure solution scheme exhibits superior performance in cal-
+                                                           culating interfacial pressure jumps compared with a commonly used FFT solver. Regardless of
+                                                           phase change, more accurate startup behaviour is observed. In the presence of phase change, we
+                                                           are successful in removing interfacial pressure oscillations. Across all phase-change benchmark
+                                                           simulations, the new phase change model consistently provides reliable results. Finally, we suc-
+                                                           cessfully simulate the dynamics of bubbles in superheated liquid subjected to gravity and validate
+                                                           the results with experimental data.
+
+
+
+
+1. Introduction
+
+   Boiling ﬂows enable highly eﬃcient heat transfer, which is of ever-growing interest to meet the cooling requirements of numerous
+high-performance applications (e.g. computer electronics, vehicle electronics, fusion reactor design) [2]. To predict and improve
+
+
+  ∗ Corresponding author.
+
+    E-mail address: lorenz.weber@kit.edu (L. Weber).
+
+https://doi.org/10.1016/j.jcp.2026.114680
+Received 14 July 2025; Received in revised form 5 December 2025; Accepted 9 January 2026
+Available online 11 January 2026
+0021-9991/© 2026 The Author(s).            Published by Elsevier Inc.      This is an open access article under the CC BY license
+(http://creativecommons.org/licenses/by/4.0/).
+L. Weber, A. Mukherjee, A.G. Class et al.                                                   Journal of Computational Physics 551 (2026) 114680
+
+
+boiling heat transfer, researchers strive to delve deeper into the underlying physical phenomena through simulations and experiments.
+In this context, interface-resolved simulations are a crucial tool [3], as they provide full access to ﬂow quantities and eliminate the
+need for potentially hazardous or expensive experiments. However, most interface-resolved simulations for boiling ﬂows come at
+high computational costs, due to resolution requirements [4]. Consequently, complex ﬂows become challenging, or even impossible,
+to resolve [3], which motivates the development of more eﬃcient frameworks.
+    A wide range of methods for representing the gas-liquid interface have been applied to boiling ﬂows. These can be categorized
+into sharp and diﬀuse interface methods. Sharp-interface methods, a class of methods in which the phases are fully separated by
+an interface, were ﬁrst introduced in 1998, when Juric and Tryggvason [5] proposed a front-tracking method for simulating ﬁlm
+boiling on a horizontal plate. In the same year, the level-set method was introduced by Son and Dhir [6]. Later, the volume of ﬂuid
+(VOF) method for simulating ﬁlm boiling was also successfully utilized by Welch and Wilson [7]. Computationally, sharp-interface
+methods may result in an increased cost due to interface reinitialization (level-set), interface reconstruction (VOF), or interpolation
+steps (front-tracking).
+    In contrast, diﬀuse interface methods, also known as phase ﬁeld methods, are characterized by an artiﬁcially thickened interface
+region in which both phases coexist. In terms of computational costs, diﬀuse interface methods are advantageous, as they only require
+solving a single advection equation [8]. The phase ﬁeld method was ﬁrst used for one-dimensional phase change simulations in 2001
+[9]. Around this time, Sun and Beckermann [10] derived a diﬀuse interface model, which was also used to simulate interfacial velocity
+and pressure jumps. Later, more complex two-dimensional simulations were conducted for boiling on a heated surface [11] and for
+studying bubble growth with contact angle dynamics [12]. For simulating three-dimensional ﬂows, another phase-ﬁeld-like approach
+was proposed in [13,14].
+    Within the class of diﬀuse interface methods, most approaches are based on either the Allen-Chan (AC) equation [15] or the Cahn-
+Hillard (CH) equation [16]. The CH-based approach, often chosen for its mass-conserving property, has seen several applications
+for boiling ﬂows [17–19]. However, the CH approach can be numerically problematic as it entails solving a fourth-order partial
+diﬀerential equation (PDE). In this regard, the AC-based approach is preferable as it only contains second derivatives in space, but
+it does not conserve mass. For that reason, the AC equation was modiﬁed [20,21] to derive a mass-conservative second-order phase
+ﬁeld equation, which has been successfully used for simulating a variety of boiling ﬂow problems [22,23].
+    The conservative second-order phase ﬁeld equation was further investigated by Mirjalili et al. [24] and Jain et al. [25] for
+application to incompressible and compressible ﬂows, respectively. It was proven that speciﬁc parameter choices allow for discretizing
+spatial derivatives using exclusively central diﬀerences. These advancements have signiﬁcantly improved the simulation of complex
+ﬂows, as scalability is enhanced, and resolving turbulence beneﬁts from the non-dissipative nature of the discretization [26]. In
+the following, we refer to this subclass as the conservative diﬀuse interface (CDI) method [24]. Further improvements [1] led to
+(i) relaxing the parameter constraints and (ii) enhancing the model’s accuracy, which is referred to as the accurate conservative
+diﬀuse interface (ACDI) method [1]. This method has been used for a variety of phase change phenomena, including icing [27] and
+concentration-driven evaporation [28,29]. Few researchers have explored the capabilities of these recent advancements in simulating
+boiling phenomena. To the best of our knowledge, only nucleate boiling [30], and bubble growth [31], in two dimensions have been
+studied. Therefore, a versatile framework for complex boiling ﬂow using the ACDI equation is needed. Such a framework should
+consider the aspects: (i) the coupling with the Navier-Stokes equation, (ii) the modelling of the surface tension, (iii) the eﬃcient
+solution of the pressure, and (iv) the use of a suitable phase change model. The reasons these aspects should be discussed are
+presented below.
+    Coupling a diﬀuse interface method to the Navier-Stokes equation by deriving consistent equations to describe a multiphase
+mixture is still an open topic [32]. In the CDI community, a mixture formulation, as in [33], is commonly selected, however, the
+rationale behind this choice is rarely discussed. In contrast, many [32,34–40] have discussed mathematical variations for consistently
+describing CH-type mixtures. The selection of a mixture formulation is generally based on the model assumptions and numerical
+design choices. For example, [38] indicate that some mixture descriptions might not be consistent for arbitrary diﬀerential ﬂuxes
+(or regularization ﬂuxes in the CDI community). However, a comprehensive discussion in the context of boiling ﬂow simulations is
+missing.
+    Modelling of the surface tension in the momentum balance equation is an essential aspect when deriving mixture equations.
+Surface tension models are commonly associated with spurious ﬂow structures [41], which can negatively impact the results or even
+lead to instabilities. For CDI equations, two classes of surface tension models are commonly used [42]: (i) the continuum surface force
+(CSF) [43], and (ii) the energy-based (or chemical potential-based) model [44,45]. In the absence of phase change, the energy-based
+model was found to have better accuracy and convergence properties in terms of spurious currents [42,46,47]. With phase change,
+an ampliﬁcation of spurious currents is generally observed [48]. Researchers [49] have also reported interactions with the thermal
+boundary layer and the phase change model. To reduce these currents, several variations of both the CSF model, e.g. [50,51], and
+the energy-based model, e.g. [52,53], exist. Regarding boiling ﬂow simulations, a comprehensive suitability assessment for the CDI
+approach has not been conducted yet.
+    As concerns the numerical solution of the CDI mixture equations, the pressure Poisson equation (PPE) is commonly associated
+with the highest computational cost [8] at each time step. For high-density ratios, iterative solvers exhibit a reduced convergence
+rate [54], which motivates the search for fast alternatives. A common method is to reformulate the PPE with constant coeﬃcients as
+in [55–57], allowing for the use of Fast Fourier transformations (FFTs) [58]. In recent years, many studies have successfully utilized
+this approach for simulating complex multiphase ﬂows, e.g. [29,59–61]. Despite its advantages, this approach was shown to cause
+pressure oscillations at interfaces subjected to pressure jumps due to surface tension [62] or due to the recoil pressure jump in phase
+
+
+                                                                  2
+L. Weber, A. Mukherjee, A.G. Class et al.                                                       Journal of Computational Physics 551 (2026) 114680
+
+
+change scenarios [61]. Although the latter two studies present signiﬁcant improvements, complex ﬂow cases can still suﬀer from
+oscillations in boiling ﬂow simulations [61].
+    The selection of the phase change model can also inﬂuence the framework’s scalability potential for parallel computing. Generally,
+two types of models exist: (i) heat conduction models [49,63,64] that use the interfacial jump conditions to calculate the mass transfer
+rate, and (ii) kinetic models [65–67] that use the local superheat. The ﬁrst model class is computationally more expensive, as it requires
+temperature gradient calculations. Nevertheless, heat conduction models are widely used in phase ﬁeld methods [19,23,31], as they
+are free from empirical coeﬃcients [3]. Although traditional kinetic models come with problem-dependent constants [65–67], simpler
+formulations exist [68,69] that have not been adopted by the CDI community, thus far.
+    In this study, we work to address the research gaps identiﬁed in the preceding paragraphs. For this purpose, we develop a
+sophisticated diﬀuse interface framework for simulating boiling ﬂows. The methods of this framework were chosen to support large-
+scale, massively parallel simulations by design. The aims of this study are (i) to derive a consistent mixture formulation for the ACDI
+equation for application to boiling ﬂows, (ii) to develop an improved FFT-based pressure solution scheme, (iii) to ﬁnd an eﬃcient yet
+versatile phase change formulation for the chosen phase ﬁeld model, and (iv) to incorporate these features in a robust time-stepping
+algorithm.
+    The remainder of this paper is structured as follows. First, we derive a suitable set of mixture equations in Section 2. For the
+numerical solution of the equations (Section 3), we present the time-stepping methodology in Section 3.2, which we complete by
+developing an FFT pressure solution scheme (Section 3.3). In Section 3.4, we modify an existing kinetic phase change model for
+the ACDI application. The corresponding solution algorithm is presented in Section 3.6. After discussing the methods, we present a
+comprehensive testing campaign to highlight the achieved improvements (Section 4). Finally, in Section 5, we summarize the main
+ﬁndings and compare them with the aims of the study.
+
+2. Governing equations
+
+   This paper considers an immiscible two-phase ﬂow, where the phases are separated by a diﬀuse interface, in which both phases
+coexist. Using the volume fraction 𝛼𝑖 and the density of the ith phase 𝜌𝑖 , we deﬁne partial densities 𝜌̃𝑖 and mixture density 𝜌 as
+                            ∑
+       𝜌̃𝑖 = 𝛼𝑖 𝜌𝑖 and 𝜌 =     𝜌̃𝑖 ,                                                                                                (1)
+        ∑
+where 𝛼𝑖 = 1. Both phases are assumed incompressible; thus, ∇ ⋅ 𝑢⃗𝑖 = 0. A volume averaging approach is chosen for the mixture
+velocity. Consequently, 𝑢⃗ denotes the velocity resulting from volume averaging
+            ∑
+       𝑢⃗ =      𝛼𝑖 𝑢⃗𝑖 .                                                                                                           (2)
+               𝑖
+
+A favourable feature of volume averaging is that 𝑢⃗ is divergence-free in the absence of phase change; therefore, it is used by many
+authors in the phase ﬁeld community [36,37,70]. In general, 𝑢⃗1 ≠ 𝑢⃗2 , which is why we introduce the diﬀerential velocity Δ⃗𝑢 = 𝑢⃗1 − 𝑢⃗2 ,
+following the notation of [13]. This allows the phase velocities to be expressed in terms of the mixture quantities
+        𝑢⃗1 = 𝑢⃗ + 𝛼2 Δ⃗𝑢 and        𝑢⃗2 = 𝑢⃗ − 𝛼1 Δ⃗𝑢.                                                                                       (3)
+Using these mixture quantities, we derive the governing equations by (i) starting from the conservation equation for each phase,
+(ii) deriving the mixture equation, and (iii) making appropriate modelling choices for the considered problem. In the following
+subsections, this procedure is applied to the mass and phase ﬁeld transport equations, the momentum transport equation, and the
+energy transport equation.
+
+2.1. Mass and phase ﬁeld transport
+
+    The mass conservation in each phase reads as
+       𝜕 𝜌̃𝑖
+             + ∇ ⋅ (𝜌̃𝑖 𝑢⃗𝑖 ) = 𝑖 ,                                                                                              (4)
+        𝜕𝑡
+                                                                                                         ∑
+where 𝜌𝑖 = 𝑐𝑜𝑛𝑠𝑡., and the source 𝑖 denotes the interfacial mass transfer density of the 𝑖th phase with 𝑖 𝑖 = 0.
+   We introduce the phase ﬁeld variable 𝜙 being equal to the volume fraction 𝛼1 , which corresponds to the gaseous phase for the
+remainder of this paper. Consequently, 𝛼1 = 𝜙 and 𝛼2 = (1 − 𝜙). Dividing (4) by 𝜌𝑖 for 𝑖 = 1, we arrive at the evolution equation for
+the phase ﬁeld variable 𝜙,
+         𝜕𝜙                 1
+            + ∇ ⋅ (𝜙⃗𝑢1 ) =    .                                                                                                              (5)
+         𝜕𝑡                 𝜌1
+The subscript 1 of the mass transfer term 1 is dropped for the remainder of this paper for convenience, thus 1 =  and 2 = −.
+Applying the mixture relations from Eqs. (3) to (5) results in the evolution equation for the phase ﬁeld variable 𝜙 expressed in terms
+of mixture quantities,
+         𝜕𝜙                                               ⃗
+            + ∇ ⋅ (𝜙⃗𝑢) =    − ∇ ⋅ (𝜙(1 − 𝜙)Δ⃗𝑢) =    + ∇ ⋅ .                                                                                (6)
+         𝜕𝑡               𝜌1                       𝜌1
+In Eq. (6), we introduce the term ⃗ = −𝜙(1 − 𝜙)Δ⃗𝑢. The diﬀerential velocity Δ⃗𝑢 is typically associated with a sharpening or diﬀusion
+of the interface region. This diﬀerence is not necessarily connected to a physical interpretation. For non-phase-change problems, this
+
+                                                                     3
+L. Weber, A. Mukherjee, A.G. Class et al.                                                       Journal of Computational Physics 551 (2026) 114680
+
+
+is often explained with counter-acting the numerical diﬀusion (i.e. resharpening). In the presence of phase change, an analogy may
+                                                                                                                           ⃗ which we
+be drawn to the interface normal velocity jump. In general, Δ⃗𝑢 is not accessible and a separate treatment is required for ,
+discuss at the end of this section. Summing the transport equations for both 𝛼𝑖 , we obtain the relation for the divergence of 𝑢⃗
+           [                   ]            (       )
+        ∑ 𝜕𝛼𝑖                                 1   1
+                + ∇ ⋅ (𝛼𝑖 𝑢⃗𝑖 ) = ∇ ⋅ 𝑢⃗ =     −     .                                                                            (7)
+         𝑖
+             𝜕𝑡                               𝜌1 𝜌2
+
+Similar to Eq. (7), the mass transport is the sum of Eq. (4) for both phases
+          [                     ]
+       ∑ 𝜕 𝜌̃𝑖                     𝜕𝜌
+                + ∇ ⋅ (𝜌̃𝑖 𝑢⃗𝑖 ) =                                ⃗ = ∇ ⋅ ⃗ .
+                                      + ∇ ⋅ (𝜌⃗𝑢) = (𝜌1 − 𝜌2 )∇ ⋅                                                                            (8)
+        𝑖
+            𝜕𝑡                     𝜕𝑡
+
+                ⃗ is denoted ⃗ , which is the diﬀerential mass ﬂux between the two phases. As such, Eqs. (5) and (8) have the same
+Here, (𝜌1 − 𝜌2 )
+structure as those found in the conservative diﬀuse interface literature, e.g. [25,33], but carry an additional phase change term .
+To close the system, we need an expression for the term   ⃗ since the diﬀerential velocity is, in general, unknown. Using the accurate
+conservative diﬀuse interface method [1], we set
+              [         (          ( )) ]
+       ⃗ = Γ 𝜖∇𝜙 − 1 1 − tanh2 Ψ
+                                           𝑛⃗ .                                                                                    (9)
+                      4              2𝜖
+
+For situations involving phase change, the closure of    ⃗ could be further augmented by calculating the interface velocity jump due
+to mass transfer. This velocity jump can be approximated using an interface normal integral of . For computational eﬃciency,
+calculating this integral was not considered. A satisfactory closure was obtained using Eq. (9) as shown through the testing campaign
+in Section 4. For the remainder of this paper we will refer to     ⃗ as the regularization term [1]. In Eq. (9), Γ is the regularization
+speed, 𝜖 a measure for the interface thickness, 𝑛⃗ the interface normal vector, and Ψ the level-set function. Typically Γ is related to
+the largest velocity in the domain 𝑢max , i.e. Γ = Γ∗ |𝑢max |, where Γ∗ is dimensionless factor. Further, 𝜖 is related to the grid spacing
+Δ𝑥 and a dimensionless factor 𝜖 ∗ so that 𝜖 = 𝜖 ∗ Δ𝑥. Special choices for the values of those parameters were made by [1] to enable
+the discretization with central diﬀerencing schemes. In Section 3.4, we present an extension to boiling ﬂows. Finally, the level-set
+function Ψ is calculated [1] from
+               (           )
+                    𝜙+𝜀
+       Ψ = 𝜖ln              .                                                                                                         (10)
+                  1−𝜙+𝜀
+The level-set function is also used to calculate the interface normal vector 𝑛⃗ = ∇Ψ∕|∇Ψ|. For numerical stability reasons, a small
+number 𝜀 is added to Eq. (10). Note that 𝜀 can vary depending on the implementation. However, in this study, robust calculations
+of Ψ were obtained by using values in the order of 10−16 . This completes the derivation of the phase ﬁeld evolution equation. In the
+next step, the focus is turned to the momentum balance of the mixture.
+
+2.2. Momentum transport
+
+   To derive the mixture momentum transport equation, we start at the transport equations for each phase separately. This strategy
+was also followed in [10,13,36,39] and, more recently, in [32,40]. For the 𝑖th phase, the linear momentum balance equation is given
+by
+         𝜕𝛼𝑖 𝜌𝑖 𝑢⃗𝑖
+                    + ∇ ⋅ (𝛼𝑖 𝜌𝑖 𝑢⃗𝑖 ⊗ 𝑢⃗𝑖 ) = −𝛼𝑖 ∇𝑝 + ∇ ⋅ 𝜏𝑖 + 𝛼𝑖 𝜌𝑖 𝑔⃗ + 𝐼⃗𝑖 + 𝐸⃗𝑖 ,                                                     (11)
+           𝜕𝑡
+where 𝜏𝑖 is the viscous stress tensor 𝜏𝑖 = 𝛼𝑖 𝜇𝑖 (∇⃗𝑢𝑖 + ∇⃗𝑢𝑇𝑖 ), 𝜇𝑖 the constant dynamic viscosity, 𝑔⃗ the earth’s gravitational force, and
+                                                        ∑          ⃗ The term 𝐸⃗𝑖 represents the contributions of the surface energy in the
+𝐼⃗𝑖 represents all phase interaction forces. Note that 𝑖 𝐼⃗𝑖 = 0.
+context of Allen-Cahn or Cahn-Hillard models [32]. More generally, 𝐸⃗𝑖 represents the eﬀect of surface tension (see [10]). Further we
+assume that both phases share locally the same pressure 𝑝. The sum of the left-hand side (LHS) of Eq. (11) over the phase index 𝑖 may
+be expressed in terms of the mixture quantities 𝜌, 𝑢⃗, ,      ⃗ and ⃗ as
+          [                                ]
+      ∑ 𝜕𝛼𝑖 𝜌𝑖 𝑢⃗𝑖                             𝜕𝜌⃗𝑢       (        )     (       )
+                   + ∇ ⋅ (𝛼𝑖 𝜌𝑖 𝑢⃗𝑖 ⊗ 𝑢⃗𝑖 ) =        + ∇ ⋅ 𝜌⃗𝑢 ⊗ 𝑢⃗ − ∇ ⋅ ⃗ ⊗ 𝑢⃗
+       𝑖
+              𝜕𝑡                                𝜕𝑡
+                                                                           ((            )      )
+                                                  𝜕 ⃗      (        )        𝜌1      𝜌2
+                                               −       − ∇ ⋅ 𝑢⃗ ⊗ ⃗ + ∇ ⋅         +       ⃗ ⊗
+                                                                                             ⃗                                   (12)
+                                                   𝜕𝑡                          𝜙     1−𝜙
+                                                          (              )
+                                               𝜕𝜌⃗𝑢         (        )
+                                             =       + ∇ ⋅ 𝜌⃗𝑢 − ⃗ ⊗ 𝑢⃗ + . ⃗
+                                                𝜕𝑡
+Eq. (12) is the complete LHS that describes the coupling of the momentum equation with the diﬀuse interface model. The second line
+of Eq. (12) represents the terms commonly neglected when a volume-averaged mixture velocity is used. For conciseness, these terms
+are replaced by ⃗ in the third line. Without the terms summarized by ,
+                                                                       ⃗ Eq. (12) is identical to the LHS of the momentum equation
+used by the CDI community [25,33]. Note that ⃗ is solely active within the diﬀuse interface region and vanishes for the pure gas and
+liquid phases. These terms originate from the diﬀuse interface model and represent a correction accounting for the additional mass
+ﬂux due to the interface regularization  ⃗ (see Eq. (8)).
+
+                                                                                          4
+L. Weber, A. Mukherjee, A.G. Class et al.                                                       Journal of Computational Physics 551 (2026) 114680
+
+                                        (      )
+   Neglecting the terms 𝜕 ⃗ ∕𝜕𝑡 + ∇ ⋅ 𝑢⃗ ⊗ ⃗ (Eq. (12)) is commonly justiﬁed by the assumption that the “relative momenta […] are
+negligible when computed relative to the gross motion of the ﬂuid” [34]. Subsequently, this assumption was followed in numerous
+studies, e.g. [37,39,71]. In other works [25,33,52], this simpliﬁcation is utilized implicitly. As shown in the literature [33,52], this
+assumption leads to another possible (kinetic energy conservative) coupling of phase ﬁeld models with the Navier Stokes Equations
+                                                         (      )
+(NSE). Nevertheless, formally, the term 𝜕 ⃗ ∕𝜕𝑡 + ∇ ⋅ 𝑢⃗ ⊗ ⃗ is not zero [32,40] and recent numerical experiments [70] show that
+keeping the terms led to accurate results in two-phase ﬂows.
+   The last term of the second line of Eq. (12) received diﬀerent treatment in the literature. Though often neglected, it is worth
+noting that in [13] the term is recognized as part of the pressure. In [39] this term is incorporated into the stress tensor. For the
+present study, this term is retained in ⃗ and its relevance will be evaluated in the context of boiling ﬂows in the subsequent sections.
+                                                                         ∑
+   When using a density averaged (barycentric) mixture velocity 𝑣⃗ = 𝑖 (𝜌̃𝑖 𝑢⃗𝑖 )𝜌−1 , we can reformulate Eq. (12) in a more concise form
+                                   ⃗
+through the relation 𝜌𝑣⃗ = 𝜌⃗𝑢 −  as follows
+                                                                     ((            )         )
+       𝜕𝜌⃗𝑢        (       )       (      ) 𝜕 ⃗       (      )         𝜌1     𝜌2
+            + ∇ ⋅ 𝜌⃗𝑢 ⊗ 𝑢⃗ − ∇ ⋅ ⃗ ⊗ 𝑢⃗ −       − ∇ ⋅ 𝑢⃗ ⊗ ⃗ + ∇ ⋅       +          ⃗ ⊗
+                                                                                          ⃗
+        𝜕𝑡                                   𝜕𝑡                         𝜙    1−𝜙
+                                          ((            )       )                                                                     (13)
+               𝜕𝜌𝑣⃗       (        )            𝜌1 𝜌2
+            =        + ∇ ⋅ 𝜌𝑣⃗ ⊗ 𝑣⃗ + ∇ ⋅                ⃗ ⊗ ⃗ .
+                𝜕𝑡                           𝜌𝜙(1 − 𝜙)
+Eq. (13) is equivalent to the momentum balance found in [10]. A drawback of using 𝑣⃗ is that the mixture velocity is not divergence-
+free when  = 0, because ∇ ⋅ 𝑣⃗ = ∇ ⋅ 𝑢⃗ − ∇ ⋅ (𝜌−1 ⃗ ). However, formulating the momentum balance LHS in terms of a volume-averaged
+velocity 𝑢⃗ or a density-averaged velocity 𝑣⃗ leads to equivalent mixture formulations [70]. For conciseness, we will occasionally use 𝑣⃗
+in this study, bearing in mind that 𝑢⃗ is the primary solution quantity.
+                                                                                                                                 ∑
+     For the mixture formulation of the right-hand side (RHS) of Eq. (11), we will discuss each term separately. Evidently, 𝑖 (−𝛼𝑖 ∇𝑝 +
+                                                ∑
+𝛼𝑖 𝜌𝑖 𝑔⃗ + 𝐼⃗𝑖 ) = −∇𝑝 + 𝜌𝑔, ⃗ but modelling 𝑖 (𝜏𝑖 ) in terms of mixture quantities is not trivial. Although complete formulations [32,36] or
+approximations [10] are available, we choose to use
+          ∑
+                (𝜏𝑖 ) ≈ 𝜏 = 𝜇(∇⃗𝑢 + ∇⃗𝑢𝑇 − 2∇ ⋅ 𝑢⃗𝕀).                                                                                    (14)
+          𝑖
+                                       ∑
+Here, 𝕀 is the identity tensor and 𝜇 = 𝑖 𝛼𝑖 𝜇𝑖 . Note that 2∇ ⋅ 𝑢⃗𝕀 removes the spurious pressure contribution of the normal viscous stress
+component [5,72].
+                      ∑
+   Lastly, the term 𝑖 𝐸⃗𝑖 of Eq. (11) represents the surface tension eﬀect. Since the conservative diﬀuse interface method does not
+                                                                                                      ∑
+obey a known energy functional like the Cahn-Hillard or Allen-Cahn models [42], we replace 𝑖 𝐸⃗𝑖 with a general forcing vector
+ ⃗                                                                       ⃗
+𝑓𝑆𝑇 to model the eﬀect of surface tension. Selection of a model for 𝑓𝑆𝑇 is sensitive, as spurious currents can signiﬁcantly impact the
+overall result quality [48]. In Section 4, we will compare diﬀerent surface tension models and provide best practice guidelines.
+   The ﬁnal momentum balance equation in terms of mixture quantities reads
+                  (              )
+        𝜕𝜌⃗𝑢        (       )
+             + ∇ ⋅ 𝜌⃗𝑢 − ⃗ ⊗ 𝑢⃗ + ⃗ = −∇𝑝 + ∇ ⋅ 𝜏 + 𝜌𝑔⃗ + 𝑓⃗𝑆𝑇 ,                                                                    (15)
+         𝜕𝑡
+where
+                                            ((            )     )
+               𝜕 ⃗      (       )               𝜌1    𝜌2
+        ⃗ = −      − ∇ ⋅ 𝑢⃗ ⊗ ⃗ + ∇ ⋅             +      ⃗ ⊗
+                                                               ⃗ .                                                                          (16)
+               𝜕𝑡                                𝜙    1−𝜙
+
+2.3. Energy transport
+
+    To derive the energy transport, we start at the partial enthalpy density 𝜌̃𝑖 ℎ𝑖 as the transported, conserved quantity. Here, ℎ𝑖 is the
+enthalpy of the 𝑖th phase, which we deﬁne as ℎ𝑖 = 𝑐𝑝,𝑖 𝑇𝑎𝑏𝑠 + ℎ0,𝑖 . We utilize the absolute temperature 𝑇𝑎𝑏𝑠 and the heat capacity 𝑐𝑝,𝑖
+(at constant pressure). As a reference enthalpy, the enthalpy of formation ℎ0,𝑖 at 0 K is used. Further we assume 𝑐𝑝,𝑖 to be constant.
+The transport equation for 𝜌̃𝑖 ℎ𝑖 is then [13]
+       𝜕 𝜌̃𝑖 ℎ𝑖
+                + ∇ ⋅ (𝜌̃𝑖 ℎ𝑖 𝑢⃗𝑖 ) = ∇ ⋅ (𝛼𝑖 𝜆𝑖 ∇𝑇𝑎𝑏𝑠 ).                                                                   (17)
+          𝜕𝑡
+Summing Eq. (17) for all 𝑖 and expressing the result in mixture quantities results in
+       𝜕𝜌ℎ                                              [         ]
+                                                                 ⃗ .
+              + ∇ ⋅ (𝜌ℎ⃗𝑢) = ∇ ⋅ (𝜆∇𝑇𝑎𝑏𝑠 ) + ∇ ⋅ (𝜌1 ℎ1 − 𝜌2 ℎ2 )                                                          (18)
+        𝜕𝑡
+                                                          ∑                              ∑
+Here, the mixture enthalpy density is 𝜌ℎ = 𝑖 𝜌̃𝑖 ℎ𝑖 and the mixture heat conductivity 𝜆 = 𝑖 𝛼𝑖 𝜆𝑖 with 𝜆𝑖 assumed constant.
+   Introducing a relative temperature 𝑇 = 𝑇𝑎𝑏𝑠 − 𝑇𝑠𝑎𝑡 based on the (constant) saturation temperature 𝑇𝑠𝑎𝑡 and the latent heat at
+saturation temperature 𝐿𝑠𝑎𝑡 = ℎ1 (𝑇𝑠𝑎𝑡 ) − ℎ2 (𝑇𝑠𝑎𝑡 ), we can rewrite (18) as
+         𝜕𝜌𝑐𝑝 𝑇
+                                                                                 ⃗
+              + ∇ ⋅ (𝜌𝑐𝑝 𝑇 𝑢⃗) = ∇ ⋅ (𝜆∇𝑇 ) − 𝐿𝑠𝑎𝑡 + (𝜌1 𝑐𝑝,1 − 𝜌2 𝑐𝑝,2 )∇ ⋅ (𝑇 ).                                                        (19)
+        𝜕𝑡
+             ∑
+Taking 𝜌𝑐𝑝 = 𝑖 𝜌̃𝑖 𝑐𝑝,𝑖 out of the derivatives leads us to the following transport equation for the temperature
+          (              )
+            𝜕𝑇                                          ⃗ ⋅ ∇𝑇 .
+      𝜌𝑐𝑝      + 𝑢⃗ ⋅ ∇𝑇 = ∇ ⋅ (𝜆∇𝑇 ) − 𝐿 + Δ𝜌𝑐𝑝                                                                                          (20)
+            𝜕𝑡
+
+                                                                     5
+L. Weber, A. Mukherjee, A.G. Class et al.                                                        Journal of Computational Physics 551 (2026) 114680
+
+
+                                                                                                                                  ⃗ is kept in
+In Eq. (20), 𝐿 = 𝑓 (𝑇 ) = 𝐿𝑠𝑎𝑡 + (𝑐𝑝,1 − 𝑐𝑝,2 )𝑇 is the temperature-dependent latent heat and Δ𝜌𝑐𝑝 = 𝜌1 𝑐𝑝,1 − 𝜌2 𝑐𝑝,2 . The term 
+Eq. (20) for consistency. Nevertheless various phase ﬁeld studies do not seem to require this contribution [19,22,23,30]. It is worth
+mentioning that in some works [13,14,73,74], the contribution of         ⃗ is included in the temperature transport. However, in the latter
+works, a diﬀerent closure procedure was used.
+    Mathematically, Eqs. (18)–(20) are equivalent, but they diﬀer when implemented numerically. In this paragraph, we discuss
+the choice of the equation in detail. Clearly, from an energy conservation point of view, Eqs. (18) or (19) are preferred. For the
+discretization of the advection term, a diﬀerent scheme has to be selected than that for the phase ﬁeld transport Eq. (6). In general
+the temperature ﬁeld may contain steep gradients or jumps (e.g. at the interface), which limit the use of central diﬀerencing schemes
+for the spatial discretization. As such, specialized ﬂux limiter or WENO schemes [75] are required.
+    Applying diﬀerent spatial discretization schemes for transporting physical properties can lead to inconsistencies. Here, the trans-
+port of the physical property 𝜌𝑐𝑝 is implied by both Eqs. (18) and (19), although the transport of this quantity is already deﬁned by
+Eq. (6). This is inconsistent, as the same physical property would be transported twice, with two diﬀerent numerical schemes. We
+overcome this problem by using Eq. (20) to separate the temperature transport (Eq. (20)) from the transport of physical properties
+(Eq. (6)). Choosing Eq. (20) for simulating the thermal energy transport can lead to conservation errors due to its non-conservative
+form. This error is discussed further in Section 4.4. Note that, apart from Eq. (20), all numerical implementations use central diﬀer-
+encing methods for discretizing spatial derivatives.
+    The ﬁnal energy balance equation has the form
+           (              )
+             𝜕𝑇                                                  ⃗ ⋅ ∇𝑇 ,
+       𝜌𝑐𝑝       + 𝑢⃗ ⋅ ∇𝑇 = ∇ ⋅ (𝜆∇𝑇 ) + ∇ ⋅ 𝑗⃗ − 𝐿 + Δ𝜌𝑐𝑝                                                                            (21)
+             𝜕𝑡
+with
+                        (        )
+                            𝜆1
+        𝑗⃗ = −⃗
+              𝑛𝐿𝜖             −1 .                                                                                                          (22)
+                            𝜆2
+
+    In Eq. (21), the term 𝑗⃗ was artiﬁcially added. This term is called the anti-trapping current [76]. In the context of phase ﬁeld
+modelling, 𝑗⃗ is used to improve convergence to the sharp interface limit [13,76–78]. For the present application, we used a simpliﬁed
+version of the anti-trapping current proposed in [13]. This simpliﬁcation is based on the assumption that the heat transport from the
+liquid to the interface is high compared to the heat coming from the vapour side. The reader is referred to the work in Ref. [13] for
+further details.
+
+3. Numerical implementation
+
+    The following section presents a discrete scheme for solving the governing equations. First, we brieﬂy discuss the spatial operators
+required to discretize the equations in space. The remainder of the section is primarily devoted to elaborating on the temporal
+integration. Finally, the numerical implementation of the phase change and the associated impact on the time-stepping is discussed.
+
+3.1. Spatial discretization
+
+   We now discuss the discretization in space. For the discrete representation of 𝜙, 𝑢⃗, 𝑝, and 𝑇 , we decompose the computational
+domain into uniform cubic cells of volume Δ𝑥3 . In each cell, the solution variables are located in a staggered arrangement, such that
+scalars (i.e. 𝜙, 𝑝, and 𝑇 ) are deﬁned at the cell centres and vectors (e.g. 𝑢⃗) at the cell faces. Fig. 1 illustrates this situation for two
+dimensions; the extension to three dimensions is straightforward.
+   The governing equations derived in Section 2 allow the use of central diﬀerencing schemes for almost all spatial derivatives.
+As described in Section 2.3, the exception is the transport equation for thermal energy, where a 5th-order WENO scheme [75] is
+employed. Therefore, a single neighbouring grid point is required for the discrete operators using second-order central schemes and
+two points for those using the WENO scheme (i.e. for 𝑇 ). For inter-process communication in parallel computing, this reduces data
+exchange between processes, and consequently, an improved scalability.
+
+3.2. Temporal discretization
+
+   In this section, we present the numerical integration of the variables 𝜙, 𝑢⃗,𝑝,𝑇 in time. First, we use a second-order explicit Adams-
+Bashforth scheme to compute intermediate values between time steps 𝑛 and 𝑛 + 1 for the ﬁelds 𝜙 and 𝑇 . This state is denoted with
+the superscript * and obtained by solving
+                        (                    )
+       𝜙∗ = 𝜙𝑛 + Δ𝑡𝑛+1 𝑓𝑡,1 𝑛𝜙 + 𝑓𝑡,2 𝑛−1
+                                          𝜙    ,                                                                                     (23)
+        ∗      𝑛     𝑛+1
+                         (      𝑛         𝑛−1
+                                              )
+       𝑇 = 𝑇 + Δ𝑡         𝑓𝑡,1 𝑇 + 𝑓𝑡,2 𝑇 .                                                                                        (24)
+
+According to the Adams-Bashforth scheme, the coeﬃcients 𝑓𝑡,1 ,𝑓𝑡,2 are
+
+                      Δ𝑡𝑛+1                        Δ𝑡𝑛+1
+        𝑓𝑡,1 = 1 +              and     𝑓𝑡,2 = −         .                                                                                   (25)
+                      2Δ𝑡𝑛                         2Δ𝑡𝑛
+
+                                                                      6
+L. Weber, A. Mukherjee, A.G. Class et al.                                                               Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                                Fig. 1. Schematic visualization for deployed ﬁnite volume discretization in two dimensions.
+
+
+Furthermore, a term 𝑛𝑐 denotes the rate of change for a quantity 𝑐 at time step 𝑛, i.e., (𝜕𝑐∕𝜕𝑡)𝑛 = 𝑛𝑐 . Following this procedure for 𝜙
+and 𝑇 and rearranging Eqs. (6) and (21), we write 𝑛𝜙 and 𝑛𝑇 as
+
+        𝑛𝜙 = −∇ ⋅ (𝜙𝑛 𝑢⃗𝑛 ) + ∇ ⋅  ⃗𝑛                                                                                                             (26)
+                                      (                                           )
+                                1
+        𝑛𝑇 = −⃗𝑢𝑛 ⋅ ∇𝑇 𝑛 +         ∗
+                                        ∇ ⋅ (𝜆𝑛 ∇𝑇 𝑛 ) + ∇ ⋅ 𝑗⃗𝑛 + Δ𝜌𝑐𝑝 
+                                                                        ⃗ 𝑛 ⋅ ∇𝑇 𝑛 .                                                                (27)
+                              (𝜌𝑐𝑝 )
+In Eqs. (26) and (27), the contribution of the phase change term  was ignored when computing the intermediate stage *. In
+Section 3.4 we discuss calculating  as a function of the intermediate variable values. This step enhances the numerical stability.
+After calculating 𝑛+1 , the ﬁnal values 𝜙𝑛+1 and 𝑇 𝑛+1 are obtained as
+                                𝑛+1
+        𝜙𝑛+1 = 𝜙∗ + Δ𝑡𝑛+1            ,      and   𝑇 𝑛+1 = 𝑇 ∗ + Δ𝑇𝑃𝑛+1
+                                                                    𝐶
+                                                                       .                                                                            (28)
+                                 𝜌1
+Here Δ𝑇𝑃𝑛+1
+         𝐶
+            is the temperature increment due to phase change (see Section 3.4).
+                                                                                                   ⃗ ∗ as
+   The velocity ﬁeld is advanced in time using Eq. (15). Starting with the intermediate momentum (𝜌𝑣)
+                            [                                                  ]
+                              (                       )
+        𝑣)∗ = (𝜌𝑣)
+      (𝜌⃗        ⃗ 𝑛 + Δ𝑡𝑛+1 𝑓𝑡,1 ⃗𝑛𝜌𝑣⃗ + 𝑓𝑡,2 ⃗𝑛−1
+                                                  𝜌⃗
+                                                   𝑣
+                                                        + 𝜌𝑛+1 𝑔⃗ + 𝑓⃗𝑆𝑇
+                                                                      𝑛+1
+                                                                          − ∇𝑝𝑛 .                                                                   (29)
+
+The surface tension 𝑓⃗𝑆𝑇 and the eﬀect of gravity through 𝑔⃗ are excluded from the Adams-Bashforth scheme since their values for
+time step 𝑛 + 1 are already known. Additionally, we decompose the new pressure 𝑝𝑛+1 = 𝑝𝑛 + 𝜓 𝑛+1 and add the contribution of the
+                                                                            ⃗ 𝑛 = 𝜌𝑛 𝑢⃗𝑛 − ⃗ 𝑛 . The term ⃗𝑛 , containing the advection
+old pressure 𝑝𝑛 in Eq. (29) to the intermediate momentum. We recall that (𝜌𝑣)
+                                                                                                                       𝜌𝑣⃗
+and viscus eﬀects, is deﬁned as
+                                        ((              )        )
+                    (            )            𝜌1 𝜌2
+       ⃗𝑛𝜌𝑣⃗ = −∇ ⋅ 𝜌𝑛 𝑣⃗𝑛 ⊗ 𝑣⃗𝑛 − ∇ ⋅     𝑛 𝑛      𝑛
+                                                          ⃗𝑛 ⊗
+                                                             ⃗ 𝑛 + ∇ ⋅ 𝜏𝑛.                                                                         (30)
+                                           𝜌 𝜙 (1 − 𝜙 )
+
+3.3. Pressure solution
+
+   This section presents calculating 𝑢⃗𝑛+1 and the pressure increment 𝜓 𝑛+1 = 𝑝𝑛+1 − 𝑝𝑛 from the intermediate momentum (𝜌𝑣) ⃗ ∗ . For
+simulations using the CDI method, solving the PPE is the most expensive step in terms of computational cost [8,79]. Consequently,
+we devote special attention to this solution procedure. The intuitive method for obtaining 𝜓 𝑛+1 and 𝑢⃗𝑛+1 may be to use a pressure
+correction step [80]
+          (            )         [                (       )      ( 𝑛+1 )]
+              1              1                      1   1          ⃗
+       ∇⋅        ∇𝜓 𝑛+1 =          ∇ ⋅ 𝑣⃗∗ − 𝑛+1     −     +∇⋅            .                                                     (31)
+            𝜌𝑛+1           Δ𝑡𝑛+1                    𝜌1 𝜌2           𝜌𝑛+1
+        ⃗ ∗ = 𝜌𝑛+1 𝑣⃗∗ , one sets
+Using (𝜌𝑣)
+                        Δ𝑡𝑛+1          ⃗ 𝑛+1
+        𝑢⃗𝑛+1 = 𝑣⃗∗ −         ∇𝜓 𝑛+1 +             , 𝑝𝑛+1 = 𝑝𝑛 + 𝜓 𝑛+1 .                                                                            (32)
+                        𝜌 𝑛+1           𝜌𝑛+1
+
+                                                                              7
+L. Weber, A. Mukherjee, A.G. Class et al.                                                     Journal of Computational Physics 551 (2026) 114680
+
+
+Solving Eq. (31) with an iterative scheme is expensive for large density ratios, as this requires specialized preconditioners [81]
+and results in slow convergence rates. FFT-based solvers can oﬀer a substantial speed-up potential and are frequently utilized for
+multiphase ﬂows [29,59,61]. As such, we explore the use of FFT-based solvers to reduce the computational cost.
+                                                    −1      )
+    Using an FFT-solver requires rewriting ∇ ⋅ (𝜌𝑛+1 ∇𝜓 𝑛+1 to obtain a constant-coeﬃcient matrix as proposed in [56,57]. In the
+following, we will: (i) repeat the method proposed in [57] to outline the shortcomings for boiling applications, and (ii) propose an
+alternative pressure solution scheme for boiling ﬂows. For details on the FFT usage, we refer the readers to the work in [58].
+
+
+3.3.1. Density splitting and pressure extrapolation
+   This section reports the method employed in [57]. This is included to motivate seeking an alternative formulation for boiling ﬂow
+applications. The main idea is based on the approximation [56]
+                                   (            )                      (         )
+         1              1              1     1             1              1    1
+            ∇𝜓 𝑛+1 =      ∇𝜓 𝑛+1 +         −      ∇𝜓 𝑛+1 ≈    ∇𝜓 𝑛+1 +       −    𝑓𝑒𝑥 ∇𝜓 𝑛 ,                                     (33)
+       𝜌𝑛+1            𝜌0            𝜌𝑛+1 𝜌0               𝜌0            𝜌𝑛+1 𝜌0
+where 𝜌0 = min(𝜌1 , 𝜌2 ) = 𝑐𝑜𝑛𝑠𝑡𝑎𝑛𝑡 and the extrapolation coeﬃcient 𝑓𝑒𝑥 = Δ𝑡𝑛+1 ∕Δ𝑡𝑛 . As such, the density is split into a constant and a
+variable part (ﬁrst step). For the approximation of the variable part, 𝜓 𝑛+1 is replaced with the extrapolated pressure increment 𝑓𝑒𝑥 𝜓 𝑛
+of the previous time step (second step). Furthermore, in line with [60] and [57], we ﬁnd the velocity and pressure ﬁeld at the next
+time step through
+                               [(              )         ]
+                                     1     1
+            𝑣⃗∗∗ = 𝑣⃗∗ − Δ𝑡𝑛+1           −       𝑓𝑒𝑥 ∇𝜓 𝑛 ,                                                                           (34)
+                                   𝜌 𝑛+1   𝜌 0
+                          [                   (          )      ( 𝑛+1 )]
+                      𝜌0                         1     1         ⃗
+       ∇2 𝜓 𝑛+1 =           ∇ ⋅ 𝑣⃗∗∗ − 𝑛+1         −       +∇⋅         ,                                                             (35)
+                    Δ𝑡𝑛+1                       𝜌1 𝜌2             𝜌𝑛+1
+                              Δ𝑡𝑛+1          ⃗ 𝑛+1
+             𝑢⃗𝑛+1 = 𝑣⃗∗∗ −         ∇𝜓 𝑛+1 +        ,    and   𝑝𝑛+1 = 𝑝𝑛 + 𝜓 𝑛+1 .                                                        (36)
+                               𝜌0             𝜌𝑛+1
+    Here, 𝑣⃗∗∗ represents a second intermediate velocity ﬁeld that contains the extrapolated pressure contribution of the variable
+density part. While the above procedure has gained popularity, it was shown in [62] that using the approximation in Eq. (33) is
+problematic for interfacial pressure jumps. This is the case in the presence of surface tension in combination with a density jump at
+a phase interface, where spurious pressure oscillations were reported [62]. In that context a specialized scheme for treating forcing
+terms on the RHS of the momentum equation was proposed in order to remove oscillations.
+    In boiling ﬂow scenarios, interfacial pressure jumps are caused by the recoil pressure, which generates similar oscillations [61].
+In [61], the same scheme is used for additional forcing terms to correct the recoil pressure [82]. This led to a signiﬁcant reduction of
+oscillations, although some oscillations remained during the simulation start-up phase.
+    Moreover, the additional requirements on the CFL number, reported in [62], increase the computational cost when using
+Eqs. (34)–(36). Acknowledging the recent advancements, we propose an alternative pressure solution procedure to overcome the
+aforementioned drawbacks.
+
+
+3.3.2. Proposed FFT scheme
+   The key idea of the proposed solution stems from the works of Juric and Tryggvason [5], and Shin and Juric [83]. According to
+their scheme, the intermediate momentum (𝜌𝑣)     ⃗ ∗ is not divided by the density, when assembling the RHS of Eq. (31). Adapted to the
+present work, the scheme used in [5] reads
+                        [                        ]
+                    1
+       ∇2 𝜓 𝑛+1 =               ⃗ ∗ − ∇ ⋅ (𝜌𝑣)
+                          ∇ ⋅ (𝜌𝑣)          ⃗ 𝑛+1 ,                                                                                (37)
+                  Δ𝑡𝑛+1
+                         ⃗ ∗ − Δ𝑡𝑛+1 ∇𝜓 𝑛+1 + ⃗ 𝑛+1
+                       (𝜌𝑣)
+             𝑢⃗𝑛+1 =                                 .                                                                                    (38)
+                                  𝜌𝑛+1
+This procedure avoids the splitting approach from Eq. (33) and naturally returns a constant coeﬃcient matrix suitable for applying
+FFT solvers. However, using Eq. (37) poses two diﬃculties: (i) momentum (𝜌𝑣) ⃗ 𝑛+1 needs to be approximated, and (ii) divergence of
+the velocity 𝑢⃗𝑛+1                                 𝑛+1   −1   −1
+                   is not necessarily equal to  (𝜌1 − 𝜌2 ) after the correction step (38).
+   We address these diﬃculties of Eq. (37) by deploying three solution stages, each including a matrix inversion of a constant
+coeﬃcient matrix which can be eﬃciently solved using FFT.
+   Stage 1: In the ﬁrst stage the momentum for the time step 𝑡𝑛+1 is estimated. This is done through the splitting approach, as in
+Section 3.3.1. Quantities emerging from this estimation stage are marked by a tilde ̃⋅ . Formally,
+                               [(            )         ]
+                                     1    1
+            𝑣⃗∗∗ = 𝑣⃗∗ − Δ𝑡𝑛+1          −     𝑓𝑒𝑥 ∇𝜓 𝑛 ,                                                                       (39)
+                                   𝜌𝑛+1 𝜌0
+                           [                (          )     ( 𝑛+1 )]
+                       𝜌0                      1     1        ⃗
+           ∇2 𝜓 ̃ =         ∇ ⋅ 𝑣⃗∗∗ − 𝑛+1      −       +∇⋅          ,                                                        (40)
+                     Δ𝑡𝑛+1                    𝜌1 𝜌2            𝜌𝑛+1
+                                     𝜌      𝑛+1
+        and 𝜌̃𝑣⃗ = 𝜌𝑛+1 𝑣⃗∗∗ − Δ𝑡𝑛+1     ∇̃
+                                          𝜓.                                                                                              (41)
+                                      𝜌0
+
+                                                                             8
+L. Weber, A. Mukherjee, A.G. Class et al.                                                     Journal of Computational Physics 551 (2026) 114680
+
+
+   Stage 2: The momentum estimate 𝜌̃𝑣⃗ is used as an approximation for the momentum (𝜌⃗          𝑣)𝑛+1 at the next time step. Modifying
+Eq. (37) allows solving the second Poisson equation without the splitting approach. Using this momentum-based PPE, we calculate the
+improved pressure increment 𝜓    ̂ as a better estimate of the pressure increment 𝜓 𝑛+1 . Consequently we solve
+                     [                     ]
+                 1
+       ∇2 𝜓
+          ̂=                 ⃗ ∗ − ∇ ⋅ 𝜌̃𝑣⃗ .
+                       ∇ ⋅ (𝜌𝑣)                                                                                                    (42)
+              Δ𝑡𝑛+1
+   Stage 3: As mentioned above, the improved pressure increment 𝜓        ̂ does not guarantee a divergence-free velocity ﬁeld, which is
+why the ﬁnal step of the pressure solution is required. Analogously to stage 1, using 𝜓  ̂ instead of 𝜓 𝑛 for the splitting, we compute
+𝑝𝑛+1 and 𝑢⃗𝑛+1 by solving
+                                  [(             )     ]
+                                        1     1
+              𝑣⃗∗∗∗ = 𝑣⃗∗ − Δ𝑡𝑛+1           −      𝑐∇̂𝜓 ,                                                                          (43)
+                                      𝜌 𝑛+1   𝜌0
+                              [                  (          )     ( 𝑛+1 )]
+                         𝜌0                         1     1        ⃗
+          ∇2 𝜓 𝑛+1 =           ∇ ⋅ 𝑣⃗∗∗∗ − 𝑛+1        −      +∇⋅          ,                                                       (44)
+                       Δ𝑡 𝑛+1                       𝜌1 𝜌2           𝜌𝑛+1
+                                   Δ𝑡𝑛+1          ⃗ 𝑛+1
+                𝑢⃗𝑛+1 = 𝑣⃗∗∗∗ −          ∇𝜓 𝑛+1 +        ,                                                                                (45)
+                                    𝜌0             𝜌𝑛+1
+        and 𝑝𝑛+1 = 𝑝𝑛 + 𝜓 𝑛+1 .                                                                                                           (46)
+
+Here, 𝑣⃗∗∗∗ denotes the improved prediction velocity containing the contribution of the variable density with the pressure increment
+𝜓
+̂ . In Eq. (43) we used a constant 𝑐 to limit the pressure increment 𝜓
+                                                                     ̂ based on 𝜓
+                                                                                ̃ . This limiter is calculated as follows
+                (        ( )       ( ) )
+                    |min 𝜓̃ | |max 𝜓 ̃ |
+        𝑐 = min 1,       ( ) ,     ( ) .                                                                                        (47)
+                    |min 𝜓̂ | |max 𝜓 ̂ |
+
+This limiter 𝑐 is necessary to stabilize the method. Note that 𝜓      ̃ are linked through the momentum estimation 𝜌̃𝑣.
+                                                                ̂ and 𝜓                                              ⃗ Consequently,
+Stages 1–3 are only valid if 𝜓̂ and 𝜓 ̃ are similar, whereas larger deviations will cause the solution to diverge.
+   This FFT scheme is subsequently referred to as the Momentum-based Pressure treatment for Density Jumps (short FFT-MPDJ) to
+highlight the feature of using Stage 2. In Section 4, we evaluate the proposed FFT-MPDJ scheme and compare it to the established
+method in [57,60].
+
+3.4. Phase change model
+
+   A crucial part of this study is selecting an adequate numerical procedure to model phase change. Large-scale simulations of
+boiling ﬂows require a phase change model that ensures: (i) numerical eﬃciency, (ii) scalability, and (iii) robustness. Although heat
+conduction models are generally free from empirical parameters [3], they are computationally more expensive due to their need to
+calculate temperature gradients across the interface. Thus, we use a simpler kinetic model loosely based on [68,69], but modiﬁed for
+the present phase ﬁeld model.
+   As shown in Section 3.2, the numerical integration of 𝜙 and 𝑇 is split into two steps, which are deployed to improve numerical
+stability. The temperature increment due to phase change is deﬁned as Δ𝑇𝑃𝑛+1  𝐶
+                                                                                = 𝑇 𝑛+1 − 𝑇 ∗ . Ideally, at a sharp interface, the phase
+change would happen instantaneously, so that 𝑇 𝑛+1 = 0 (i.e. at saturation temperature) and consequently
+                          ∗
+        Δ𝑇𝑃𝑛+1
+            𝐶
+               = (𝑇𝑠𝑎𝑡 − 𝑇𝑎𝑏𝑠 ) = −𝑇 ∗ .                                                                                                  (48)
+
+With Δ𝑇𝑃𝑛+1
+         𝐶
+            , the mass transfer term  can be easily calculated from Eq. (21) resulting in
+
+                      (𝜌𝑐𝑝 )∗ Δ𝑇𝑃𝑛+1
+                                  𝐶
+        𝑛+1 = −                       ,                                                                                                  (49)
+                      𝐿(𝑇 ∗ )Δ𝑡𝑛+1
+which reassembles the formulation in [68] and [69]. However, there are drawbacks of using Eq. (48) to calculate Δ𝑇𝑃𝑛+1
+                                                                                                                    𝐶
+                                                                                                                       in the context
+of the present study. Namely:
+
+ • the accuracy of the model strongly depends on the time step, as pointed out in [84],
+ • Eq. (48) is not restricted to the interfacial region, and
+ • no weighting of Δ𝑇 𝑛+1 accounts for the interfacial jumps in (𝜌𝑐 )∗ . As indicated by Eq. (49) the same temperature increment results
+                       𝑃𝐶                                          𝑝
+   in diﬀerent mass transfer rates on either side of the interface (due to the multiplication with (𝜌𝑐𝑝 )∗ ). This leads to an unbalanced
+   distribution of 𝑛+1 .
+
+To address these drawbacks, we use the following modiﬁed version of Eq. (48)
+
+        Δ𝑇𝑃𝑛+1
+            𝐶
+               = −𝑇 ∗ 𝜃𝑡 𝜃𝑝𝑐 𝜃𝜌𝑐
+                              ∗
+                                 𝜃𝜙∗ .                                                                                                    (50)
+                                   𝑝
+
+
+As seen in Eq. (50), we maintain the structure of Eq. (48) so that Δ𝑇𝑃𝑛+1
+                                                                       𝐶
+                                                                          is still proportional to 𝑇 ∗ . But, we multiply 𝑇 ∗ by four
+non-dimensional factors 𝜃. Note that 𝜃𝜙∗ = 𝜃𝜙 (𝜙∗ ) and 𝜃𝜌𝑐
+                                                         ∗ = 𝜃 (𝜙∗ ).
+                                                              𝜌𝑐𝑝
+                                                             𝑝
+
+                                                                   9
+L. Weber, A. Mukherjee, A.G. Class et al.                                                              Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 2. Visualization of the discretized interface indicator in Eq. (51), used to restrict the mass transfer  to the interface region. The interface
+indicator 𝜃𝜙 is shown together with the phase ﬁeld variable 𝜙, as function of the non-dimensional interface distance 𝑥∕𝜖. Circles represent the values
+computed at cell-centers, where the cells have a uniform size of Δ𝑥.
+
+
+    The factor 𝜃𝜙 restricts the mass transfer to the interface region. We choose 𝜃𝜙 as
+               (                     )
+             1          (           )
+       𝜃𝜙 =      1 + cos 2𝜋|𝜙 − 0.5| .                                                                                                             (51)
+             2
+The distribution in the discrete case is found in Fig. 2. In theory, the choice of 𝜃𝜙 is arbitrary, provided 𝜃𝜙 (𝜙 = 0) = 𝜃𝜙 (𝜙 = 1) = 0 and
+𝜃𝜙 (𝜙 = 0.5) = 1. However, we use Eq. (51) for its high concentration around 𝜙 = 0.5, which we found to be advantageous (see Fig. 2).
+    With the factor 𝜃𝑡 , the temperature increment Δ𝑇𝑃𝑛+1𝐶
+                                                            is linked to a characteristic phase change timescale 𝑡𝑝𝑐 , decoupling the phase
+change model from the chosen time step size Δ𝑡𝑛+1 . We assume that the phase change is governed by the heat conduction in the liquid
+phase, thus,
+                Δ𝑥2                          Δ𝑡𝑛+1
+        𝑡𝑝𝑐 =       ,        and      𝜃𝑡 =         ,                                                                                               (52)
+                 𝑎2                           𝑡𝑝𝑐
+where 𝑎𝑖 = 𝜆𝑖 ∕(𝜌𝑖 𝑐𝑝,𝑖 ) is the thermal diﬀusivity.
+  Accounting for the jump in 𝜌𝑐𝑝 we use 𝜃𝜌𝑐𝑝 deﬁned as
+                            1
+        𝜃𝜌𝑐𝑝 = 𝜌 𝑐                    .                                                                                                            (53)
+                   1 𝑝,1
+                  𝜌2 𝑐𝑝,2
+                            𝛼1 + 𝛼2
+
+As seen in Eq. (53), 𝜃𝜌𝑐𝑝 weights Δ𝑇𝑃𝑛+1
+                                      𝐶
+                                         stronger on the vapour side (proportional to the ratio of 𝜌𝑐𝑝 ), resulting in a balanced distribution
+of . Lastly, 𝜃𝑝𝑐 is a model parameter that we found to be independent of (i) the simulation setup and (ii) the physical properties of
+the ﬂuid. For the remainder of the study, we ﬁx 𝜃𝑝𝑐 = 0.65.
+    Comparing Eqs. (48) and (50) reveals the requirement 𝜃𝑡 𝜃𝑝𝑐 𝜃𝜌𝑐∗ 𝜃 ∗ < 1 to avoid overshooting the saturation temperature. This leads
+                                                                      𝜙  𝑝
+to an implicit phase change time step constraint Δ𝑡𝑝𝑐 given by
+                   1 𝜆1 Δ𝑥2
+        Δ𝑡𝑝𝑐 =              .                                                                                                                      (54)
+                  𝜃𝑝𝑐 𝜆2 𝑎1
+Note that Eq. (54) is written in terms of the heat conduction timescale for the vapor Δ𝑥2 𝑎−1
+                                                                                           1
+                                                                                              , which is usually more restrictive than
+that of the liquid phase. Therefore, Δ𝑡𝑝𝑐 will only aﬀect Δ𝑡𝑛+1 when the ratio 𝜆1 𝜆−1
+                                                                                   2
+                                                                                      is small. In contrast to [69], no iteration loop
+over the energy transport is necessary when following the strategy described above. For the veriﬁcation of the phase change model,
+a series of simulations is performed and presented in Section 4.
+
+3.5. Time step size and adaptive Γ∗
+
+   To apply the CDI method to ﬂows involving boiling phenomena, a central diﬃculty needs to be addressed: the proﬁle of the
+phase ﬁeld function 𝜙 loses its equilibrium hyperbolic tangent shape because of the strong divergence of 𝑢⃗ at the interface. In other
+words, the source term  causes the proﬁle of 𝜙 to thicken or even lose its shape entirely. This occurs when  > 0 and the speed of
+regularization term ⃗ is insuﬃcient. Given the use of central diﬀerencing schemes in space, [24,25] suggest that 𝜖 ∗ = 1 and Γ∗ = 1,
+while [1] reports that using Eq. (9) would allow for even lower values of 𝜖 ∗ . Let us recall the diﬀuse interface time step constraint
+                  ⎡                        ⎤
+                  ⎢                        ⎥
+                                1
+        Δ𝑡𝜙 = min ⎢     {                 }⎥                                                                                                       (55)
+               𝑖 ⎢        ( 6Γ𝜖 ) ( 𝜕𝑢𝑖 )  ⎥
+                  ⎢ max     Δ𝑥2
+                                  − 𝜕𝑥 , 0 ⎥
+                  ⎣                   𝑖    ⎦
+
+                                                                         10
+L. Weber, A. Mukherjee, A.G. Class et al.                                                       Journal of Computational Physics 551 (2026) 114680
+
+
+from [25], which we use as a conservative estimate for the time step constraint. However, Δ𝑡𝜙 might not be the limiting factor.
+When Δ𝑡𝜙 is not restrictive (e.g. because Δ𝑡𝑝𝑐 < Δ𝑡𝜙 ), the regularization speed Γ might be too slow to maintain the hyperbolic tangent
+interface shape. For those cases, we propose an adaptive change of Γ∗ to keep Δ𝑡𝑛+1 = 𝐶𝐶𝐹 𝐿 Δ𝑡𝜙 at all times. The remaining time
+step constraints for the present simulations are: (i) the convective time step constraint Δ𝑡𝑢⃗ , (ii) the momentum diﬀusion constraint
+Δ𝑡𝜇 , (iii) the heat conduction constraint Δ𝑡𝜆 , (iv) the capillary time step constraint Δ𝑡𝜎 , and (v) the constraint due to gravitational
+acceleration Δ𝑡𝑔⃗ . These are given by [85]
+                            Δ𝑥
+            Δ𝑡𝑢⃗ =                           ,                                                                                              (56)
+                  max(|𝑢1 | + |𝑢2 | + |𝑢3 |)
+                            (    )
+                  Δ𝑥2         𝜌𝑖
+           Δ𝑡𝜇 =       min          ,                                                                                                       (57)
+                   6      𝑖   𝜇𝑖
+                  √
+                     Δ𝑥
+           Δ𝑡𝑔⃗ =        ,                                                                                                                  (58)
+                     |𝑔|
+                      ⃗
+                  √
+                    Δ𝑥2 min𝑖 𝜌𝑖
+           Δ𝑡𝜎 =                 ,                                                                                                          (59)
+                      𝜎 max|𝜅|
+                            (     )
+                  Δ𝑥2
+           Δ𝑡𝜆 =       min 𝑎−1 𝑖      .                                                                                                     (60)
+                   6      𝑖
+
+     Here, 𝜅 is the interface curvature calculated from 𝜅 = ∇ ⋅ 𝑛⃗. Following [85], Eqs. (56)–(59) can be combined into
+                                            2
+        Δ𝑡Σ =                    √(                  )2
+                                                                      .                                                                     (61)
+                   1
+                  Δ𝑡𝑢⃗
+                       + Δ𝑡1 +          1
+                                       Δ𝑡𝑢⃗
+                                            + Δ𝑡1         + 42 + 42
+                            𝜇                    𝜇         Δ𝑡   Δ𝑡𝜎
+                                                             𝑔⃗
+
+   In contrast to the available literature on the conservative diﬀuse interface method, we solely deﬁne a minimum regularization
+speed Γ∗min and let Γ∗ adjust to the time step. Using Eq. (55), this is done by calculating
+                      ⎡                                       ⎤
+                      ⎢                                       ⎥
+                                         1
+        Δ𝑡𝜙,𝑚𝑖𝑛 = min ⎢     {(                )   (     )   } ⎥.                                                                            (62)
+                   𝑖 ⎢         6Γ𝑚𝑖𝑛 |𝑢𝑚𝑎𝑥 |𝜖
+                                 ∗
+                                                    𝜕𝑢𝑖       ⎥
+                      ⎢ max                     −         ,0 ⎥
+                      ⎣            Δ𝑥2              𝜕𝑥𝑖       ⎦
+     In case Δ𝑡𝜙,𝑚𝑖𝑛 > min(Δ𝑡Σ , Δ𝑡𝜆 , Δ𝑡𝑝𝑐 ), we rearrange Eq. (55) to obtain the maximum allowed regularization speed as
+                       [                              (     )]
+                Δ𝑥2               1                     𝜕𝑢𝑖
+         Γ∗ =                                   + min         .                                                                             (63)
+              6|𝑢𝑚𝑎𝑥 |𝜖 min(Δ𝑡Σ , Δ𝑡𝜆 , Δ𝑡𝑝𝑐 )     𝑖    𝜕𝑥𝑖
+If Δ𝑡𝜙,𝑚𝑖𝑛 is the restricting time step constraint, then Γ∗ = Γ∗min . Regardless, the time step Δ𝑡𝑛+1 is adjusted according to
+        Δ𝑡𝑛+1 = 𝐶𝐶𝐹 𝐿 min(Δ𝑡𝜙,𝑚𝑖𝑛 , Δ𝑡Σ , Δ𝑡𝜆 , Δ𝑡𝑝𝑐 ),                                                                                     (64)
+where 𝐶𝐶𝐹 𝐿 is the CFL safety factor, which is chosen to be 0.4 ≤ 𝐶𝐶𝐹 𝐿 ≤ 0.5 for all test cases in Section 4. For the application to
+boiling ﬂows, we found values in the range 1 ≤ Γ∗min ≤ 2 and 𝜖 ∗ = 1 to return favourable results.
+
+3.6. Algorithm
+
+   The procedure introduced in Sections 3.2–3.5 is shown as a pseudo code in Algorithm 1. We report the exact order in which we
+solve the conservation equations from Section 2.
+   This algorithm exhibits several distinct features, which are summarized and highlighted as follows:
+ • Phase change model: As described in Section 3.4, we presented a modiﬁed kinetic model using only the local superheat, which is
+   designed to be (i) eﬃcient, (ii) robust, and (ii) free from simulation-dependent parameters. We also derived the relevant time step
+   constraint (Eq. (54)) for a stable simulation.
+ • Momentum balance equation: Staying in line with the conservative diﬀuse interface method framework, we included additional
+
+   terms (see Eq. (16)) related to the regularization term  ⃗ following a similar strategy as [10,32]. Note that, no assumptions on the
+   relevance of these terms have been made.
+ • Pressure solution scheme: For the present study, we implement the FFT-MPDJ solver specialized for ﬂows subjected to phase
+
+   change. Through additional solution stages, we eliminate the drawbacks commonly reported by other studies [61,62] that are
+   using the density splitting approach (Section 3.3.1). Through the design of the pressure scheme, no pressure oscillations related
+   to interfacial pressure jumps occur.
+ • Adaptive Γ∗ : Phase change poses a new requirement on the speed of the regularization term, which is not always satisﬁed by a
+
+   ﬁxed coupling to the maximum velocity. As shown in Section 3.5, we present a methodology that continuously updates Γ∗ to keep
+   the regularization speed at the level of the smallest timescale.
+
+In the remainder of this paper, Algorithm 1 is tested against various benchmark simulations, through which we test the numerical
+scheme, and also discuss the eﬀect and relevance of the above-mentioned features.
+
+                                                                          11
+L. Weber, A. Mukherjee, A.G. Class et al.                                                         Journal of Computational Physics 551 (2026) 114680
+
+
+Algorithm 1 Proposed procedure for solving the governing equations.
+ 1: Set initial conditions 𝜙(𝑡 = 0), 𝑇 (𝑡 = 0), 𝑝(𝑡 = 0) , and 𝑢⃗(𝑡 = 0)
+ 2: Set the physical properties 𝜌, 𝑐𝑝 , 𝜆, 𝜇
+ 3: Calculate initial Ψ using Eq. (10)
+ 4: Calculate  ⃗ from Eq. (9)
+ 5: while 𝑡 < 𝑡𝑒𝑛𝑑 do
+ 6:     Obtain intermediate phase ﬁeld value 𝜙∗ from Eq. (23)
+ 7:     Update physical properties 𝜌∗ , 𝑐𝑝∗
+ 8:     Obtain intermediate temperature 𝑇 ∗ from Eq. (24)
+ 9:     Calculate Δ𝑇𝑃𝑛+1
+                       𝐶
+                          using Eq. (50)
+10:     Obtain 𝑛+1 using Eq. (49)
+11:     Final states of 𝜙𝑛+1 and 𝑇 𝑛+1 through Eq. (28)
+12:     Update Ψ𝑛+1 , 𝑛⃗𝑛+1 , 𝜅 𝑛+1
+13:     Update the physical properties 𝜌𝑛+1 , 𝑐𝑝𝑛+1 , 𝜆𝑛+1 , 𝜇 𝑛+1
+14:     Calculate prediction momentum (𝜌𝑣)     ⃗ ∗ from Eq. (29)
+15:     Update  ⃗ 𝑛+1 with Eq. (9)
+16:    Approximate (𝜌⃗ 𝑣)𝑛+1 with 𝜌̃𝑣⃗ by Eq. (39) - Eq. (41)
+17:    Obtain pressure estimate 𝜓    ̂ by solving Eq. (42)
+18:    Find ﬁnal 𝑝𝑛+1 and 𝑢⃗𝑛+1 through Eq. (43) - Eq. (46)
+19:    Update time step size Δ𝑡𝑛+1 with Eq. (64)
+20:    if Δ𝑡𝜙,𝑚𝑖𝑛 > min(Δ𝑡Σ , Δ𝑡𝜆 , Δ𝑡𝑝𝑐 ) then
+21:        Γ∗ with Eq. (63)
+22:    else
+23:        Use Γ∗min
+24:    end if
+25: end while
+26: End of simulation
+
+
+4. Simulations
+
+   In this section, we solve the governing equations with the method introduced above for a range of benchmark simulations. We
+conduct simulations including and excluding phase change, while the complexity of the ﬂow problems increases towards the end of
+the section.
+
+4.1. One-dimensional recoil pressure jump
+
+    The ﬁrst benchmark case, inspired by [10], is a simple one-dimensional domain in which a moving coordinate system follows
+an interface (see Fig. 3(a)), so that the phase ﬁeld variable 𝜙 is constant in time (Fig. 3(b)). A velocity jump 𝑈 is prescribed by
+                                                   (           )−1
+deﬁning the mass transfer term as  = 𝑈 |∇𝜙| 𝜌−1      1
+                                                         − 𝜌−1
+                                                             2
+                                                                   , implying that the ﬂow ﬁeld is fully deﬁned by the continuity equation
+(Eq. (7)). Following [10], the coordinate system moves at interface velocity 𝑢𝑖𝑛𝑡 = −𝑈 (𝜌2 ∕𝜌1 − 1)−1 . Accordingly, the phase velocities
+in the moving reference frame are 𝑢1 = 𝑈 − 𝑢𝑖𝑛𝑡 and 𝑢2 = −𝑢𝑖𝑛𝑡 (see Fig. 3(a)). Consequently, the theoretical recoil pressure jump at
+the interface is given by Δ𝑝𝑡ℎ = 𝑝1 − 𝑝2 = −𝑢2𝑖𝑛𝑡 𝜌2 (𝜌2 ∕𝜌1 − 1). As the phase ﬁeld 𝜙 and the density 𝜌 are constant in the moving frame,
+we can integrate Eq. (8) to obtain an exact expression for the regularization term       ⃗ = (𝜌⃗𝑢 + 𝑢𝑖𝑛𝑡 𝜌2 )(𝜌1 − 𝜌2 )−1 . We now conduct two
+diﬀerent tests: one with 𝑈 = 𝑐𝑜𝑛𝑠𝑡. and another with 𝑈 = 𝑓 (𝑡). For all simulations, we use a grid of size Δ𝑥 = 10−3 m in a domain of
+length 𝑙 = 0.1 m, and set the densities to 𝜌1 = 0.001 kg m−3 and 𝜌2 = 1 kg m−3 .
+
+4.1.1. Pressure solver comparison
+    In the ﬁrst test, we set 𝑈 = 0.5 m/s (see Fig. 4(a)) and monitor the behaviour of the pressure solver when calculating the pressure
+jump. Solvers (e.g. iterative or direct) that invert the matrix in Eq. (31) can reliably return the pressure distribution seen in Fig. 4(b)
+after one iteration, since all other quantities are constant. However, as shown in [61], simulating this pressure jump with FFT solvers
+using the density splitting (Section 3.3.1) can be challenging due to pressure oscillations.
+    We then compare the FFT-MPDJ solver (Section 3.3.2) with the FFT solver in [57] by measuring the relative pressure jump error
+versus the iteration count. The relative error in Δ𝑝𝑡ℎ is visualized in Fig. 5 for the two solvers under investigation; the FFT-MPDJ
+solver reaches an relative deviation from Δ𝑝𝑡ℎ of 10−8 % in less than 10 iterations. In contrast, the density splitting approach in [57]
+exhibits strong oscillations at the start of the simulation, only reaching an acceptable deviation from Δ𝑝𝑡ℎ after completing ∼ 104
+iterations. Once reaching a steady state, both solvers return the pressure distribution shown in Fig. 4(b).
+
+4.1.2. Evaluation of the momentum balance equation
+   In the second stage of the recoil pressure experiments, a variable velocity jump is applied and the pressure equation is solved with
+the FFT-MPDJ solver. This enables us to evaluate the relevance of ⃗ (see Eq. (16)). As seen in, e.g., Fig. 4(a), the interface speed is small
+
+                                                                           12
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                 Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                                 Fig. 3. Basic simulation settings for the case of the one-dimensional recoil pressure jump.
+
+
+
+
+Fig. 4. Numerical results of the one-dimensional recoil pressure jump test case when prescribing a constant interfacial velocity jump 𝑈 = 0.5 m/s
+and 𝜌2 ∕𝜌1 = 1000. The velocity (a) and the pressure (b) have a smoothed jump due to the diﬀused interface representation. Solid lines represent the
+analytical jump conditions.
+
+
+
+
+                               Fig. 5. Relative error as measured by Δ𝑝𝑡ℎ over the iteration count for diﬀerent PPE solvers.
+
+
+
+                                                                             13
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 6. Numerical results of the one-dimensional recoil pressure jump test case when prescribing a variable interfacial velocity jump 𝑈 = 𝑈 (𝑡) =
+[0.5 − 0.04𝑡] m/s and 𝜌2 ∕𝜌1 = 1000. The velocity (a) jump is shown at the start (𝑡 = 10 s) and at the end (𝑡 = 10 s) of the simulation. Since 𝑢⃗ is fully
+determined by the continuity equation (Eq. (7)), neglecting ⃗ has no impact on the velocity 𝑢⃗. The pressure at 𝑡 = 10 s is shown in (b), where a
+strong dependence of 𝑢⃗ on ⃗ is seen. Analytical results are represented by solid lines.
+
+
+
+compared to the velocity jump 𝑈 = Δ⃗𝑢, which is proportional to ;    ⃗ thus, the additional terms (i.e. )
+                                                                                                         ⃗ are more prominent. Fig. 6(a)
+illustrates the change in the velocity ﬁeld from 𝑡 = 0 s to 𝑡 = 10 s when the velocity jump is prescribed as 𝑈 = 𝑈 (𝑡) = [0.5 − 0.04𝑡] m/s.
+We carry out two simulations: (i) one including ,  ⃗ and (ii) one excluding. Fig. 6(b) shows the pressure distribution at time 𝑡 = 10 s,
+where the red dashed line represents the simulation with ⃗ and the green dashed line the one without. The analytical solution (black
+solid line) shows the pressure jump Δ𝑝𝑡ℎ along with the slope 𝜕𝑝∕𝜕𝑥 = 𝜌2 𝜕𝑢𝑖𝑛𝑡 ∕𝜕𝑡 in each phase. While the simulation including the
+additional terms matches the analytical solution, a major discrepancy is seen for the simulation where ⃗ was neglected. Not only
+becomes the magnitude (green dashed) of the jump incorrect, but also its sign, underlining the importance of ⃗ for boiling ﬂow
+phenomena.
+    Both of the recoil pressure tests demonstrate the improvements achieved through the methodology developed in the present study.
+First, the deployed FFT-MPDJ solver exhibits superior properties for calculating the recoil pressure jump at interfaces subjected to
+phase change. Second, for capturing the pressure distribution accurately, this test case shows the importance of keeping the additional
+terms the momentum equation (Eq. (15)), which arise from the diﬀerential velocity in the interfacial region. Although these two
+features signiﬁcantly improve the results for the one-dimensional phase change tests, an obvious question arises: how do they aﬀect
+the simulation of three-dimensional bubble dynamics in the absence of phase change? This is addressed in the next subsection.
+
+4.2. Three-dimensional rising bubble
+
+   Simulating the dynamics of bubbles rising due to gravity is a common benchmark. Speciﬁcally, one may test the interface capturing
+model or the pressure solution scheme [56,60,62,70,86]. In detail, we consider a three-dimensional setup using the geometry from
+[87]. Refer to Fig. 7 for a schematic diagram of this ﬂow conﬁguration. At 𝑡 = 0, a spherical bubble of diameter 𝐷0 is initialized at
+location 𝑥1 = 𝑥2 = 𝑥3 = 𝐷0 . The no-slip condition is applied at all boundaries of the domain.
+   This benchmarks involves two diﬀerent sets of ﬂuid properties, which diﬀer in the gas density and viscosity, as well as the
+surface tension (Table 1). The relevant non-dimensional numbers are the Reynolds number 𝑅𝑒 = 𝜌1 𝑢𝑟𝑒𝑓 𝑙𝑟𝑒𝑓 𝜇1−1 , the Weber number
+                                                             √
+𝑊 𝑒 = 𝜌1 𝑢2𝑟𝑒𝑓 𝑙𝑟𝑒𝑓 𝜎 −1 , and the Froude number 𝐹 𝑟 = 𝑢𝑟𝑒𝑓 ∕ ‖𝑔‖𝑙
+                                                               ⃗ 𝑟𝑒𝑓 [60]. The selected reference quantities are
+                                 √
+                                     𝑙𝑟𝑒𝑓                √                     𝑢𝑟𝑒𝑓 𝜇2
+        𝑙𝑟𝑒𝑓 = 𝐷0 ,     𝑡𝑟𝑒𝑓 =              ,   𝑢𝑟𝑒𝑓 =    𝑙𝑟𝑒𝑓 ‖𝑔‖,
+                                                                ⃗     𝑝𝑟𝑒𝑓 =             .                                                           (65)
+                                     ‖𝑔‖
+                                      ⃗                                         𝑙𝑟𝑒𝑓
+
+The values in Table 1 show that a laminar ﬂow is expected in both cases. In ’Case B’ the inﬂuence of the surface tension is lower,
+whereas for ’Case A’ the inertial eﬀects are comparable to the eﬀect of the surface tension. In this section, all non-dimensionalized
+results are marked with an asterix. For this benchmark, the Continuum Surface Force CSF [43] is used. A detailed description of this
+model is found in Section 4.5.1.
+
+4.2.1. Pressure solver comparison
+   In the ﬁrst series of simulations, we switch oﬀ ⃗ and compare the pressure solver in [57] with the FFT-MPDJ solver of the present
+study (see data in Fig. 8). Simulations are carried out for two uniform grid spacings (i) with Δ𝑥 = 𝐷0 ∕32 and (ii) with Δ𝑥 = 𝐷0 ∕64. Both
+
+                                                                                   14
+L. Weber, A. Mukherjee, A.G. Class et al.                                                          Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                                            Fig. 7. Simulation setup for the bubble rising benchmark.
+
+                                                  Table 1
+                                                  Corresponding ﬂuid properties (see [87]).
+                                                              𝜌2     𝜇2
+                                                    Name      𝜌1     𝜇1
+                                                                               𝑅𝑒    𝑊𝑒      𝐹𝑟
+
+                                                    Case A   10      10        35    1       1
+                                                    Case B   1000    100       3.5   0.125   1
+
+
+
+
+are applied to two sets of ﬂuid properties ’Case A’ and ’Case B’. Note that the density splitting approach’s (Section 3.3.1) capability of
+simulating bubble dynamics has been veriﬁed repeatedly in the literature [56,60]. Accordingly, the FFT-MPDJ solver should ideally
+return the same results as the common density splitting FFT [57].
+     The quantities of interest are (i) the centre of mass of the gaseous phase (left panels of Fig. 8), (ii) the sphericity of the bubble
+(middle panels of Fig. 8) deﬁned as 𝐴(𝑡 = 0)∕𝐴(𝑡), where 𝐴 is the surface area of the isocontour of the phase ﬁeld 𝜙 = 0.5, and
+(iii) the bubble rise velocity (right panels of Fig. 8). The data in Fig. 8(a) conﬁrm that the results obtained from both solvers are
+indistinguishable. For the higher density ratio ’Case B’, the agreement remains very good, although a slight diﬀerence can be observed
+in the sphericity for both grid resolutions (Fig. 8(b)).
+     In the next step, we investigate the source of the small diﬀerences seen for the high density ratio by examining the pressure
+ﬁeld evolution versus simulation runtime. We consider the pressure along a line parallel to the 𝑥3 -axis cutting through the centre of
+the bubble. Qualitatively, the pressure should exhibit a linear increase towards the lower domain boundary (hydrostatic pressure),
+interrupted at the (upward-moving) bubble location, due to its lower density and its velocity.
+     The pressure distribution was collected 32 times until 𝑡∗ = 1.34 for both solvers. The result for Δ𝑥 = 𝐷0 ∕32 is seen in Fig. 9, where
+the solver from [57] (left) is compared to the present FFT-MPDJ solver (middle), using the initial condition 𝑝∗ (𝑡 = 0) = 0. The pressure
+ﬁeld for the density splitting scheme requires almost the entire observation interval to adjust to the hydrostatic pressure. In contrast,
+the FFT-MPDJ solver adapts by 𝑡∗ = 0.04. As can be seen on the right panel of Fig. 9, both solvers return the same pressure distribution
+after the start-up phase. Long start-up phases for adjusting the pressure ﬁeld to the ﬂow are deemed to have a minor impact on the
+bubble dynamics depicted in Fig. 8(b).
+
+
+4.2.2. Evaluation of the momentum balance equation
+    The second series of simulations aims to investigate the eﬀect of the additional momentum transport terms (i.e. )   ⃗ on the bubble
+dynamics in the absence of phase change. In the literature [34], the transport of relative momenta is often neglected. This is reasonable
+when comparing the diﬀerential mass ﬂux ⃗ to the momentum 𝜌⃗𝑢 for pure interface transport when excluding phase change. To
+quantify the eﬀect, we conduct simulations for ’Case A’ and ’Case B’ using the FFT-MPDJ solver and the previous two resolutions. For
+each case, the results obtained including and excluding the additional terms are compared (see Fig. 10). We also include the benchmark
+data published in [87] as further reference. The reference data was obtained through the codes: (i) DROPS (level-set, ﬁnite element
+method) [88], (ii) NASt3D (level-set, ﬁnite diﬀerence method) [89] , and (iii) OpenFOAM (VOF, ﬁnite volume method) [90]. We
+refer the interested reader to the publication by [87] for further simulation details. The results for both density ratios, together with
+the reference data, are shown in Fig. 10. In this ﬁgure, it becomes apparent that for all simulations, an improvement is seen when ⃗
+is included. The main eﬀect is seen in the sphericity (middle), where the results clearly improve towards the reference data when ⃗
+is used. Slight improvements are also visible throughout the simulations for the rise velocity (right panels of the same ﬁgure).
+    To conclude, with this non-phase change benchmark, we demonstrate that the proposed FFT-MPDJ solver can accurately simulate
+bubble dynamics in three dimensions. Additionally, we show that the our approach is superior for adjusting the pressure ﬁeld to the
+ﬂow problem at high density ratios. Lastly, this benchmark demonstrates that the modiﬁed momentum balance equation, incorpo-
+rating the additional terms from Eq. (16), also exhibits clear, albeit minor, improvements when simulating bubble dynamics in the
+absence of phase change. Despite these improvements, we acknowledge that there is merit in the common assumption of neglecting
+
+                                                                          15
+L. Weber, A. Mukherjee, A.G. Class et al.                                                            Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 8. Comparison of the pressure solution scheme by [57] (blue and pink solid lines) with the FFT-MPDJ solver (Section 3.3.2, black dashed and
+dotted lines) for simulating bubble dynamics without phase change. (For interpretation of the references to colour in this ﬁgure legend, the reader
+is referred to the web version of this article.)
+
+
+
+
+Fig. 9. Evolution of the pressure distribution along the 𝑥3 direction through the bubble centerline for Case B (𝜌2 ∕𝜌1 = 1000) with Δ𝑥 = 32−1 𝐷0 .
+Comparison between two pressure solution schemes (left and middle panel). The pressure distribution at 𝑡∗ = 1.34 obtained with either scheme is
+compared on the right panel.
+
+
+
+⃗ for non-phase change problems. Based on the ﬁndings of these ﬁrst benchmarks, the FFT-MPDJ solver and the full momentum
+balance equation are used for the simulations in the following sections.
+
+4.3. Stefan problem
+
+   The Stefan problem is a one-dimensional phase-change problem in which a superheated wall heats a growing gaseous layer,
+pushing away the adjacent liquid phase. This situation is visualized in Fig. 11(a), where a typical temperature proﬁle is sketched.
+
+                                                                        16
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                                Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+   Fig. 10. Comparing the eﬀect of ⃗ on bubble dynamics without phase change with respect to reference simulations (black lines) from [87].
+
+                                        Table 2
+                                        Physical properties of various two-phase ﬂuid systems.
+                                             Property     Unit               Fluid𝐴      Fluid𝐵   Fluid𝐶   Water1         Ethanol1
+                                                                 −3
+                                             𝜌1           kg m               0.01        0.25     5        0.597          1.647
+                                             𝜌2           kg m−3             1           2.5      200      958.4          736.44
+                                             𝜇1           kg m−1 s−1         n/a         n/a      0.005    1.26 ⋅ 10−5    1.02 ⋅ 10−5
+                                             𝜇2           kg m−1 s−1         n/a         n/a      0.1      2.80 ⋅ 10−4    4.49 ⋅ 10−4
+                                             𝑐𝑝,1         J kg−1 K−1         200         10       200      2030           1806
+                                             𝑐𝑝,2         J kg−1 K−1         n/a         10       n/a      4216           3185
+                                             𝜆1           W m−1 K−1          0.005       0.0035   1        0.025          0.0199
+                                             𝜆2           W m−1 K−1          n/a         0.0015   n/a      0.679          0.1654
+                                             𝐿𝑠𝑎𝑡         J kg−1             104         102      104      2.26 ⋅ 106     8.499 ⋅ 105
+                                             𝑇𝑠𝑎𝑡         °C                 n/a         n/a      n/a      100            78.2
+                                             𝜎            N m−1              n/a         n/a      0.1      0.059          0.0174
+                                        1
+                                            at 1013 hPa
+
+
+The distance of the interface from the wall 𝑥𝑖𝑛𝑡 has an analytical solution [91] of the form
+                     √                                                𝑐𝑝,1 (𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 )
+        𝑥𝑖𝑛𝑡 (𝑡) = 2𝛽 𝑎1 𝑡      , and       𝛽 exp (𝛽 2 )erf(𝛽) =                  √        ,                                                                         (66)
+                                                                          𝐿(𝑇𝑠𝑎𝑡 ) 𝜋
+where 𝛽 is the growth constant, which depends on the wall superheat 𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 and the physical properties of the vapour. This case
+is a classical benchmark for phase change models [7,92].
+    Using the parameter settings from [92], i.e. 𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 = 10 K, and the physical properties of Fluid𝐴 (see Table 2), a growth
+constant of 𝛽 = 0.3064 is numerically determined. For the simulation, a domain of length 𝑙 = 0.05 m is discretized with four diﬀerent
+grids using the grid spacings Δ𝑥 = 2 mm, 1 mm, 0.5 mm, and 0.25 mm, respectively. All simulations are initialized at physical time
+𝑡 = 38.34 ms, with the interface (𝜙 = 0.5) located at 𝑥0.5 = 6 mm and the corresponding analytical (linear) temperature proﬁle.
+    The interface location 𝑥0.5 is plotted over time 𝑡, together with the analytical solution, in Fig. 11(b). With decreasing grid spacing,
+convergence to the analytical solution of Eq. (66) is achieved. Results with a grid spacing of Δ𝑥 = 2 mm exhibit a notable deviation
+
+                                                                                           17
+L. Weber, A. Mukherjee, A.G. Class et al.                                                              Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+    Fig. 11. (a) Schematic sketch of the Stefan problem with (b) the results for the interface location over time for four diﬀerent grid spacings.
+
+
+
+
+       Fig. 12. Stefan problem: (a) Temperature proﬁles in comparison to the analytical solution, and (b) error convergence using Eq. (67).
+
+
+
+from the analytical solution. Towards smaller grid spacings, a good agreement appears at Δ𝑥 = 1 mm, becoming almost identical to
+the analytical solution at Δ𝑥 = 0.5 mm and Δ𝑥 = 0.25 mm.
+    The results in [92] (sharp interface, VOF) report grid convergence at Δ𝑥 = 2 mm. In contrast, the method presented in this study
+requires roughly twice the number of grid points for convergence. This conﬁrms a typical trend of the increased resolution requirement
+for diﬀuse-interface methods compared to sharp-interface methods [8].
+    In Fig. 12(a), we compare the temperature distributions obtained from the diﬀerent grid spacings to the analytical solution at time
+𝑡 = 0.823 s. The temperature proﬁles conﬁrm the ﬁndings in Fig. 11(b). With Δ𝑥 = 2 mm the temperature greatly deviates from the
+analytical (linear) temperature distribution. Using Δ𝑥 = 1 mm a good agreement is observed and further decreasing the grid spacing
+results in minor improvements.
+    For quantifying the error reduction with the grid spacing, an error measure is introduced. The error is quantiﬁed using the
+diﬀerence of the simulated interface position 𝑥0.5 where 𝜙 = 0.5, and the analytical position 𝑥𝑖𝑛𝑡 as
+
+                √
+                √∑ (            )2
+                √
+                √ 𝑡 𝑥𝑖𝑛𝑡 − 𝑥0.5
+        Error =      ∑ 2           .                                                                                                               (67)
+                       𝑡 𝑥𝑖𝑛𝑡
+
+In Fig. 12(b) this error measure is shown for the diﬀerent grid spacings. The error reduces at an approximately second-order rate for
+the Stefan problem.
+
+
+4.4. The sucking interface problem
+
+   The sucking interface problem (or absorption problem) describes a situation where a growing gaseous layer pushes a liquid away
+from a wall. Unlike the Stefan problem, the liquid is superheated, with the gaseous phase and the wall remaining at saturation
+conditions. The heat reaches the interface from the liquid side, where a thermal layer is developing. This situation is depicted in
+Fig. 13.
+
+                                                                         18
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                                                      Fig. 13. Setup of the sucking interface problem.
+
+
+
+    According to the analytical solution, the interface location 𝑥𝑖𝑛𝑡 has a square-root dependence with respect to time 𝑡,
+                    √
+       𝑥𝑖𝑛𝑡 (𝑡) = 2𝛽 𝑎1 𝑡.                                                                                                                           (68)
+
+However, for the sucking interface problem, the growth constant 𝛽 is obtained from a diﬀerent transcendental equation [91] that
+determines 𝛽
+
+                         [                          √      (     𝜌2 𝑎1 )
+                                                                         ]
+                                 (𝑇∞ − 𝑇𝑠𝑎𝑡 )𝑐𝑝,1 𝜆2 𝑎1 exp − 𝛽 2 12
+                                                                        𝜌2 𝑎2
+        exp (𝛽 2 )erf(𝛽) 𝛽 −                                    √               = 0.                                                                 (69)
+                                              √        ( 𝜌 𝑎 )
+                                       𝐿𝑠𝑎𝑡 𝜆1 𝜋𝑎2 erfc 𝛽 𝜌1 √𝑎1
+                                                            2       2
+
+The corresponding analytic temperature proﬁle of the liquid phase 𝑇2 (𝑥, 𝑡) reads
+                       [               ]      (                     √ )
+                         (𝑇∞ − 𝑇𝑤𝑎𝑙𝑙 )            𝑥      𝛽(𝜌1 − 𝜌2 ) 𝑎1
+      𝑇2 (𝑥, 𝑡) = 𝑇∞ −             √
+                             ( 𝜌 𝑎 )
+                                         erfc    √     +                 .                                                                           (70)
+                                                2 𝑎2 𝑡       𝜌2      𝑎2
+                         erfc 𝛽 𝜌1 √𝑎1
+                                            2   2
+
+This ﬂow problem is tested with two liquids, namely (i) a generic Fluid𝐵 , and (ii) saturated Water at 100 °C (see Table 2), posing
+diﬀerent challenges to our phase change model.
+    The ﬁrst set of simulations with Fluid𝐵 replicates the settings used in [93], where the liquid phase has a far-ﬁeld temperature
+𝑇∞ − 𝑇𝑠𝑎𝑡 = 2 K. Using Eq. (69), 2 K above the saturation temperature leads to the growth constant value 𝛽 ≈ 0.2689. The discretization
+of the computational domain (𝑙 = 1 m) is conducted using cell sizes Δ𝑥 = 20 mm, 10 mm, 5 mm, 2.5 mm, and 1.25 mm. At physical
+time 𝑡 = 4 s, the simulation is started, with the centre of the phase ﬁeld being located at 𝑥𝑖𝑛𝑡 = 0.0402 m. In this simulation, the
+temperature of the liquid is initialized using Eq. (70), with the gas being saturated.
+    As commonly observed for this benchmark [49,93], the front speed is underestimated for coarse grids. This is reﬂected on the
+left side of Fig. 14(a). Larger deviations are observed for grid spacings Δ𝑥 = 20 mm and Δ𝑥 = 10 mm. Therefore, the resolution was
+increased, resulting in good agreement with grid spacing Δ𝑥 = 5 mm and ﬁner. The error reduction with decreasing grid spacing is
+visualized in Fig. 15(a) where Eq. (67) is used to quantify the error. For this set of ﬂuid properties, the error reduces at a ﬁrst-order
+rate.
+    Additional insights are obtained by examining the temperature distribution at a physical time 𝑡 = 240.8 s (Fig. 14(a), middle and
+right plots). For the two coarse grids, a signiﬁcant deviation from the analytical temperature is observed in the gaseous phase. In the
+liquid phase, away from the interface, all proﬁles collapse onto the analytical solution. Slight superheat appearing in the gas could
+be a result of the anti-trapping current 𝑗⃗ (see Eq. (22)). For Fluid𝐵 the heat conductivities are 𝜆1 > 𝜆2 . This causes 𝑗⃗ to switch sign,
+leading to additional heat transport into the gas. This could also explain the reduced error reduction rate seen in Fig. 15(a). However,
+for most ’real’ ﬂuids, 𝜆1 < 𝜆2 (see Table 2). Therefore we regard the results concerning this ﬂuid as an exception.
+    In the second set of simulations, the ﬂuid properties of saturated water at 100 °C are considered. For these simulations, the far-
+ﬁeld temperature of the liquid is 5 K above the saturation temperature. The water properties exhibit a high density ratio, a high heat
+capacity, and fast growth rates. These conditions allow us to test the limits of the phase change module (here, 𝛽 ≈ 0.767). We use the
+ﬁve grids with Δ𝑥 = 8 µm, Δ𝑥 = 4 µm, Δ𝑥 = 2 µm, Δ𝑥 = 1 µm, and Δ𝑥 = 0.5 µm, and a domain of length 𝑙 = 0.4 mm.
+    Fig. 14(b) shows the results when starting the simulation at time 𝑡 = 5 µs and using the corresponding analytical solution as the
+initial condition. On the left, the interface position versus time is shown. With an increased grid resolution, the result quality is visibly
+improved. The rate at which the results converge to the analytical solution is shown in Fig. 15(b). The convergence rate is slightly
+improved compared to the case employing the ﬂuid properties of Fluid𝐵 , but slower than that seen for the Stefan problem. Lower
+resolutions under-predict the growth rate in the start-up phase, resulting in a permanent oﬀset relative to the analytical solution
+for the remainder of the simulation runtime. This indicates that, at lower resolutions, the initial thermal proﬁle is under-resolved,
+resulting in erroneous interface speeds. The middle and left plots show the steep temperature proﬁle, characteristic of the selected
+physical properties. Here, 𝜆1 < 𝜆2 , which is also reﬂected in the temperature proﬁles, where no spurious temperature distribution is
+found in the gaseous phase (compare with Fig. 14(a)).
+    The utilized temperature transport equation (Eq. (20)) has a non-conservative form, and thus, the enthalpy error accumulation
+over time is investigated. We consider the sucking interface problem with the Water properties to construct a critical scenario. This is
+
+                                                                                  19
+L. Weber, A. Mukherjee, A.G. Class et al.                                                               Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                                                   Fig. 14. Results of the sucking interface problem.
+
+
+
+
+                       Fig. 15. Error convergence rates for both ﬂuids in the sucking interface problem calculated from Eq. (67).
+
+
+                                                                          20
+L. Weber, A. Mukherjee, A.G. Class et al.                                                            Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+            Fig. 16. Conservation error calculated from the total enthalpy in the domain using Eq. (71) and a grid spacing of Δ𝑥 = 2 µm.
+
+
+due to the large contrasts in ﬂuid properties and the presence of steep temperature gradients on the interface. For this test, we monitor
+the enthalpy over time to evaluate its change. As the left boundary is an adiabatic wall, this evaluation solely needs to account for the
+outﬂow of liquid on the outﬂow boundary 𝜕Ω𝑂 in the boundary normal direction 𝑛⃗𝑂 (right of Fig. 13). The total enthalpy is calculated
+from
+
+                                     𝑡
+        𝐻𝑡𝑜𝑡 (𝑡) =          𝜌ℎ +                𝑛𝑂 ⋅ 𝑢⃗).
+                                             𝜌ℎ(⃗                                                                                                (71)
+                       ∫Ω          ∫0 ∫𝜕Ω𝑂
+
+   In Fig. 16 the change of 𝐻𝑡𝑜𝑡 (𝑡) in relation to its value at simulation start is plotted in percent versus the simulation runtime. The
+maximum observed conservation error is 0.4 %. Therefore, we conclude that gain or loss of thermal energy plays a negligible role in
+the presented framework for the problems considered in this study.
+   In the subsequent sections, the phase change model is subjected to more complex cases in two and three dimensions.
+
+4.5. Three-dimensional bubble growth
+
+    In three dimensions, an important benchmark is the study of a bubble growing in a superheated liquid at zero gravity. This problem
+can reduce to a spherically symmetric ﬂow, for which a known analytical solution is available [94] and serves as reference for the
+following numerical tests. The analytical solution has a square-root dependency on time 𝑡, such that the radial interface position 𝑅𝑖𝑛𝑡
+is
+                     √
+        𝑅𝑖𝑛𝑡 (𝑡) = 2𝛽 𝑎2 𝑡.                                                                                                        (72)
+For the three-dimensional bubble growth [94], 𝛽 is governed by the following transcendental equation
+                 𝜌2 𝑐𝑝,2 (𝑇∞ − 𝑇𝑠𝑎𝑡 )
+           (                                 )
+         𝜌1 𝐿𝑠𝑎𝑡 + (𝑐𝑝,2 − 𝑐𝑝,1 )(𝑇∞ − 𝑇𝑠𝑎𝑡 )
+                          [      (                               )]                                                                              (73)
+                   1               (    )−2       (          )
+         = 2𝛽 2      exp − 𝛽 2 1 − 𝜒          − 2𝜒 1 − 𝜌1 ∕𝜌2 − 1 𝑑𝜒.
+                ∫0
+In all subsequent simulations, we consider 1∕8th of the bubble, by placing an initial bubble in the corner of a cubic domain. This
+setup is sketched in Fig. 17, where the domain boundaries intersecting the bubble are symmetry boundaries, and the opposite ones
+are outﬂow boundaries. Using properties of water (see Table 2), and a far-ﬁeld temperature of 𝑇∞ − 𝑇𝑠𝑎𝑡 = 5 K, leads to a growth
+constant of 𝛽 ≈ 15.073 when solving Eq. (73).
+    The cubic computational domain is discretized using uniform grids of sizes Δ𝑥 = 125 µm, Δ𝑥 = 62.5 µm, Δ𝑥 = 31.3 µm, and
+Δ𝑥 = 15.6 µm. In the computational domain of length 𝑙 = 4 mm, a bubble is placed with an initial radius of 𝑅0 = 𝑙∕4, corresponding
+to a physical time 𝑡 = 6.55 ms at simulation start. The temperature ﬁeld is initialized with the analytical temperature proﬁle [94]
+
+                                         (                                  )
+                                 2𝛽 2 𝜌1
+            𝑇2 (𝑟, 𝑅𝑖𝑛𝑡 ) = 𝑇∞ −           𝐿𝑠𝑎𝑡 + (𝑐𝑝,2 − 𝑐𝑝,1 )(𝑇∞ − 𝑇𝑠𝑎𝑡 )
+                                 𝜌2 𝑐𝑝,2
+                          [     (                                    )]                                                                          (74)
+               1                  (       )−2       (            )
+        ×              exp − 𝛽 2 1 − 𝜒        − 2𝜒 1 − 𝜌1 ∕𝜌2 − 1 𝑑𝜒.
+            ∫1− 𝑅𝑖𝑛𝑡
+                   𝑟
+
+Note that for the ﬁrst set of simulations, surface tension is disabled, as it does not (from an analytical point of view, see Eqs. (72)–(74))
+impact the bubble growth, itself.
+   Fig. 18(a) shows the size of the bubble over time for all grids in comparison to the analytical solution. A strong dependency
+on the grid resolution is observed, resulting in signiﬁcant deviations from the analytical growth rate for grids using Δ𝑥 = 125 µm
+and Δ𝑥 = 62.5 µm. Good agreement with Eq. (72) is only achieved by using a grid spacing of Δ𝑥 = 15.6 µm. In Fig. 18(c), the
+
+                                                                                21
+L. Weber, A. Mukherjee, A.G. Class et al.                                                            Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                                            Fig. 17. Setup for simulating three dimensional bubble growth.
+
+
+error convergence for the considered grid spacings is shown when using the error deﬁnition of Eq. (67). Across all grid spacings,
+an approximately second-order error reduction rate can be observed. The reason for the high resolution requirements is evident in
+Fig. 18(b), which depicts the analytical solutions steep temperature gradients. Although the results obtained from Δ𝑥 = 15.6 µm
+to Δ𝑥 = 62.5 µm seem to be similar, they still exhibit distinct diﬀerences in the temperature gradient close to the interface, which
+explains the superior performance when using Δ𝑥 = 15.6 µm. More details on the results when using Δ𝑥 = 15.6 µm are found in
+Fig. 19, where we visualize the velocity ﬁeld alongside the temperature distribution (left) and the distribution of the mass transfer
+ (right). The velocity ﬁeld jumps in the radial direction across the interface, whereas the gas velocity inside the bubble stays at
+rest. Additionally,  has a smooth distribution, verifying the modelling choices made in Section 3.4. Interestingly, for this ﬂow, 
+is slightly shifted towards the liquid side. This slight asymmetry of  could be a result of the temperature transport contribution of
+the regularization terms ⃗ through Eq. (21). However, a negative impact was not observed in this study.
+
+
+4.5.1. Evaluation of surface tension models
+   Here, the same computational settings are considered, but the surface tension is also included, i.e., 𝑓⃗𝑆𝑇 ≠ 0. In the context of the
+CDI method, two classes of surface tension models are used: (i) the continuum surface force (CSF), and (ii) energy-based models. The
+CSF model [43] takes the simple form
+
+        𝑓⃗𝑆𝑇 ,𝐶𝑆𝐹 = 𝜎𝜅∇𝜙,                                                                                                                        (75)
+
+where 𝜎 is the surface tension coeﬃcient and 𝜅 the interface curvature is deﬁned as 𝜅 = ∇ ⋅ 𝑛⃗. The energy-based models for CDI are
+based on the free-energy functional taken from the Allen-Chan model [42]. The generic energy-based method [13,42,45] reads
+                               (               )
+                            6𝜎 𝜕Φ                           1[        ]2
+      𝑓⃗𝑆𝑇 ,𝐸𝐵 = 𝜉∇𝜙, 𝜉 =            − 𝜖 2 ∇2 𝜙 , and Φ = 𝜙(1 − 𝜙) ,                                                          (76)
+                             𝜖 𝜕𝜙                           2
+where 𝜉 denotes the chemical potential. The chemical potential uses the free energy Φ of the phase ﬁeld variable 𝜙 ∈ [0, 1]. For
+applications without phase change, the energy-based method is deemed superior to the CSF due to its improved convergence rate
+[42,47].
+    In general, including the eﬀect of surface tension in interface-resolved simulations commonly introduces spurious (or parasitic)
+currents due to unbalanced forces at the gas-liquid interface [95]. In the context of boiling ﬂows, this issue is often ampliﬁed by
+the velocity jump across the interface [48]. Fig. 20(a) shows the spurious currents (using the CSF) at the interface (left), which
+can disturb the thermal layer around the bubble through advection (close-up). This ampliﬁcation leads to erroneous growth rates
+(Fig. 20(b)). Consequently, selection of the surface tension model is a deciding factor for the simulation success. We therefore take
+this opportunity to compare the performance of several surface tension models applied to boiling ﬂows using the CDI method to (i)
+guide future studies, and (ii) select the best-performing model for the following sections.
+    The spurious ﬂow structures that develop during the simulation are investigated with three diﬀerent grids and visualized in Fig. 21.
+Here, the direction and magnitude of the velocity ﬁeld is shown for time 𝑡 = 29 ms. The ﬁrst, second, and third rows correspond to
+the grid resolutions with Δ𝑥 = 125 µm, Δ𝑥 = 62.5 µm, and Δ𝑥 = 31.3 µm, respectively. On the left, the results for 𝜎 = 0 are included
+as a reference. Both surface tension models (Eqs. (75) and (76)) introduce severe ﬂow structures. The resolution changes the pattern
+of the spurious ﬂow, where the results obtained with lower resolutions seem to be less aﬀected. Reﬁned grids exhibit larger velocity
+magnitudes of the spurious currents, which aﬀect the overall growth rate of the bubble (compare with Fig. 20(b)). For all grid
+resolutions, the energy-based surface tension model performs worse than the CSF. But neither of the models (Eqs. (75), (76)) provide
+satisfactory results for the study of bubble growth.
+    In the literature, several variations of both surface tension model classes exist. Seeking a robust model for the present application,
+we explore selected variations [51–53]. For the energy-based surface tension model, researchers reformulated the expression for the
+
+                                                                         22
+L. Weber, A. Mukherjee, A.G. Class et al.                                                            Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 18. Numerical results for 3D bubble growth without gravity for four diﬀerent grids. The bubble radius over time (a), and the radial temperature
+distribution at time 𝑡 = 51.5 ms (b) together with the analytical solutions Eqs. (72) and (74) are shown.The error convergence using Eq. (67) of the
+simulated bubble radius compared to the analytical solution Eq. (72) is shown in panel (c).
+
+
+surface tension stress such that the forcing term diﬀers on a discrete level, but remains mathematically equivalent. For example,
+Eq. (76) was reformulated in Ref. [52] as
+                    (              )         (                   )
+         ∗        6𝜎 𝜕Φ       2 2         6𝜎          2   2
+       𝑓⃗𝑆𝑇 ,𝐸𝐵 =         − 𝜖  ∇  𝜙  ∇𝜙 =     ∇Φ  − 𝜖   (∇  𝜙)∇𝜙   .                                                         (77)
+                   𝜖 𝜕𝜙                    𝜖
+They refer to this formulation as the conservative method by rearranging the derivatives. A diﬀerent strategy is followed by [53],
+where the surface tension is expressed in terms of the level-set function Ψ (Eq. (10)). Expressing 𝑓⃗𝑆𝑇 ,𝐸𝐵 in terms of the level-set
+function yields
+                     (                                             )
+         ∗∗       6𝜎                            2               2
+       𝑓⃗𝑆𝑇 ,𝐸𝐵 =      𝜙(1 − 𝜙)(1 − 2𝜙)(1 − |Ψ|   ) − 𝜖𝜙(1 − 𝜙)∇  Ψ  .                                                          (78)
+                   𝜖
+   We compare the formulations in Eqs. (76)–(78), obtaining the ﬂow structures visualized in Fig. 22. This ﬁgure shows the signif-
+icant impact of the discrete representation of the surface tension formulation on the spurious currents. While the results obtained
+through the standard method and the level-set formulation [53] are comparable, a noticeable worsening is observed when using the
+conservative formulation. None of the considered formulations are capable of reducing the spurious ﬂow structures to an acceptable
+level. Acknowledging the advantageous properties of the energy-based model class for non-phase change problems, we disregard
+these models for the remainder of this study.
+   Regarding the CSF model, a promising variation of Eq. (75) was proposed in [51], where the gradient of a sharpened phase
+indicator 𝜙′ replaces the term ∇𝜙. Therefore, the CSF variation by [51] reads
+          ∗             ′
+        𝑓⃗𝑆𝑇 ,𝐶𝑆𝐹 = 𝜎𝜅∇𝜙 ,                                                                                                                       (79)
+where 𝜙′ is the sharpened phase indicator calculated from
+                   [    (   (     )        )     ]
+                1               𝜂        𝜂     𝜂
+        𝜙′ =         min max 𝜙,     ,1 −     −     ,                                                                                             (80)
+               1−𝜂              2        2     2
+with 𝜂 being the sharpening factor. The authors of Ref. [51] suggested using 𝜂 = 0.5 for VOF methods. We reevaluate this value in the
+context of the ACDI method. For this purpose, we study the development of spurious currents for 𝜂 = 0.5 and 𝜂 = 0.75 and compare
+
+                                                                        23
+L. Weber, A. Mukherjee, A.G. Class et al.                                                              Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 19. Results on a slice through the bubble centre. Temperature distribution and qualitative velocity ﬁeld at time 𝑡 = 51.5 ms (left). The closeup
+view (right) shows the distribution of the mass transfer  with respect to the interface location. In the closeup, the black lines correspond to the
+isocontours of the phase ﬁeld variable.
+
+
+
+
+Fig. 20. Demonstration of the eﬀect of spurious currents on the bubble growth. A slice through the bubble centre (a) visualizes the spurious velocities
+in the gas and liquid phase at 𝑡 = 29 ms. The close-up shows how the spurious velocities transport the thermal boundary layer around the bubble.
+Comparison of the growth rate (b) with and without the inﬂuence of the spurious currents. Results corresponding to Δ𝑥 = 31.3 µm and using the
+CSF model.
+
+
+them to the standard CSF model. The eﬀect of 𝜂 is visualized in Fig. 23, where 𝜙′ is compared to 𝜙. It is shown that for 𝜂 = 0.5 and
+𝜖 = Δ𝑥, the gradient of 𝜙′ only diﬀers from zero for 3-4 cell edges, whereas for 𝜂 = 0.75, it only diﬀers from zero for 2-3 cell edges.
+As a result, ∇𝜙′ is signiﬁcantly more concentrated around 𝜙 = 0.5.
+    We now investigate the beneﬁt of this increased concentration for spurious currents. The eﬀect of the sharpened model on the
+bubble growth is studied with two values of 𝜂. Fig. 24 summarizes the results obtained using Δ𝑥 = 62.5 µm, with the standard CSF
+results included as a reference. We observe that spurious currents drastically reduce with increased 𝜂. In addition, spurious ﬂow
+patterns observed with the sharpened CSF do not increase over the simulation runtime. We may argue that 𝜂 should be set as large
+as possible while still allowing for a stable simulation. From our experiments we found that 𝜂 = 0.75 provides a good compromise
+reducing the spurious currents (see Fig. 24) and exhibiting stable and robust numerical behaviour (given 𝜖 ∗ = 1). Hence, the expression
+in Eq. (79) with 𝜂 = 0.75 is implemented for all remaining simulations in this study due to its superior performance in reducing spurious
+currents.
+
+4.6. Two-dimensional ﬁlm boiling
+
+   Our next step is assessing the framework’s capability of simulating complex boiling ﬂows in multi-dimensional spaces. In this
+section, we consider the simulation of ﬁlm boiling in two dimensions. In this case, a horizontal, heated plate with a ﬁxed temperature
+𝑇𝑤𝑎𝑙𝑙 is separated from the liquid phase by a growing gas layer (Fig. 25(a)). The gas layer grows until the interface becomes unstable
+due to gravity, leading to the detachment of a rising bubble.
+
+                                                                          24
+L. Weber, A. Mukherjee, A.G. Class et al.                                                              Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 21. Visualization of spurious ﬂow structures at 𝑡 = 29 ms. Slice through the bubble centre for diﬀerent surface tension models and three
+resolutions. The solid, dashed and dotted lines mark the isocontour lines of the phase ﬁeld at 𝜙 = 0.9, 0.5, and 0.1, respectively.
+
+
+
+
+Fig. 22. Velocity ﬁeld slicing through the bubble at 𝑡 = 29 ms obtained by using Δ𝑥 = 62.5 µm. Comparison of diﬀerent formulations of the energy-
+based models: (i) standard energy-based formulation using Eq. (76); (ii) the conservative formulation [52] using Eq. (77); (iii) the level-set based
+formulation [53] using Eq. (78). The solid, dashed and dotted lines mark the isocontour lines of the phase ﬁeld at 𝜙 = 0.9, 0.5, and 0.1, respectively.
+
+
+                                                                          25
+L. Weber, A. Mukherjee, A.G. Class et al.                                                           Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 23. Phase ﬁeld variable 𝜙 and sharpened phase indicator 𝜙′ plotted over the dimensionless interface distance 𝑥∕𝜖. Comparison of diﬀerent
+sharpening factors 𝜂 for diﬀerent locations of 𝜙 = 0.5, with circles marking the cell centres.
+
+
+
+
+Fig. 24. Comparison of the sharpened CSF method [51], i.e. Eq. (79), using diﬀerent sharpening factors 𝜂 with the standard CSF, Eq. (75). The
+evolution of the spurious currents is visualized by including two time steps, i.e., 𝑡 = 29 ms (top row) and 𝑡 = 51.5 ms (bottom row). Results were
+obtained by using Δ𝑥 = 62.5 µm.
+
+
+
+    The length scale 𝓁0 , characterizing the instability, is the two-dimensional Taylor wavelength [96],
+               √
+                      3𝜎
+       𝓁0 = 2𝜋                 .                                                                                                                (81)
+                 ‖𝑔‖(𝜌
+                   ⃗ 2 − 𝜌1 )
+                           √                                   √
+Note that 𝓁0 is equal to 𝜋 12 times the capillary length 𝑙𝑐 = 𝜎‖𝑔‖  ⃗ −1 (𝜌2 − 𝜌1 )−1 . Exploiting the symmetry of the detaching bubble,
+half the domain is simulated. To reduce the computational cost, we truncate the domain, in the 𝑥2 direction, to a size of 3𝓁∕2 and
+apply an outﬂow boundary condition at the top. We employ the outﬂow boundary method proposed in [97], which allows bubbles
+of a wide range of Weber numbers to exit the domain. Thus, an ordinary homogeneous Dirichlet boundary condition for the pressure
+at the outﬂow becomes applicable, as required by the FFT solver [58].
+    In line with previous studies [7,19,92,98], the physical properties of Fluid𝐶 are utilized (see Table 2). In contrast to these studies,
+we use a wall superheat 𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 of only 1 K. We chose this modiﬁcation, as phase ﬁeld models seem to struggle to allow detach-
+
+                                                                       26
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                               Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 25. Schematic sketch of the ﬁlm boiling simulation (a). Nusselt number over time (b) for three diﬀerent meshes. The results for 𝑁𝑢 correspond
+to using Fluid𝐶 and 𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 = 1 K.
+
+                                                               Table 3
+                                                               Two-dimensional ﬁlm boiling. Time averaged Nus-
+                                                               selt numbers compared to 𝑁𝑢𝐾 from Eq. (84).
+
+                                                                       Grid spacing Δ𝑥   𝓁0 ∕128    𝓁0 ∕256   𝓁0 ∕512
+
+                                                                       𝑁𝑢                2.538      2.583     2.562
+                                                                       𝑁𝑢∕𝑁𝑢𝐾 − 1        −22.4 %    −21.0 %   −21.7 %
+
+
+
+
+ments of vapour bubbles with these ﬂuid properties in two dimensions [19]. The initial conditions [92] for the phase ﬁeld 𝜙 are set
+by placing the centre of the interface (𝜙 = 0.5) along the path described by the function 𝜙0 according to
+                          (      )
+            𝓁     𝓁         2𝜋𝑥1
+       𝜙0 = 0 + 0 cos              ,                                                                                          (82)
+            32 128            𝓁0
+to trigger an early detachment of a bubble with this ﬁrst instability. The initial temperature ﬁeld decreases linearly from 𝑇 (𝑥2 =
+0) = 𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 to 𝑇 (𝑥2 = 𝜙0 ) = 0 in the 𝑥2 direction. After startup, the simulations are run until 𝑡 = 4 s to capture approximately
+six bubble detachment cycles. For the discretization of the computational domain, we use three (uniform) grids with Δ𝑥 = 𝓁0 ∕128,
+Δ𝑥 = 𝓁0 ∕256, and Δ𝑥 = 𝓁0 ∕512.
+    The simulations are evaluated considering the temporal evolution of the Nusselt number 𝑁𝑢, which quantiﬁes the heat transfer.
+To obtain the instantaneous Nusselt number, we compute
+                                                𝜕𝑇 |
+                                    ∫𝜕Ω                |     𝑑𝑥1
+                   𝑙𝑐                 𝑤𝑎𝑙𝑙 𝜕𝑥2 |𝑥2 =0
+        𝑁𝑢 =                                                       .                                                                                                (83)
+             (𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 )              ∫𝜕Ω          𝑑𝑥1
+                                                𝑤𝑎𝑙𝑙
+
+Here, the spatially averaged temperature gradient at the bottom domain boundary is non-dimensionalized by the wall superheat
+and the capillary length scale 𝑙𝑐 . To compare the results to the literature, in particular the well-established empirical correlation by
+Klimenko [96], we compute the time-averaged Nusselt number 𝑁𝑢. For the given parameters, this empirical Nusselt number, denoted
+by 𝑁𝑢𝐾 , is
+                                                                          (        )
+                           1    1                            𝑙𝑐 ‖𝑔‖𝜌
+                                                                 ⃗ 21         𝜌2                    1
+        𝑁𝑢𝐾 = 0.19Gr 3 Pr 3 𝑓 , with              Gr =                           −1 ,    𝑓 = 0.89𝜁 3 ,                                                              (84)
+                                                               𝜇12            𝜌1
+
+where Pr = 𝑐𝑝,1 𝜇1 𝜆−1
+                    1
+                       and 𝜁 = 𝑐𝑝,1 (𝑇𝑤𝑎𝑙𝑙 − 𝑇𝑠𝑎𝑡 )𝐿−1
+                                                    𝑠𝑎𝑡 .
+   Fig. 25(b) shows the temporal evolution of the instantaneous Nusselt number for all examined grid resolutions. As reference,
+the red solid line in Fig. 25(b) represents the value of the empirical correlation 𝑁𝑢𝐾 . Apart from the start-up phase, the two ﬁnest
+grids result in the same Nusselt numbers (Fig. 25(b)). The coarse grid exhibits smaller amplitudes in 𝑁𝑢, yet yields the same bubble
+detachment frequency as the other two ﬁner grids. For further comparison, we calculate the time-averaged Nusselt numbers 𝑁𝑢,
+which are summarized in Table 3, along with the relative deviation from 𝑁𝑢 to 𝑁𝑢𝐾 . All grid resolutions show a discrepancy from
+𝑁𝑢𝐾 of at least 21 % (Table 3).
+
+                                                                                            27
+L. Weber, A. Mukherjee, A.G. Class et al.                                                             Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+    Fig. 26. Two-dimensional ﬁlm boiling. Eﬀect of resolution on the startup phase. Iso-contour of 𝜙 = 0.5 for all grids at three diﬀerent times.
+
+
+
+
+Fig. 27. (a) Schematics of the computational setup including dimensions and boundary conditions. The suitability of grid spacing Δ𝑥 = 11.6𝜇𝑚 and
+Δ𝑥 = 7𝜇𝑚 are conﬁrmed by comparing with the zero gravity solutions of: (b) the bubble size in Eq. (72) and (c) temperature in Eq. (74).
+
+
+
+    Fig. 26 depicts the diﬀerences in results during the start-up phase at three diﬀerent time steps. For the coarser grids, the departure
+of the ﬁrst bubble is delayed (Fig. 26). The shapes of the detached bubbles are similar for the two ﬁner grids, whereas that of the
+coarsest grid is signiﬁcantly diﬀerent. The diﬀerence in the bubble departure time, for the two ﬁner grids, reduces in the remainder
+of the simulations, as indicated by the evolution of the Nusselt number in Fig. 25(b).
+
+
+4.7. Bubble growth subjected to gravity
+
+    As a ﬁnal benchmark, we consider a three-dimensional growing bubble in a superheated liquid, subjected to gravity. This situation
+was experimentally investigated for various ﬂuids at diﬀerent degrees of superheat in [99]. We compare our numerical predictions
+to the experimental results obtained for Ethanol (see Table 2) at 3.1 K superheat. Several numerical studies [14,49,61,73,100] have
+used the same experimental case to validate their implementations. This ﬂow is symmetric about the vertical axis, allowing for a
+reduced computational cost by simulating a quarter of the domain. This situation is presented in Fig. 27(a), with the placement of
+the initial bubble of radius 𝑅0 on one edge of the computational domain. Furthermore, the symmetry boundary condition is applied
+on the domain faces intersecting the bubble, while the free-slip boundary condition is imposed on the opposite faces. The coordinate
+system moves together with the rising bubble, allowing for the use of a signiﬁcantly smaller domain (see [73]). This is enforced by
+dynamically adjusting the inﬂow velocity to keep the rising bubble at a constant location within the moving coordinate system. The
+set of boundary conditions is completed by using an outﬂow boundary at the bottom of the domain. For the validation, we adopt two
+uniform grids, with the grid spacings Δ𝑥 = 11.6 µm and Δ𝑥 = 7 µm. For all simulations, we use an initial bubble radius of 𝑅0 = 210
+µm, which is a common choice [14,49,61,73,100].
+    We ﬁrst perform simulations with zero gravity to conﬁrm the grid’s capability to resolve the temperature ﬁeld. The procedure
+described in Section 4.5 gives a bubble growth rate and temperature distribution with growth constant 𝛽 ≈ 5.4969. As seen in Fig. 27(b)
+and (c), similar results are obtained for both of the grid spacings, when gravity is neglected. The simulation shows good agreement
+
+                                                                         28
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+                            Fig. 28. Analysis of current implementation regarding (a) the scaling and (b) the proﬁler analysis.
+
+
+
+
+Fig. 29. Bubble growth subjected to gravity. (a) Comparison of the time evolution of the bubble size against the experiments in [99] and the
+numerical studies of [49]. (b) Visualization of the temperature distribution at four selected time steps for both grid resolutions considered.
+
+
+
+                                                                            29
+L. Weber, A. Mukherjee, A.G. Class et al.                                                           Journal of Computational Physics 551 (2026) 114680
+
+
+
+
+Fig. 30. (a) Close up view of the bubble shows the mass transfer density, velocity ﬁeld, and temperature distribution for a selected time. (b) The
+bubble rise velocity is compared to the results by [14,49].
+
+
+
+with the analytical solution for the bubble size, although the growth rate is slightly under-predicted (Fig. 27(b)). This is also reﬂected
+in the temperature proﬁles in Fig. 27(c), where the ﬁner grid spacing shows minor improvements.
+    Before simulating the bubble growth subjected to gravity, the current implementation is evaluated regarding its performance in a
+high-performance computing (HPC) environment. The implementation uses Fortran95 and is based on the open-source codes FluTAS
+[60] and CaNS [58]. For the scaling test, the code was executed on the CPU nodes of the HoreKa cluster at the Karlsruhe Institute
+of Technology (KIT) using the Intel Xeon Platinum 8368 hardware. Considering the grid with Δ𝑥 = 7 µm and four diﬀerent numbers
+of cores ranging from 102 to 103 CPUs, the average time required for advancing the simulation by one time step was measured. The
+resulting normalized speed-up is visualized in Fig. 28(a). Here, good scaling properties were observed for the considered range of
+CPU cores. In Fig. 28(b), the proportion of time spent to complete each sub-task is visualized when using 103 CPUs.
+    In the next step we add gravity, ‖𝑔‖ ⃗ = 9.81 m s−2 . Again, we use the analytical zero-gravity solution (Eqs. (72) and (74)) as an
+initial condition. This choice is justiﬁed by the assumption that buoyancy eﬀects are negligible for very small bubbles, during the short
+startup phase. Using Eq. (72) and 𝑅0 = 210 µm, this translates, again, into a physical time 𝑡0 = 5.17 ms at the start of the simulation.
+For both grids, the simulation proceeds until the physical time 𝑡 = 90 ms is reached.
+    To evaluate the results, we begin by comparing the simulated bubble size to the literature data. For that purpose, an equivalent
+bubble radius 𝑅𝑒𝑞 is utilized [99]. The equivalent radius is calculated as
+                 1
+        𝑅𝑒𝑞 =      (𝐷 + 𝐷3 ),                                                                                                                   (85)
+                 4 12
+where 𝐷12 is the bubble diameter in the 𝑥1 𝑥2 -plane and 𝐷3 is the one measured in the 𝑥3 direction. Fig. 29(a) shows the evolution of
+𝑅𝑒𝑞 over time, together with the experimental data by [99] for 𝑇∞ − 𝑇𝑠𝑎𝑡 = 2.8 K, 3.1 K, and 3.2 K. Additionally, the numerical results
+from [49] are included for reference, using various grid spacings. As in the zero-gravity simulations, there is a weak dependence
+on grid spacing. For both simulations, the equivalent bubble radius is within the range of data points observed in the experiments,
+although more of the measurement points are scattered below the values predicted by the simulations. In comparison, our results are
+higher than those of [49] for all resolutions. However, our results align with [49] for the smallest grid spacing.
+    Fig. 29(b) displays the temperature distribution in the plane cutting through the bubble at four times for both considered grid
+resolutions (left and right half of the ﬁgure). We correct the data by accounting for the moving coordinate system such that all bubbles
+are displayed in the laboratory coordinate system. Fig. 29(b) shows how the bubble grows and rises, where green represents areas in
+which the ﬂuid is at saturation temperature and white areas represent those at which 𝑇∞ − 𝑇𝑠𝑎𝑡 = 3.1 K. The temperature distribution
+is characterized by a thin thermal layer at the top of the bubble and cooled liquid trailing behind the rising bubble. A clear separation
+between liquid and gas is observed, as indicated by the saturation temperature. Both grids result in similar temperature distributions
+and interface locations. For the ﬁne grid (right), the wake of cooled liquid trailing behind the bubble seems to be less pronounced
+compared to the coarse grid (left).
+    To gain further insights, the bubble is examined in more detail at 𝑡 = 68.8 ms. A close-up view is presented in Fig. 30(a), where
+the temperature distribution and the velocity vector ﬁeld are shown on the left half. On the right, we display the distribution of the
+
+                                                                       30
+L. Weber, A. Mukherjee, A.G. Class et al.                                                       Journal of Computational Physics 551 (2026) 114680
+
+
+mass transfer density , along with a magniﬁed view of a section in the top part of the bubble. As expected, the mass transfer is
+concentrated on the top of the bubble. At the bottom, almost no mass transfer occurs, due to the cooled liquid wake.
+    Another quantity of interest is the bubble rise velocity, which is commonly reported in the literature. The velocities are compared
+to those by [14] and [49] in Fig. 30(b). The simulations using grid spacing Δ𝑥 = 7 µm and 11.6 µm, yield similar rise velocities.
+Between the two grids, a slight diﬀerence of 0.6 % is observed, where the velocities reach their peak. Compared to [14] and [49], our
+results exhibit a considerably slower bubble acceleration. However, the peak values are in agreement with [14], although they occur
+at diﬀerent times. The velocity predicted in [49] shows a higher acceleration and a larger maximum. A possible explanation for the
+diﬀerences might be that the domain size and boundary conditions diﬀer throughout the literature (e.g. smaller domain in [14] or
+diﬀerent boundary conditions in [73]). A larger database of simulation results is required to claim evidence for this explanation. The
+experiment in [99] does not report this quantity.
+    Generally, quasi grid-independent results are achieved using Δ𝑥 = 11.6 µm, which is comparable to numerical studies using a
+sharp-interface approach [49,61,100]. The study by Giustini and Issa [73] used Δ𝑥 = 3.12 µm, which was arguably not necessary for
+the present study.
+
+5. Conclusion
+
+    In this study, we present a framework to simulate boiling ﬂows using the Accurate Conservative Diﬀuse Interface method for tracking
+the liquid-gas interface. The main objectives of our implementation are eﬃciency and consistency. We successfully develop and
+implement models that are computationally eﬃcient, while consistently formulating the set of equations for the calculation of boiling
+ﬂows.
+    To achieve consistency, we derive the governing equations of the mixture and identify the contributions of the regularization
+terms. As an outcome, we recognize the existence of additional contributions in the momentum balance equation that are often
+neglected. We consider them through an alternative formulation based on developments intended for Cahn-Hillard models. With this
+approach, we introduce a novel coupling of the momentum equation with the regularization terms, which signiﬁcantly improves the
+accuracy of the results. Keeping all regularization terms is crucial for an accurate prediction of the interfacial pressure jump, especially
+for unsteady phase change. The use of this modiﬁed set of equations results in signiﬁcant improvements, also when simulating bubble
+dynamics in the absence of phase change. From a more fundamental viewpoint, we demonstrate that the regularization terms can
+account for velocity diﬀerences among the two phases within the diﬀuse interface, and that neglecting these has a negative impact
+on the pressure jump at the interface. Thus, in contrast to previously proposed ACDI mixture equations, we conclude that including
+all regularization terms is mandatory to obtain accurate results in boiling scenarios.
+    To the best of our knowledge, our work is the ﬁrst to implement this set of equations in the context of boiling ﬂows in order to
+resolve complex, three-dimensional problems. These equations, based on the Accurate Conservative Diﬀuse Interface formulation,
+allows us to use central diﬀerencing schemes, which improves the scalability and eﬃciency.
+    Furthermore, we also enhance eﬃciency by utilizing a FFT-based solver for the pressure Poisson equation. We implement and
+test our alternative FFT-MPDJ scheme, which addresses the well-known shortcomings of existing solvers. Speciﬁcally, all simulation
+results demonstrate that our methodology: (i) avoids spurious pressure oscillations at the interface; (ii) provides a high accuracy in
+calculating the interfacial pressure jumps; and (iii) attains a faster adaptation to the ﬂow in the startup phase.
+    We present a simple and eﬃcient kinetic phase change model for the ACDI method. For this phase change model, we analyze the
+time-step constraint and introduce a dynamic adjustment of the regularization speed. The phase change model is tested against several
+boiling scenarios with a variety of ﬂuid properties. We ﬁnd the model to be free of problem-dependent parameters, and capable of
+converging to the analytical solution across all benchmarks. However, compared to Sharp Interface methods, the model required a
+slightly higher resolution to achieve convergence. Overall, we conclude that the phase change model is eﬃcient, versatile, and, when
+combined with the dynamic regularization speed, robust.
+    Modelling surface tension is often connected with challenges for boiling ﬂow simulations, mainly because of spurious currents
+around the phase interface. To address this issue, we investigate the performance of diﬀerent energy-based and CSF models, using
+a bubble growth benchmark (Section 4.5). Although energy-based surface tension formulations are known to have advantages for
+problems when excluding phase change, we ﬁnd them to cause increased spurious currents for boiling ﬂows. It is concluded that a
+sharpened CSF model returns the lowest intensity of spurious currents.
+    Finally, we successfully simulate the dynamics of a single bubble subjected to phase change and gravity (Section 4.7). We validate
+that our framework is capable of accurately calculating real world boiling ﬂows. We ﬁnd good agreement between our results and
+experimental data for the bubble growth rate. The results are also consistent with other numerical studies using Sharp Interface
+methods at a comparable grid resolution.
+    For further investigation of boiling heat-transfer phenomena, accurate interface-resolved simulations play an important role. The
+results obtained in this study show that our developed framework is a suitable tool for that purpose. As such, we intend to apply the
+presented methodology to large-scale boiling ﬂows for which the above-demonstrated properties are indispensable. In this context,
+additional extensions to this framework are planned to enable the numerical investigation of conjugate heat transfer phenomena.
+
+CRediT authorship contribution statement
+
+   Lorenz Weber: Writing – original draft, Visualization, Validation, Software, Methodology, Investigation, Funding acquisition,
+Formal analysis, Conceptualization; Aritra Mukherjee: Writing – review & editing, Supervision, Software, Methodology, Concep-
+
+                                                                    31
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                         Journal of Computational Physics 551 (2026) 114680
+
+
+tualization; Andreas G. Class: Writing – review & editing, Supervision, Resources, Project administration, Funding acquisition,
+Conceptualization; Luca Brandt: Writing – review & editing, Supervision, Software, Resources, Project administration, Methodology,
+Investigation, Funding acquisition, Formal analysis, Conceptualization.
+
+Data availability
+
+    Data will be made available on request.
+
+Declaration of interests
+
+   The authors declare that they have no known competing ﬁnancial interests or personal relationships that could have appeared to
+inﬂuence the work reported in this paper.
+
+Acknowledgements
+
+   The authors acknowledge support by the state of Baden-Württemberg through bwHPC. Furthermore, we are thankful for the
+ﬁnancial support provided by the German Academic Exchange Service (DAAD) for partially funding research visits within this study.
+The support of the Framatome Professional School (FPS) is acknowledged. In addition, the authors are grateful for the Research Travel
+Grant through the Karlsruhe House of Young Scientists (KHYS) supporting the collaboration. We thank J. Yanez and C. Tazzeo for
+the suggestions to improve the quality of the manuscript.
+
+References
+
+  [1] S.S. Jain, Accurate conservative phase-ﬁeld method for simulation of two-phase ﬂows, J. Comput. Phys. 469 (2022) 111529. https://doi.org/10.1016/j.jcp.
+      2022.111529
+  [2] I. Mudawar, Two-phase microchannel heat sinks: theory, applications, and limitations, J. Electron. Packag. 133 (4) (2011). https://doi.org/10.1115/1.4005300
+  [3] C.R. Kharangate, I. Mudawar, Review of computational studies on boiling and condensation, Int. J. Heat Mass Transfer 108 (2017) 1164–1196. https://doi.
+      org/10.1016/j.ijheatmasstransfer.2016.12.065
+  [4] L. Bures, M. Bucci, Y. Sato, M. Bucci, A coarse grid approach for single bubble boiling simulations with the volume of ﬂuid method, Comput. Fluids 271 (2024)
+      106182. https://doi.org/10.1016/j.compﬂuid.2024.106182
+  [5] D. Juric, G. Tryggvason, Computations of boiling ﬂows, Int. J. Multiphase Flow 24 (3) (1998) 387–410. https://doi.org/10.1016/S0301-9322(97)00050-5
+  [6] G. Son, V.K. Dhir, Numerical simulation of ﬁlm boiling near critical pressures with a level set method, J. Heat Transfer 120 (1) (1998) 183–192. https:
+      //doi.org/10.1115/1.2830042
+  [7] S.W. Welch, J. Wilson, A volume of ﬂuid based method for ﬂuid ﬂows with phase change, J. Comput. Phys. 160 (2) (2000) 662–682. https://doi.org/10.1006/
+      jcph.2000.6481
+  [8] S. Mirjalili, C.B. Ivey, A. Mani, Comparison between the diﬀuse interface and volume of ﬂuid methods for simulating two-phase ﬂows, Int. J. Multiphase Flow
+      116 (2019) 221–238. https://doi.org/10.1016/j.ijmultiphaseﬂow.2019.04.019
+  [9] D. Jamet, O. Lebaigue, N. Coutris, J. Delhaye, The second gradient method for the direct numerical simulation of liquid-vapor ﬂows with phase change, J.
+      Comput. Phys. 169 (2) (2001) 624–651. https://doi.org/10.1006/jcph.2000.6692
+ [10] Y. Sun, C. Beckermann, Diﬀuse interface modeling of two-phase ﬂows based on averaging: mass and momentum equations 198 (2004) 281–308. https://doi.
+      org/10.1016/j.physd.2004.09.003
+ [11] A. Onuki, Dynamic van der Waals theory, Phys. Rev. E 75 (2007). https://doi.org/10.1103/PhysRevE.75.036304
+ [12] T. Laurila, A. Carlson, M. Do-Quang, T. Ala-Nissila, G. Amberg, Thermohydrodynamics of boiling in a van der Waals ﬂuid, Phys. Rev. E 85 (2012) 026320.
+      https://doi.org/10.1103/PhysRevE.85.026320
+ [13] A. Badillo, Quantitative phase-ﬁeld modeling for boiling phenomena, Phys. Rev. E 86 (2012) 041603. https://doi.org/10.1103/PhysRevE.86.041603
+ [14] A. Badillo, Technical Report, Heat Transfer and Thermal Engineering, 2013. https://doi.org/10.1115/IMECE2013-65925
+ [15] S.M. Allen, J.W. Cahn, Mechanisms of phase transformations within the miscibility gap of Fe-rich Fe-Al alloys, Acta Metall. 24 (5) (1976) 425–437. https:
+      //doi.org/10.1016/0001-6160(76)90063-8
+ [16] J.W. Cahn, J.E. Hilliard, Free energy of a nonuniform system. I. Interfacial free energy, J. Chem. Phys. 28 (2) (1958) 258–267. https://doi.org/10.1063/1.
+      1744102
+ [17] R. Jafari, T. Okutucu-Özyurt, Phase-ﬁeld modeling of vapor bubble growth in a microchannel, J. Comput. Multiphase Flows 7 (3) (2015) 143–158. https:
+      //doi.org/10.1260/1757-482X.7.3.143
+ [18] Y. Wang, J. Cai, Numerical investigation on bubble evolution during nucleate boiling using diﬀuse interface method, Int. J. Heat Mass Transfer 112 (2017)
+      28–38. https://doi.org/10.1016/j.ijheatmasstransfer.2017.04.109
+ [19] Z. Wang, X. Zheng, C. Chryssostomidis, G.E. Karniadakis, A phase-ﬁeld method for boiling heat transfer, J. Comput. Phys. 435 (2021) 110239. https://doi.org/
+      10.1016/j.jcp.2021.110239
+ [20] Y. Sun, C. Beckermann, Sharp interface tracking using the phase-ﬁeld equation, J. Comput. Phys. 220 (2) (2007) 626–653. https://doi.org/10.1016/j.jcp.2006.
+      05.025
+ [21] P.-H. Chiu, Y.T. Lin, A conservative phase ﬁeld method for solving incompressible two-phase ﬂows, J. Comput. Phys. 230 (1) (2011) 185–204. https://doi.org/
+      10.1016/j.jcp.2010.09.021
+ [22] A. Tamura, K. Katono, Development of a phase-ﬁeld method for phase change simulations using a conservative Allen-Cahn equation, J. Nucl. Eng. Radiat. Sci.
+      8 (2) (2021). https://doi.org/10.1115/1.4050209
+ [23] R. Haghani-Hassan-Abadi, A. Fakhari, M.H. Rahimian, Phase-change modeling based on a novel conservative phase-ﬁeld method, J. Comput. Phys. 432 (2021)
+      110111. https://doi.org/10.1016/j.jcp.2021.110111
+ [24] S. Mirjalili, C.B. Ivey, A. Mani, A conservative diﬀuse interface method for two-phase ﬂows with provable boundedness properties, J. Comput. Phys. 401 (2020)
+      109006. https://doi.org/10.1016/j.jcp.2019.109006
+ [25] S.S. Jain, A. Mani, P. Moin, A conservative diﬀuse-interface method for compressible two-phase ﬂows, J. Comput. Phys. 418 (2020) 109606. https://doi.org/
+      10.1016/j.jcp.2020.109606
+ [26] P. Moin, R. Verzicco, On the suitability of second-order accurate discretizations for turbulent ﬂow simulations, Vortical Struct. Wall Turbul. 55 (2016) 242–245.
+      https://doi.org/10.1016/j.euromechﬂu.2015.10.006
+ [27] L. Brown, S. Jain, P. Moin, A phase ﬁeld model for simulating the freezing of supercooled liquid droplets, SAE Int. J. Adv. Current Pract. Mobility 6 (3) (2023)
+      1150–1157. https://doi.org/10.4271/2023-01-1454
+
+                                                                                 32
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                       Journal of Computational Physics 551 (2026) 114680
+
+
+ [28] S. Mirjalili, S.S. Jain, A. Mani, A computational model for interfacial heat and mass transfer in two-phase ﬂows using a phase ﬁeld method, Int. J. Heat Mass
+      Transfer 197 (2022) 123326. https://doi.org/10.1016/j.ijheatmasstransfer.2022.123326
+ [29] S.Z. Salimi, A. Mukherjee, M. Pelanti, L. Brandt, A low Mach number diﬀuse-interface model for multicomponent two-phase ﬂows with phase change, J.
+      Comput. Phys. 523 (2025) 113683. https://doi.org/10.1016/j.jcp.2024.113683
+ [30] N. Scapin, A. Shahmardi, W.H.R. Chan, S.S. Jain, S. Mirjalili, M. Pelanti, L. Brandt, A Mass-Conserving Pressure-Based Method for Two-Phase Flows with Phase
+      Change, Technical Report, Stanford University, Center for Turbulence Research, 2022.
+ [31] A. Roccon, Boiling heat transfer by phase-ﬁeld method, 2024, pp. 1–16. https://doi.org/10.1007/s00707-024-04122-7
+ [32] M.F. Eikelder, K.G. V.D. Zee, D. Schillinger, Thermodynamically consistent diﬀuse-interface mixture models of incompressible multicomponent ﬂuids, J. Fluid
+      Mech. 990 (2024). https://doi.org/10.1017/jfm.2024.502
+ [33] S. Mirjalili, A. Mani, Consistent, energy-conserving momentum transport for simulations of two-phase ﬂows using the phase ﬁeld equations, J. Comput. Phys.
+      426 (2021) 109918. https://doi.org/10.1016/j.jcp.2020.109918
+ [34] M.E. Gurtin, D. Polignone, J. Viñals, Two-phase binary ﬂuids and immiscible ﬂuids described by an order parameter, Math. Models Methods Appl. Sci. 06 (06)
+      (1996) 815–831. https://doi.org/10.1142/S0218202596000341
+ [35] J. Lowengrub, L. Truskinovsky, Quasi-incompressible Cahn-Hilliard ﬂuids and topological transitions, Proc. R. Soc. London. Ser. A: Math. Phys. Eng. Sci. 454
+      (1978) 2617–2654. https://doi.org/10.1098/rspa.1998.0273
+ [36] F. Boyer, A theoretical and numerical model for the study of incompressible mixture ﬂows, Comput. Fluids 31 (1) (2002) 41–68. https://doi.org/10.1016/
+      S0045-7930(00)00031-1
+ [37] H. Abels, H. Garcke, G. Grün, Thermodynamically consistent, frame indiﬀerent diﬀuse interface models for incompressible two-phase ﬂows with diﬀerent
+      densities, Math. Models Methods Appl. Sci. 22 (03) (2012) 1150013. https://doi.org/10.1142/S0218202511500138
+ [38] O. Souček, V. Prŭša, J. Málek, K., On the natural structure of thermodynamic potentials and ﬂuxes in the theory of chemically non-reacting binary mixtures,
+      Acta Mech. 225 (2014) 3157–3186.
+ [39] M. Řehoř, Diﬀuse Interface Models in Theory of Interacting Continua, Technical Report, Mathematical Institute of Charles University and Interdisciplinary
+      Center for Scientiﬁc Computing at Heidelberg University, 2018. Ph.D. thesis, https://doi.org/10.11588/heidok.00025676
+ [40] M.F.P. Eikelder, K.G. V.D. Zee, I. Akkerman, D. Schillinger, A uniﬁed framework for Navier-Stokes Cahn-Hilliard models with non-matching densities, Math.
+      Models Methods Appl. Sci. 33 (01) (2023) 175–221. https://doi.org/10.1142/S0218202523500069
+ [41] R. Scardovelli, S. Zaleski, Direct numerical simulation of free-surface and interfacial ﬂow, Annu. Rev. Fluid Mech. 31 (1999) 567–603. https://doi.org/10.
+      1146/annurev.ﬂuid.31.1.567
+ [42] S. Mirjalili, M.A. Khanwale, A. Mani, Assessment of an energy-based surface tension model for simulation of two-phase ﬂows using second-order phase ﬁeld
+      methods, J. Comput. Phys. 474 (2023) 111795. https://doi.org/10.1016/j.jcp.2022.111795
+ [43] J. Brackbill, D. Kothe, C. Zemach, A continuum method for modeling surface tension, J. Comput. Phys. 100 (2) (1992) 335–354. https://doi.org/10.1016/
+      0021-9991(92)90240-Y
+ [44] D. Jacqmin, Calculation of two-phase Navier-Stokes ﬂows using phase-ﬁeld modeling, J. Comput. Phys. 155 (1) (1999) 96–127. https://doi.org/10.1006/jcph.
+      1999.6332
+ [45] J. Kim, A continuous surface tension force formulation for diﬀuse-interface models, J. Comput. Phys. 204 (2) (2005) 784–804. https://doi.org/10.1016/j.jcp.
+      2004.10.032
+ [46] Q. He, N. Kasagi, Phase-ﬁeld simulation of small capillary-number two-phase ﬂow in a microtube, Fluid Dyn. Res. 40 (7-8) (2008) 497. https://doi.org/10.
+      1016/j.ﬂuiddyn.2008.01.002
+ [47] A. Roccon, F. Zonta, A. Soldati, Phase-ﬁeld modeling of complex interface dynamics in drop-laden turbulence, Phys. Rev. Fluids 8 (2023). https://doi.org/10.
+      1103/PhysRevFluids.8.090501
+ [48] S. Tanguy, M. Sagan, B. Lalanne, F. Couderc, C. Colin, Benchmarks and numerical methods for the simulation of boiling ﬂows, J. Comput. Phys. 264 (2014)
+      1–22. https://doi.org/10.1016/j.jcp.2014.01.014
+ [49] Y. Sato, B. Ničeno, A sharp-interface phase change model for a mass-conservative interface tracking method, J. Comput. Phys. 249 (2013) 127–161. https:
+      //doi.org/10.1016/j.jcp.2013.04.035
+ [50] H.G. Lee, J. Kim, Regularized Dirac delta functions for phase ﬁeld models, Int. J. Numer. Methods Eng. 91 (3) (2012) 269–288. https://doi.org/10.1002/nme.
+      4262
+ [51] A.Q. Raeini, M.J. Blunt, B. Bijeljic, Modelling two-phase ﬂow in porous media at the pore scale using the volume-of-ﬂuid method, J. Comput. Phys. 213 (2)
+      (2012) 5653–5668. https://doi.org/10.1016/j.jcp.2012.04.011
+ [52] Z. Huang, G. Lin, A.M. Ardekani, Consistent and conservative scheme for incompressible two-phase ﬂows using the conservative Allen-Cahn model, J. Comput.
+      Phys. 420 (2020) 109718. https://doi.org/10.1016/j.jcp.2020.109718
+ [53] R.L. Brown, S. Mirjalili, M.A. Khanwale, A. Mani, A Mass-Conserving Contact Line Treatment for Second-Order Conservative Phase Field Methods Based on the
+      Generalized Navier Boundary Condition, arxiv:2412.16843 edition, 2024.
+ [54] A. Baldellou, X.A. Farré, A. Gorobets, F.X. Miquel, A. Oliva, Llena, Eﬃcient strategies for solving the variable Poisson equation with large contrasts in the
+      coeﬃcients, ECCOMAS Congress, 2022, p. 2022. in: Collection of papers presented at the 8th.
+ [55] S. Dong, J. Shen, A time-stepping scheme involving constant coeﬃcient matrices for phase-ﬁeld simulations of two-phase incompressible ﬂows with large
+      density ratios, J. Comput. Phys. 231 (17) (2012) 5788–5804. https://doi.org/10.1016/j.jcp.2012.04.041
+ [56] M.S. Dodd, A. Ferrante, A fast pressure-correction method for incompressible two-ﬂuid ﬂows, J. Comput. Phys. 273 (2014) 416–434. https://doi.org/10.1016/
+      j.jcp.2014.05.024
+ [57] C. Frantzis, D. Grigoriadis, An eﬃcient method for two-ﬂuid incompressible ﬂows appropriate for the immersed boundary method, J. Comput. Phys. 376 (2019)
+      28–53. https://doi.org/10.1016/j.jcp.2018.09.035
+ [58] P. Costa, A FFT-based ﬁnite-diﬀerence solver for massively-parallel direct numerical simulations of turbulent ﬂows, Comput. Math. Appl. 76 (8) (2018)
+      1853–1862. https://doi.org/10.1016/j.camwa.2018.07.034
+ [59] N. Scapin, P. Costa, L. Brandt, A volume-of-ﬂuid method for interface-resolved simulations of phase-changing two-ﬂuid ﬂows, J. Comput. Phys. 407 (2020)
+      109251. https://doi.org/10.1016/j.jcp.2020.109251
+ [60] M. Crialesi-Esposito, N. Scapin, A.D. Demou, M.E. Rosti, P. Costa, F. Spiga, L. Brandt, Flutas: a GPU-accelerated ﬁnite diﬀerence code for multiphase ﬂows,
+      Comput. Phys. Commun. 284 (2023) 108602. https://doi.org/10.1016/j.cpc.2022.108602
+ [61] J. Poblador-Ibanez, N. Valle, B.J. Boersma, A momentum balance correction to the non-conservative one-ﬂuid formulation in boiling ﬂows using volume-of-ﬂuid,
+      J. Comput. Phys. 524 (2025) 113704. https://doi.org/10.1016/j.jcp.2024.113704
+ [62] P. Cifani, Analysis of a constant-coeﬃcient pressure equation method for fast computations of two-phase ﬂows at high density ratios, J. Comput. Phys. 398
+      (2019) 108904. https://doi.org/10.1016/j.jcp.2019.108904
+ [63] A. Mukherjee, S.G. Kandlikar, Numerical simulation of growth of a vapor bubble during ﬂow boiling of water in a microchannel, Microﬂuid Nanoﬂuidics 1
+      (2005) 137–145.
+ [64] F. Gibou, L. Chen, D. Nguyen, S. Banerjee, A level set based sharp interface method for the multiphase incompressible Navier-Stokes equations with phase
+      change, J. Comput. Phys. 222 (2) (2007) 536–555. https://doi.org/10.1016/j.jcp.2006.07.035
+ [65] R.W. Schrage, I. Chapter, Introduction, Columbia University Press, New York Chichester, West Sussex, New York Chichester, West Sussex, 1953. cited 2025-
+      05-11, https://doi.org/10.7312/schr90162-001
+ [66] W.H. Lee, A pressure iteration scheme for two-phase ﬂow modeling, T.N. Veziroğlu, Multi-phase Transport: Fundamentals, Reactor Safety, Application, Hemi-
+      sphere Publishing Corporation. Washington, DC. 1 (1980) 407–431.
+ [67] I. Tanasawa, Advances in Condensation Heat Transfer, 21, Elsevier, 1991. https://doi.org/10.1016/S0065-2717(08)70334-4
+
+
+
+                                                                               33
+L. Weber, A. Mukherjee, A.G. Class et al.                                                                          Journal of Computational Physics 551 (2026) 114680
+
+
+ [68] A.S. Rattner, S. Garimella, Simple mechanistically consistent formulation for volume-of-ﬂuid based computations of condensing ﬂows, J. Heat Transfer 136 (7)
+      (2014). https://doi.org/10.1115/1.4026808
+ [69] Z. Pan, J.A. Weibel, S.V. Garimella, A saturated-interface-volume phase change model for simulating ﬂow boiling, Int. J. Heat Mass Transfer 93 (2016) 945–956.
+      https://doi.org/10.1016/j.ijheatmasstransfer.2015.10.044
+ [70] M. Eikelder, D. Schillinger, The divergence-free velocity formulation of the consistent Navier-Stokes Cahn-Hilliard model with non-matching densities,
+      divergence-conforming discretization, and benchmarks, J. Comput. Phys. 513 (2024) 113148. https://doi.org/10.1016/j.jcp.2024.113148
+ [71] S. Dong, An eﬃcient algorithm for incompressible N-phase ﬂows, J. Comput. Phys. 276 (2014) 691–728. https://doi.org/10.1016/j.jcp.2014.08.002
+ [72] M. Schreter-Fleischhacker, P. Munch, N. Much, M. Kronbichler, W.A. Wall, C. Meier, A consistent diﬀuse-interface model for two-phase ﬂow problems with
+      rapid evaporation, Adv. Model. Simul. Eng. Sci. 11 (1) (2024) 19.
+ [73] G. Giustini, R.I. Issa, Modelling of free bubble growth with interface capturing computational ﬂuid dynamics, Exper. Comput. Multiphase Flow 5 (4) (2023)
+      357–364.
+ [74] A.K. Sadaghiani, Numerical and experimental studies on ﬂow condensation in hydrophilic microtubes, Appl. Therm. Eng. 197 (2021) 117359. https://doi.org/
+      10.1016/j.applthermaleng.2021.117359
+ [75] M. Castro, B. Costa, W.S. Don, High order weighted essentially non-oscillatory weno-z schemes for hyperbolic conservation laws, J. Comput. Phys. 230 (5)
+      (2011) 1766–1792. https://doi.org/10.1016/j.jcp.2010.11.028
+ [76] A. Karma, Phase-ﬁeld formulation for quantitative modeling of alloy solidiﬁcation, Phys. Rev. Lett. 87 (2001) 115701. https://doi.org/10.1103/PhysRevLett.
+      87.115701
+ [77] M. Ohno, K. Matsuura, Quantitative phase-ﬁeld modeling for dilute alloy solidiﬁcation involving diﬀusion in the solid, Phys. Rev. E 79 (2009). https://doi.
+      org/10.1103/PhysRevE.79.031603
+ [78] Y. Sun, C. Beckermann, Phase-ﬁeld modeling of bubble growth and ﬂow in a Hele-Shaw cell, Int. J. Heat Mass Transfer 53 (15) (2010) 2969–2978. https:
+      //doi.org/10.1016/j.ijheatmasstransfer.2010.03.036
+ [79] S. Mirjalili, A Novel Diﬀuse Interface Method for Two Phase Flows and Application in Simulation of Micro Bubble Entrainment, Technical Report, Stanford
+      University, 2019. Ph.D. thesis,
+ [80] A.J. Chorin, Numerical solution of the Navier-Stokes equations, Math. Comput. 22 (1968) 745–762. https://doi.org/10.1090/S0025-5718-1968-0242392-2
+ [81] M. Ferronato, Preconditioning for sparse linear systems at the dawn of the 21st century: history, current developments, and future perspectives, Int. Sch. Res.
+      Not. 2012 (1) (2012) 127647. https://doi.org/10.5402/2012/127647
+ [82] M.F. Trujillo, Reexamining the one-ﬂuid formulation for two-phase ﬂows, Int. J. Multiphase Flow 141 (2021) 103672. https://doi.org/10.1016/j.
+      ijmultiphaseﬂow.2021.103672
+ [83] S. Shin, D. Juric, Modeling three-dimensional multiphase ﬂow using a level contour reconstruction method for front tracking without connectivity, J. Comput.
+      Phys. 180 (2) (2002) 427–470. https://doi.org/10.1006/jcph.2002.7086
+ [84] H. Liu, J. Tang, L. Sun, Z. Mo, G. Xie, An assessment and analysis of phase change models for the simulation of vapor bubble condensation, Int. J. Heat Mass
+      Transfer 157 (2020) 119924. https://doi.org/10.1016/j.ijheatmasstransfer.2020.119924
+ [85] M. Kang, R.P. Fedkiw, X.D. Liu, A boundary condition capturing method for multiphase incompressible ﬂow, J. Sci. Comput. 15 (2000) 323–360. https:
+      //doi.org/10.1023/A:1011178417620
+ [86] X. Mao, V. Joshi, R. Jaiman, A variational interface-preserving and conservative phase-ﬁeld method for the surface tension eﬀect in two-phase ﬂows, J. Comput.
+      Phys. 433 (2021) 110166. https://doi.org/10.1016/j.jcp.2021.110166
+ [87] J. Adelsberger, P. Esser, M. Griebel, S. Gross, M. Klitz, A. Rüttgers, 3D incompressible two-phase ﬂow benchmark computations for rising droplets, in: Proceedings
+      of the 11th World Congress on Computational Mechanics (WCCM XI), the 11th World Congress on Computational Mechanics (WCCM XI), 2014.
+ [88] S. Gross, A. Reusken, in: Springer Series in Computational Mathematics, Berlin Heidelberg, Springer, 2011.
+ [89] R. Croce, M. Griebel, M.A. Schweitzer, Numerical simulation of bubble and droplet deformation by a level set approach with surface tension in three dimensions,
+      Int. J. Numer. Methods Fluids 62 (9) (2010) 963–993. https://doi.org/10.1002/ﬂd.2051
+ [90] Openfoam, 2013. https://openfoam.org/release/2-2-2/.
+ [91] I. Perez-Raya, S. Kandlikar, Chapter Three - Evaporation on a Planar Interface - Numerical Simulation and Theoretical Analysis of Heat and Mass Transport
+      Processes, 48, Elsevier, 2016. https://doi.org/10.1016/bs.aiht.2016.08.005
+ [92] J.X.D. Sun, Q. Chen, Modeling of the evaporation and condensation phase-change problems with FLUENT, numerical heat transfer, Part B: Fund. 66 (4) (2014)
+      326–342. https://doi.org/10.1080/10407790.2014.915681
+ [93] M. Irfan, M. Muradoglu, A front tracking method for direct numerical simulation of evaporation process in a multiphase system, J. Comput. Phys. 337 (2017)
+      132–153. https://doi.org/10.1016/j.jcp.2017.02.036
+ [94] L. Scriven, On the dynamics of phase growth, Chem. Eng. Sci. 10 (1) (1959) 1–13. https://doi.org/10.1016/0009-2509(59)80019-1
+ [95] S. Popinet, Numerical models of surface tension, Annu. Rev. Fluid Mech. 50 (2018) 49–75. https://doi.org/10.1146/annurev-ﬂuid-122316-045034
+ [96] V. Klimenko, Film boiling on a horizontal plate - new correlation, Int. J. Heat Mass Transfer 24 (1) (1981) 69–79. https://doi.org/10.1016/0017-9310(81)
+      90094-6
+ [97] A. Dhruv, A vortex damping outﬂow forcing for multiphase ﬂows with sharp interfacial jumps, J. Comput. Phys. 511 (2024) 113122. https://doi.org/10.1016/
+      j.jcp.2024.113122
+ [98] D.Z. Guo, D.L. Sun, Z.Y. Li, Q.T. W., Phase change heat transfer simulation for boiling bubbles arising from a vapor ﬁlm by the VOSET method, Numer. Heat
+      Transfer, Part A: Appl. 59 (11) (2011) 857–881. https://doi.org/10.1080/10407782.2011.561079
+ [99] L. Florschuetz, C. Henry, A. Khan, Growth rates of free vapor bubbles in liquids at uniform superheats under normal and zero gravity conditions, Int. J. Heat
+      Mass Transfer 12 (11) (1969) 1465–1489. https://doi.org/10.1016/0017-9310(69)90028-3
+[100] L. Bureš, Y. Sato, Direct numerical simulation of evaporation and condensation with the geometric VOF method and a sharp-interface phase-change model, Int.
+      J. Heat Mass Transfer 173 (2021) 121233. https://doi.org/10.1016/j.ijheatmasstransfer.2021.121233
+
+
+
+
+                                                                                  34
+

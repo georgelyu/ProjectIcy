@@ -1,0 +1,40 @@
+{
+  "interpretation": "Prescribed comoving water/ice velocity; no hydrodynamic force solver.",
+  "rows": [
+    {
+      "n": 64,
+      "steps": 1638,
+      "initial_solid_volume": 832.0,
+      "reference_solid_volume": 544.7674698233604,
+      "moving_solid_volume": 536.0138383507729,
+      "relative_solid_volume_difference": 0.016068564951989384,
+      "temperature_l2_error": 0.013762003742158413,
+      "fraction_l1_error": 0.004038259852677584,
+      "relative_energy_error": 6.601966464110288e-10
+    },
+    {
+      "n": 128,
+      "steps": 6554,
+      "initial_solid_volume": 3328.0,
+      "reference_solid_volume": 2182.0084369778633,
+      "moving_solid_volume": 2164.3405144810677,
+      "relative_solid_volume_difference": 0.008097091742351958,
+      "temperature_l2_error": 0.006923453416675329,
+      "fraction_l1_error": 0.0017955300863832235,
+      "relative_energy_error": 4.38783691095209e-10
+    },
+    {
+      "n": 256,
+      "steps": 26214,
+      "initial_solid_volume": 13056.0,
+      "reference_solid_volume": 8510.274608969688,
+      "moving_solid_volume": 8474.671497642994,
+      "relative_solid_volume_difference": 0.004183544358153823,
+      "temperature_l2_error": 0.0034433642867952585,
+      "fraction_l1_error": 0.0010878648608922958,
+      "relative_energy_error": 4.7880067451499154e-11
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 11.49703077902086
+}

@@ -1,0 +1,12 @@
+{
+  "n": 80,
+  "steps": 47000,
+  "initial_solid_volume": 1600.0,
+  "predicted_final_solid_volume": 720.0,
+  "final_solid_volume": 720.145608663559,
+  "relative_final_volume_error": 0.00020223425494303449,
+  "relative_energy_error": 8.477229360797652e-09,
+  "max_final_temperature": 0.00019931793212890625,
+  "passes": true,
+  "runtime_seconds": 2.3030994489090517
+}

@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-09-17T18:49:51.384236+08:00",
+  "python_executable": "/home/georgelyu/anaconda3/envs/icy/bin/python",
+  "python_version": "3.10.20",
+  "conda_environment": "/home/georgelyu/anaconda3/envs/icy",
+  "numpy_version": "2.2.6",
+  "taichi_version": "1.7.4",
+  "matplotlib_version": "3.10.9",
+  "gpu": "NVIDIA GeForce RTX 5090, 570.211.01",
+  "gpu_fields": "Taichi f32",
+  "host_reference_and_diagnostics": "float64",
+  "fast_math": false,
+  "source_pdf": "/home/georgelyu/下载/Wang_PRE2022_ThermallatticeBoltzmannmodelforliquid-vaporphasechange.pdf",
+  "source_pdf_sha256": "f6282f8fc15a9a31a3ff93a7ea7c9c78f1cdf0859a64fa3f653caa7a07b64e69",
+  "source_hashes": {
+    "thermal.py": "4c7c7978360b279f6355f0e5181242ef76d9a3aa57b73a79a9eca840be328b74",
+    "verify.py": "2a8b09915e8e57c1a280b09caef64c32173baf18bb05158f5f3a4dc22dc596eb",
+    "make_report.py": "a6a9acb2d10f411e0d0436d8eb94d3828ef1278dd8f0a1993ee4bfe264971f11",
+    "derivation_zh.md": "3dbf1659d1d858b617ff49dbd71bcfcc129ee5236a287d7bca63e432d703ee2f"
+  },
+  "inputs": "User-supplied PDF and newly derived analytic equations only; no existing repository code.",
+  "scope": "Equal-density thermal model and prescribed motion; no force-coupled flow/free-surface solver."
+}

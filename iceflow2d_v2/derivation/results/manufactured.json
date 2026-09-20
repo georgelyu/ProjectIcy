@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "n": 64,
+      "steps": 1536,
+      "temperature_l2_error": 6.283003229273089e-05
+    },
+    {
+      "n": 128,
+      "steps": 6144,
+      "temperature_l2_error": 1.5711964383702777e-05,
+      "order": 1.9995907571560996
+    },
+    {
+      "n": 256,
+      "steps": 24576,
+      "temperature_l2_error": 3.925903304880916e-06,
+      "order": 2.000767019698496
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 4.560138687957078
+}

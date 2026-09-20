@@ -1,0 +1,75 @@
+{
+  "parameters": {
+    "c_s": 0.5,
+    "c_l": 1.0,
+    "latent": 2.0,
+    "k_s": 2.0,
+    "k_l": 1.0,
+    "hot": 1.0,
+    "cold": -0.25,
+    "initial_time": 0.002
+  },
+  "rows": [
+    {
+      "n": 64,
+      "steps": 922,
+      "lambda": 0.42792638636048164,
+      "time": 0.0200078125,
+      "front": 0.12309417221695185,
+      "exact_front": 0.12105949736591386,
+      "relative_front_error": 0.01680723029014386,
+      "temperature_l2_error": 0.0055190225369887115,
+      "min_temperature": -0.24568772315979004,
+      "max_temperature": 0.9312822818756104,
+      "energy_balance_relative": 8.399077522596431e-09,
+      "boundary_heat_relative_error_vs_analytic": 0.01214414466775815
+    },
+    {
+      "n": 128,
+      "steps": 3686,
+      "lambda": 0.42792638636048164,
+      "time": 0.019998046875,
+      "front": 0.1216635094024241,
+      "exact_front": 0.1210299497592728,
+      "relative_front_error": 0.005234734414179654,
+      "temperature_l2_error": 0.0008438916666998293,
+      "min_temperature": -0.24581356346607208,
+      "max_temperature": 0.9657151699066162,
+      "energy_balance_relative": 2.0747937126094256e-08,
+      "boundary_heat_relative_error_vs_analytic": 0.006027702062006091,
+      "front_order": 1.68289374990475
+    },
+    {
+      "n": 256,
+      "steps": 14746,
+      "lambda": 0.42792638636048164,
+      "time": 0.02000048828125,
+      "front": 0.12137626559706405,
+      "exact_front": 0.12103733733716632,
+      "relative_front_error": 0.002800195934198335,
+      "temperature_l2_error": 0.0007953439738294096,
+      "min_temperature": -0.24586956202983856,
+      "max_temperature": 0.9828615188598633,
+      "energy_balance_relative": 1.2377004367380922e-08,
+      "boundary_heat_relative_error_vs_analytic": 0.003090646183824486,
+      "front_order": 0.9025885650604242
+    },
+    {
+      "n": 512,
+      "steps": 58982,
+      "lambda": 0.42792638636048164,
+      "time": 0.0199998779296875,
+      "front": 0.12121532495075371,
+      "exact_front": 0.12103549048496591,
+      "relative_front_error": 0.0014857994549140052,
+      "temperature_l2_error": 0.00035288114012727327,
+      "min_temperature": -0.24589841067790985,
+      "max_temperature": 0.9914319515228271,
+      "energy_balance_relative": 3.748804675201539e-09,
+      "boundary_heat_relative_error_vs_analytic": 0.0015719033769061586,
+      "front_order": 0.9142883764578089
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 5.069585569086485
+}

@@ -1,0 +1,189 @@
+{
+  "metadata": {
+    "taichi_version": "1.7.4",
+    "arch": "cuda",
+    "gpu_precision": "f32",
+    "host_diagnostics_precision": "float64",
+    "grids": [
+      32,
+      64,
+      128
+    ]
+  },
+  "moments": {
+    "maximum_moment_residual": 8.881784197001252e-16,
+    "matrix_rank": 5,
+    "passes": true,
+    "runtime_seconds": 0.00025928299874067307
+  },
+  "uniform": {
+    "max_temperature_error": 1.1874362826347351e-07,
+    "max_fraction_error": 2.8405338525772095e-08,
+    "max_enthalpy_error": 1.1874362826347351e-07,
+    "heat_then_cool_error": 0.0,
+    "passes": true,
+    "runtime_seconds": 0.7149813119322062
+  },
+  "diffusion": {
+    "rows": [
+      {
+        "n": 32,
+        "steps": 184,
+        "l2_error": 0.000107291957585544,
+        "relative_diffusivity_error": 0.0032307768820161176,
+        "energy_drift_per_cell": 0.0
+      },
+      {
+        "n": 64,
+        "steps": 737,
+        "l2_error": 2.6737819239492805e-05,
+        "relative_diffusivity_error": 0.000804316616690226,
+        "energy_drift_per_cell": 0.0,
+        "order": 2.004588230449769
+      },
+      {
+        "n": 128,
+        "steps": 2949,
+        "l2_error": 6.679248687886653e-06,
+        "relative_diffusivity_error": 0.00020087228791942913,
+        "energy_drift_per_cell": 0.0,
+        "order": 2.001124066656145
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 1.493785733007826
+  },
+  "layers": {
+    "rows": [
+      {
+        "n": 32,
+        "steps": 6144,
+        "max_temperature_error": 3.8146972658470446e-07,
+        "left_flux_relative_error": 2.080743961574427e-06,
+        "right_flux_relative_error": 5.175808918123082e-07,
+        "energy_balance_per_cell": 6.05359673500061e-09
+      },
+      {
+        "n": 64,
+        "steps": 24576,
+        "max_temperature_error": 3.3378601071998304e-07,
+        "left_flux_relative_error": 1.6119027301808586e-06,
+        "right_flux_relative_error": 4.102753761170419e-07,
+        "energy_balance_per_cell": 1.0710209608078003e-08
+      },
+      {
+        "n": 128,
+        "steps": 98304,
+        "max_temperature_error": 5.483627318891848e-07,
+        "left_flux_relative_error": 2.657780879822269e-06,
+        "right_flux_relative_error": 6.529598569615658e-07,
+        "energy_balance_per_cell": 5.4169504437595606e-09
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 6.822663038037717
+  },
+  "stefan_one_phase": {
+    "parameters": {
+      "c_s": 0.5,
+      "c_l": 1.0,
+      "latent": 2.0,
+      "k_s": 2.0,
+      "k_l": 1.0,
+      "hot": 1.0,
+      "cold": 0.0,
+      "initial_time": 0.002
+    },
+    "rows": [
+      {
+        "n": 32,
+        "steps": 230,
+        "lambda": 0.46478592064624447,
+        "time": 0.01996875,
+        "front": 0.13449526302260048,
+        "exact_front": 0.1313585662165749,
+        "relative_front_error": 0.02387889040181812,
+        "temperature_l2_error": 0.0055913958340376045,
+        "energy_balance_relative": 1.5857169934433935e-08
+      },
+      {
+        "n": 64,
+        "steps": 922,
+        "lambda": 0.46478592064624447,
+        "time": 0.0200078125,
+        "front": 0.13329814102670312,
+        "exact_front": 0.131486984045871,
+        "relative_front_error": 0.013774420289389688,
+        "temperature_l2_error": 0.000698097887641381,
+        "energy_balance_relative": 1.2727742878410014e-08,
+        "front_order": 0.7937441966023787
+      },
+      {
+        "n": 128,
+        "steps": 3686,
+        "lambda": 0.46478592064624447,
+        "time": 0.019998046875,
+        "front": 0.13265763561594401,
+        "exact_front": 0.13145489134957256,
+        "relative_front_error": 0.009149482792337071,
+        "temperature_l2_error": 0.002567585935679338,
+        "energy_balance_relative": 1.3529908308309373e-08,
+        "front_order": 0.5902295055227917
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 1.6250537069281563
+  },
+  "stefan_two_phase": {
+    "parameters": {
+      "c_s": 0.5,
+      "c_l": 1.0,
+      "latent": 2.0,
+      "k_s": 2.0,
+      "k_l": 1.0,
+      "hot": 1.0,
+      "cold": -0.25,
+      "initial_time": 0.002
+    },
+    "rows": [
+      {
+        "n": 32,
+        "steps": 230,
+        "lambda": 0.42792638636048164,
+        "time": 0.01996875,
+        "front": 0.125,
+        "exact_front": 0.12094126362604815,
+        "relative_front_error": 0.03355956645617253,
+        "temperature_l2_error": 0.009337302517405473,
+        "energy_balance_relative": 7.476924714944737e-09
+      },
+      {
+        "n": 64,
+        "steps": 922,
+        "lambda": 0.42792638636048164,
+        "time": 0.0200078125,
+        "front": 0.12309417221695185,
+        "exact_front": 0.12105949736591386,
+        "relative_front_error": 0.01680723029014386,
+        "temperature_l2_error": 0.0055190225369887115,
+        "energy_balance_relative": 8.399077522596431e-09,
+        "front_order": 0.9976420797811939
+      },
+      {
+        "n": 128,
+        "steps": 3686,
+        "lambda": 0.42792638636048164,
+        "time": 0.019998046875,
+        "front": 0.1216635094024241,
+        "exact_front": 0.1210299497592728,
+        "relative_front_error": 0.005234734414179654,
+        "temperature_l2_error": 0.0008438916666998293,
+        "energy_balance_relative": 2.0747937126094256e-08,
+        "front_order": 1.68289374990475
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 1.6308762810658664
+  },
+  "runtime_seconds": 12.288430115091614
+}

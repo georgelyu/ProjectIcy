@@ -1,0 +1,29 @@
+{
+  "rows": [
+    {
+      "n": 64,
+      "steps": 737,
+      "l2_error": 2.6737819239492805e-05,
+      "relative_diffusivity_error": 0.000804316616690226,
+      "energy_drift_per_cell": 0.0
+    },
+    {
+      "n": 128,
+      "steps": 2949,
+      "l2_error": 6.679248687886653e-06,
+      "relative_diffusivity_error": 0.00020087228791942913,
+      "energy_drift_per_cell": 0.0,
+      "order": 2.001124066656145
+    },
+    {
+      "n": 256,
+      "steps": 11796,
+      "l2_error": 1.6698288842667057e-06,
+      "relative_diffusivity_error": 5.0209611621720995e-05,
+      "energy_drift_per_cell": 0.0,
+      "order": 1.9999855608762898
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 2.001942524104379
+}

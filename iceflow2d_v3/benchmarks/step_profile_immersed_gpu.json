@@ -1,0 +1,535 @@
+{
+  "timestamp_utc": "2026-09-20T10:53:57.226287+00:00",
+  "mode": "kernels",
+  "python": "3.13.9 | packaged by Anaconda, Inc. | (main, Oct 21 2025, 19:16:10) [GCC 11.2.0]",
+  "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.35",
+  "taichi_version": [
+    1,
+    7,
+    4
+  ],
+  "gpu": "NVIDIA GeForce RTX 5090, 570.211.01",
+  "solver_source": "/home/georgelyu/Repos/ProjectIcy/iceflow2d_v3/simulator.py",
+  "solver_sha256": "71356139c37c6674d6f50d5a53e34e3945c4611850ce80c92df58cf5f4ae9946",
+  "config": {
+    "resolution": [
+      200,
+      400
+    ],
+    "dx": 0.000125,
+    "reference_velocity": 4.0,
+    "rho_water": 1000.0,
+    "rho_air": 1.25,
+    "rho_ice": 917.0,
+    "viscosity_water": 1e-06,
+    "viscosity_air": 1.5e-05,
+    "sigma": 0.072,
+    "gravity": [
+      0.0,
+      -9.8
+    ],
+    "smagorinsky_constant": 0.1,
+    "interface_width": 5.0,
+    "mobility": 0.1,
+    "phase_warmup_steps": 500,
+    "thermal": {
+      "properties": {
+        "melting_temperature_c": 0.0,
+        "specific_heat_water_j_kg_k": 4186.0,
+        "specific_heat_ice_j_kg_k": 2100.0,
+        "specific_heat_air_j_kg_k": 1005.0,
+        "conductivity_water_w_m_k": 0.6,
+        "conductivity_ice_w_m_k": 2.2,
+        "conductivity_air_w_m_k": 0.026,
+        "latent_heat_j_kg": 334000.0
+      },
+      "boundaries": {
+        "left": {
+          "kind": "adiabatic",
+          "value": 0.0
+        },
+        "right": {
+          "kind": "adiabatic",
+          "value": 0.0
+        },
+        "bottom": {
+          "kind": "adiabatic",
+          "value": 0.0
+        },
+        "top": {
+          "kind": "adiabatic",
+          "value": 0.0
+        }
+      },
+      "initial_water_temperature_c": 90.0,
+      "initial_ice_temperature_c": 0.0,
+      "initial_air_temperature_c": 20.0,
+      "advection_enabled": true,
+      "water_air_interface_adiabatic": true,
+      "update_interval_lbm_steps": 8,
+      "solid_liquid_threshold": 0.5,
+      "max_fourier_number": 0.15,
+      "max_courant_number": 0.5,
+      "max_substeps_per_update": 64,
+      "water_buoyancy_model": "linear",
+      "thermal_expansion_water_1_k": 0.00021,
+      "buoyancy_reference_temperature_c": 90.0,
+      "scheme": "enthalpy_fv",
+      "moving_body_scheme": "body_ale"
+    },
+    "well_balanced_hydrostatics": true,
+    "water_width_fraction": 0.9875,
+    "water_height_fraction": 0.60125,
+    "ice_width_fraction": 0.3225,
+    "ice_height_fraction": 0.16125,
+    "ice_base_y_cells": 254.6672141068609,
+    "boundary_cells": 3,
+    "ice_initial_velocity": [
+      0.0,
+      0.0
+    ],
+    "ice_initial_angle": 0.08726646259971647,
+    "ice_initial_angular_velocity": 0.0,
+    "ice_fixed": false,
+    "rigid_boundary_scheme": "unified",
+    "linear_damping": 1.0,
+    "angular_damping": 0.999,
+    "volume_projection_tolerance": 1e-08,
+    "volume_projection_interface_cutoff": 0.001,
+    "volume_projection_max_shift": 0.5,
+    "volume_projection_max_iterations": 64,
+    "air_interface_relaxation_time": 0.8,
+    "output_dir": "iceflow2d/outputs/iceflow2d/coupled_falling_ice_melting_2d",
+    "show_gui": false,
+    "save_npz": false
+  },
+  "start_state": {
+    "step": 9600,
+    "physical_time_s": 0.030000000000000002,
+    "body_center_cells": [
+      98.81583404541016,
+      268.67303466796875
+    ],
+    "body_mass_lattice": 3755.9717880332482,
+    "melted_mass_lattice": 0.060211966751921864,
+    "thermal_totals": {
+      "initial_body_mass_kg_m": 0.058688,
+      "solid_body_mass_kg_m": 0.058687059188018795,
+      "melted_mass_kg_m": 9.40811981202383e-07,
+      "water_mass_kg_m": 0.7184071886224579,
+      "total_mass_kg_m": 0.7770942478104766,
+      "body_sensible_energy_j_m": 0.0,
+      "water_sensible_energy_j_m": 270652.0555684846,
+      "latent_energy_j_m": 0.3142312017215959,
+      "total_energy_j_m": 270652.3697996863
+    }
+  },
+  "steps_per_repeat": 128,
+  "repeats": 3,
+  "measurement": {
+    "profiled_wall_ms_per_step": [
+      4.3082759218749995,
+      4.2802756171875,
+      4.2505742734375
+    ],
+    "python_call_counts": {
+      "flow._collide_momentum": 384,
+      "flow._collide_phase": 384,
+      "flow._stream": 384,
+      "flow._update_streamed_macroscopic_fields": 384,
+      "flow._update_pressure": 384,
+      "flow._integrate_rigid_ice": 384,
+      "flow._solve_contact_and_rasterize": 432,
+      "flow._update_solid_mask": 432,
+      "flow._refill_changed_nodes": 432,
+      "flow._advance_moving_thermal_fast": 384,
+      "thermal.advance_fast": 384,
+      "thermal.synchronize_water_aperture": 864,
+      "flow._correct_water_volume": 384,
+      "flow._evaluate_water_projection": 1500,
+      "flow._apply_water_projection": 375,
+      "flow._finalize_melt_momentum_coupling": 384,
+      "flow._synchronize_moving_water_aperture": 384,
+      "flow._advance_moving_thermal_slow": 48,
+      "thermal.advance_slow": 48
+    },
+    "projection_evaluations_per_call_histogram": {
+      "0": 9,
+      "4": 375
+    },
+    "gpu_kernel_ms_per_step": 2.589477667007486,
+    "kernels": [
+      {
+        "name": "_evaluate_water_projection",
+        "calls": 4500,
+        "total_ms": 248.8585920825135,
+        "amortized_ms_per_step": 0.6480692502148789,
+        "percent_of_gpu_time": 25.02702604745057
+      },
+      {
+        "name": "_build_phase_aperture_targets",
+        "calls": 1728,
+        "total_ms": 212.1577918555122,
+        "amortized_ms_per_step": 0.5524942496237296,
+        "percent_of_gpu_time": 21.336127229945035
+      },
+      {
+        "name": "_finish_phase_aperture_transfer",
+        "calls": 1728,
+        "total_ms": 145.87129632465076,
+        "amortized_ms_per_step": 0.37987316751211136,
+        "percent_of_gpu_time": 14.669876182060664
+      },
+      {
+        "name": "_collide_momentum",
+        "calls": 384,
+        "total_ms": 115.3948478102684,
+        "amortized_ms_per_step": 0.300507416172574,
+        "percent_of_gpu_time": 11.604943344417931
+      },
+      {
+        "name": "_clip_water_phase_for_projection",
+        "calls": 1152,
+        "total_ms": 41.13344001537189,
+        "amortized_ms_per_step": 0.1071183333733643,
+        "percent_of_gpu_time": 4.136677243374527
+      },
+      {
+        "name": "_apply_water_projection",
+        "calls": 1125,
+        "total_ms": 40.619071930414066,
+        "amortized_ms_per_step": 0.10577883315211996,
+        "percent_of_gpu_time": 4.084948655856246
+      },
+      {
+        "name": "_reduce_final_melt_momentum",
+        "calls": 288,
+        "total_ms": 37.30848007125314,
+        "amortized_ms_per_step": 0.09715750018555507,
+        "percent_of_gpu_time": 3.7520115127246694
+      },
+      {
+        "name": "_finish_aperture_measurement",
+        "calls": 1728,
+        "total_ms": 21.367487992625684,
+        "amortized_ms_per_step": 0.05564449998079605,
+        "percent_of_gpu_time": 2.148869661621808
+      },
+      {
+        "name": "_reduce_provisional_melt_momentum",
+        "calls": 144,
+        "total_ms": 15.644607915426604,
+        "amortized_ms_per_step": 0.04074116644642345,
+        "percent_of_gpu_time": 1.573335308719064
+      },
+      {
+        "name": "_dilate_water_projection_interface",
+        "calls": 3750,
+        "total_ms": 15.640607995912433,
+        "amortized_ms_per_step": 0.040730749989355296,
+        "percent_of_gpu_time": 1.5729330477843253
+      },
+      {
+        "name": "_measure_aperture_partial_sums",
+        "calls": 1728,
+        "total_ms": 12.970400011749007,
+        "amortized_ms_per_step": 0.033777083363929705,
+        "percent_of_gpu_time": 1.3043975545448123
+      },
+      {
+        "name": "_snapshot_melt_momentum_coupling",
+        "calls": 96,
+        "total_ms": 12.468416095827706,
+        "amortized_ms_per_step": 0.032469833582884654,
+        "percent_of_gpu_time": 1.253914408939785
+      },
+      {
+        "name": "_prepare_moving_body_contact_support_kernel",
+        "calls": 1200,
+        "total_ms": 11.732352012651972,
+        "amortized_ms_per_step": 0.030553000032947846,
+        "percent_of_gpu_time": 1.1798904629386602
+      },
+      {
+        "name": "_reduce_melt_momentum_weight_geometry",
+        "calls": 144,
+        "total_ms": 9.731808013399132,
+        "amortized_ms_per_step": 0.025343250034893572,
+        "percent_of_gpu_time": 0.9787012399369848
+      },
+      {
+        "name": "_apply_phase_aperture_transfer",
+        "calls": 1728,
+        "total_ms": 7.876128003699705,
+        "amortized_ms_per_step": 0.02051075000963465,
+        "percent_of_gpu_time": 0.792080591038183
+      },
+      {
+        "name": "_measure_water_outflow_rate",
+        "calls": 768,
+        "total_ms": 6.378912002430297,
+        "amortized_ms_per_step": 0.0166117500063289,
+        "percent_of_gpu_time": 0.641509684288035
+      },
+      {
+        "name": "_seed_water_projection_interface",
+        "calls": 375,
+        "total_ms": 4.535327997989953,
+        "amortized_ms_per_step": 0.011810749994765501,
+        "percent_of_gpu_time": 0.45610549746175344
+      },
+      {
+        "name": "_stream",
+        "calls": 384,
+        "total_ms": 3.191103996243328,
+        "amortized_ms_per_step": 0.008310166656883666,
+        "percent_of_gpu_time": 0.32092057648395395
+      },
+      {
+        "name": "_commit_moving_body_raster",
+        "calls": 432,
+        "total_ms": 2.6043839958729222,
+        "amortized_ms_per_step": 0.006782249989252402,
+        "percent_of_gpu_time": 0.26191575527624716
+      },
+      {
+        "name": "_collide_phase",
+        "calls": 384,
+        "total_ms": 2.514527997933328,
+        "amortized_ms_per_step": 0.006548249994618042,
+        "percent_of_gpu_time": 0.2528791840165004
+      },
+      {
+        "name": "_compute_water_advection_flux_x",
+        "calls": 384,
+        "total_ms": 2.203936001751572,
+        "amortized_ms_per_step": 0.005739416671228052,
+        "percent_of_gpu_time": 0.22164379883842647
+      },
+      {
+        "name": "_update_water_advection",
+        "calls": 384,
+        "total_ms": 2.0166399960871786,
+        "amortized_ms_per_step": 0.005251666656477028,
+        "percent_of_gpu_time": 0.20280795325591988
+      },
+      {
+        "name": "_compute_water_advection_flux_y",
+        "calls": 384,
+        "total_ms": 1.9832640029489994,
+        "amortized_ms_per_step": 0.005164750007679686,
+        "percent_of_gpu_time": 0.19945142116820405
+      },
+      {
+        "name": "_calculate_moving_body_fraction",
+        "calls": 432,
+        "total_ms": 1.8225600037258118,
+        "amortized_ms_per_step": 0.004746250009702635,
+        "percent_of_gpu_time": 0.18328986073811593
+      },
+      {
+        "name": "_update_pressure",
+        "calls": 384,
+        "total_ms": 1.7388479982037097,
+        "amortized_ms_per_step": 0.0045282499953221604,
+        "percent_of_gpu_time": 0.17487117394432697
+      },
+      {
+        "name": "_update_streamed_macroscopic_fields",
+        "calls": 384,
+        "total_ms": 1.6133760013617575,
+        "amortized_ms_per_step": 0.0042015000035462435,
+        "percent_of_gpu_time": 0.16225279936094916
+      },
+      {
+        "name": "_refill_changed_nodes",
+        "calls": 432,
+        "total_ms": 1.5140159968286753,
+        "amortized_ms_per_step": 0.0039427499917413416,
+        "percent_of_gpu_time": 0.15226043622526222
+      },
+      {
+        "name": "_integrate_rigid_ice",
+        "calls": 384,
+        "total_ms": 1.4633919983170927,
+        "amortized_ms_per_step": 0.0038109166622840953,
+        "percent_of_gpu_time": 0.1471693195442059
+      },
+      {
+        "name": "_update_solid_mask",
+        "calls": 432,
+        "total_ms": 1.437247998546809,
+        "amortized_ms_per_step": 0.0037428333295489815,
+        "percent_of_gpu_time": 0.1445400891939093
+      },
+      {
+        "name": "_project_moving_body_inside_container",
+        "calls": 384,
+        "total_ms": 1.2918079965747893,
+        "amortized_ms_per_step": 0.0033640833244135138,
+        "percent_of_gpu_time": 0.12991358710195774
+      },
+      {
+        "name": "_exchange_interface_heat",
+        "calls": 48,
+        "total_ms": 1.2537599988281727,
+        "amortized_ms_per_step": 0.0032649999969483665,
+        "percent_of_gpu_time": 0.12608720432493797
+      },
+      {
+        "name": "_reduce_moving_body_mass_properties",
+        "calls": 96,
+        "total_ms": 1.2057599988766015,
+        "amortized_ms_per_step": 0.003139999997074483,
+        "percent_of_gpu_time": 0.12125997598207536
+      },
+      {
+        "name": "snode_reader_195_kernel_0_serial",
+        "calls": 384,
+        "total_ms": 0.8913280064007267,
+        "amortized_ms_per_step": 0.002321166683335226,
+        "percent_of_gpu_time": 0.08963841290887316
+      },
+      {
+        "name": "snode_reader_104_kernel_0_serial",
+        "calls": 384,
+        "total_ms": 0.877984004211612,
+        "amortized_ms_per_step": 0.0022864166776344064,
+        "percent_of_gpu_time": 0.08829644320805012
+      },
+      {
+        "name": "_inject_melt_water",
+        "calls": 96,
+        "total_ms": 0.8583680022275075,
+        "amortized_ms_per_step": 0.0022353333391341343,
+        "percent_of_gpu_time": 0.0863237156904073
+      },
+      {
+        "name": "_apply_melt_momentum_correction",
+        "calls": 48,
+        "total_ms": 0.7016320014372468,
+        "amortized_ms_per_step": 0.0018271666704094969,
+        "percent_of_gpu_time": 0.07056120597946886
+      },
+      {
+        "name": "_accumulate_body_conduction",
+        "calls": 96,
+        "total_ms": 0.5704960023285821,
+        "amortized_ms_per_step": 0.0014856666727306826,
+        "percent_of_gpu_time": 0.0573732182231015
+      },
+      {
+        "name": "_apply_local_melt_momentum_correction",
+        "calls": 96,
+        "total_ms": 0.4067200005520135,
+        "amortized_ms_per_step": 0.0010591666681042018,
+        "percent_of_gpu_time": 0.040902714921971936
+      },
+      {
+        "name": "_apply_body_heat_and_phase_change",
+        "calls": 48,
+        "total_ms": 0.39657599944621325,
+        "amortized_ms_per_step": 0.001032749998557847,
+        "percent_of_gpu_time": 0.03988256055327707
+      },
+      {
+        "name": "_compute_water_conduction_flux_x",
+        "calls": 48,
+        "total_ms": 0.3021440003067255,
+        "amortized_ms_per_step": 0.0007868333341320977,
+        "percent_of_gpu_time": 0.030385793403709744
+      },
+      {
+        "name": "_compute_water_conduction_flux_y",
+        "calls": 48,
+        "total_ms": 0.2992960005067289,
+        "amortized_ms_per_step": 0.0007794166679862732,
+        "percent_of_gpu_time": 0.030099377875191378
+      },
+      {
+        "name": "_apply_moving_body_mass_properties",
+        "calls": 48,
+        "total_ms": 0.2717759998049587,
+        "amortized_ms_per_step": 0.00070774999949208,
+        "percent_of_gpu_time": 0.027331766885249367
+      },
+      {
+        "name": "_update_water_conduction",
+        "calls": 48,
+        "total_ms": 0.23769599944353104,
+        "amortized_ms_per_step": 0.0006189999985508621,
+        "percent_of_gpu_time": 0.02390443472201116
+      },
+      {
+        "name": "snode_writer_104_kernel_0_serial",
+        "calls": 48,
+        "total_ms": 0.1791679987218231,
+        "amortized_ms_per_step": 0.00046658333000474766,
+        "percent_of_gpu_time": 0.018018434217428558
+      },
+      {
+        "name": "_accumulate_boundary_heat",
+        "calls": 48,
+        "total_ms": 0.1734080013120547,
+        "amortized_ms_per_step": 0.00045158333675014245,
+        "percent_of_gpu_time": 0.01743916707619309
+      },
+      {
+        "name": "_freeze_melt_injection_eligibility",
+        "calls": 48,
+        "total_ms": 0.16870399820618331,
+        "amortized_ms_per_step": 0.0004393333286619357,
+        "percent_of_gpu_time": 0.01696609838576629
+      },
+      {
+        "name": "_finish_melt_momentum_coupling",
+        "calls": 48,
+        "total_ms": 0.15001600119285285,
+        "amortized_ms_per_step": 0.0003906666697730543,
+        "percent_of_gpu_time": 0.015086697782743415
+      },
+      {
+        "name": "snode_reader_175_kernel_0_serial",
+        "calls": 48,
+        "total_ms": 0.11910400097258389,
+        "amortized_ms_per_step": 0.0003101666691994372,
+        "percent_of_gpu_time": 0.01197796270465153
+      },
+      {
+        "name": "_reset_interval_sources",
+        "calls": 48,
+        "total_ms": 0.10784000030253083,
+        "amortized_ms_per_step": 0.000280833334121174,
+        "percent_of_gpu_time": 0.010845173051664792
+      },
+      {
+        "name": "_reset_boundary_power",
+        "calls": 48,
+        "total_ms": 0.1029759997036308,
+        "amortized_ms_per_step": 0.00026816666589487187,
+        "percent_of_gpu_time": 0.010356013852198117
+      }
+    ]
+  },
+  "end_state": {
+    "step": 9728,
+    "physical_time_s": 0.0304,
+    "body_center_cells": [
+      98.77338409423828,
+      268.3353271484375
+    ],
+    "body_mass_lattice": 3755.970597230401,
+    "melted_mass_lattice": 0.0614027695992263,
+    "thermal_totals": {
+      "initial_body_mass_kg_m": 0.058688,
+      "solid_body_mass_kg_m": 0.0586870405817243,
+      "melted_mass_kg_m": 9.594182757005632e-07,
+      "water_mass_kg_m": 0.7184072072278969,
+      "total_mass_kg_m": 0.7770942478096211,
+      "body_sensible_energy_j_m": 0.0,
+      "water_sensible_energy_j_m": 270652.0493539302,
+      "latent_energy_j_m": 0.3204457040839881,
+      "total_energy_j_m": 270652.3697996343
+    }
+  }
+}

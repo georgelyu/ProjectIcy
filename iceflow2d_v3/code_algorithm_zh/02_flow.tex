@@ -1,0 +1,210 @@
+\section{气液流动：双分布函数格子 Boltzmann 方法}
+\label{sec:flow}
+本节除特别注明外均使用格子单位，即 $\Delta x^\ell=\Delta t^\ell=1$，省略上标 $\ell$。
+LBM 的基本操作是：在每个节点上调整离散方向分布，即碰撞；
+随后沿各离散速度将分布传递到相邻节点，即迁移。
+宏观量通过分布的低阶矩恢复。
+
+\subsection{连续模型的解释}
+相场对应的守恒 Allen--Cahn 模型可写为
+\begin{equation}
+ \partial_t\phi+\nabla\cdot(\phi\bm u)
+ =\nabla\cdot\left[M_\phi\left(\nabla\phi-\Gamma\bm n\right)\right],
+ \quad \Gamma=\frac{4\phi(1-\phi)}{W},\quad
+ \bm n=\frac{\nabla\phi}{|\nabla\phi|+\eps}.
+ \label{eq:ac}
+\end{equation}
+$W$ 是以格子数计的界面宽度，$M_\phi$ 为格子迁移率。
+扩散项平滑界面，压缩项维持有限界面厚度。
+该方程描述水—气界面；冰的融化源通过后续全局体积约束处理。
+
+流动部分可用变密度、低马赫数的动量方程解释：
+\begin{align}
+ \rho(\phi)&=\rho_a+(\rho_w-\rho_a)\clip(\phi,0,1),\\
+ \nabla\cdot\bm u&\simeq0,\\
+ \partial_t(\rho\bm u)+\nabla\cdot(\rho\bm u\bm u)
+ &\simeq-\nabla p_d+\nabla\cdot[\rho\nu(\nabla\bm u+\nabla\bm u^{\mathsf T})]
+   +\bm F.
+ \label{eq:continuum-momentum}
+\end{align}
+这里 $p_d=p-p_H$ 是相对冻结静水参考场的压力扰动。
+式 \eqref{eq:continuum-momentum} 用于说明模型结构；实际推进还包含有限分辨率的相场通量、
+矩源项、选择性松弛和投影，不能据此宣称离散系统严格满足连续不可压条件。
+
+表面张力采用化学势力形式。定义自由能密度与化学势
+\begin{align}
+ \psi(\phi,\nabla\phi)&=\beta\phi^2(1-\phi)^2+\frac{\kappa}{2}|\nabla\phi|^2,\\
+ \mu&=4\beta\phi(\phi-1)(\phi-\tfrac12)-\kappa\nabla^2\phi,\qquad
+ \beta=\frac{12\sigma}{W},\quad\kappa=\frac32\sigma W.
+\end{align}
+总力密度为
+\begin{equation}
+ \bm F=(\rho-\rho_H)\bm g
+ -b(\phi)\rho_w\alpha_T(T_w-T_{\rm ref})\bm g+\mu\nabla\phi,
+ \quad b(\phi)=\clip(2\phi-1,0,1).
+ \label{eq:force}
+\end{equation}
+门函数 $b$ 限制热浮力作用于水侧，避免干单元的默认空气温度驱动弥散界面。
+存储的 \code{fluid_acceleration_lattice} 为 $\bm a=\bm F/\rho$。
+
+\subsection{D2Q9 速度与平衡分布}
+\begin{equation}
+ \begin{array}{c|rrrrrrrrr}
+ q&0&1&2&3&4&5&6&7&8\\\hline
+ c_{qx}&0&1&0&-1&0&1&-1&-1&1\\
+ c_{qy}&0&0&1&0&-1&1&1&-1&-1
+ \end{array}
+\end{equation}
+权重为 $w_0=4/9$，$w_{1\ldots4}=1/9$，$w_{5\ldots8}=1/36$，
+格子声速平方 $c_s^2=1/3$。反向索引满足 $\bm c_{\bar q}=-\bm c_q$。
+
+程序中的 $f_q$ 为压力—动量分布，$h_q$ 为相场分布。
+令
+\begin{equation}
+ P_q(\bm u)=3\bm c_q\cdot\bm u+\frac92(\bm c_q\cdot\bm u)^2-\frac32|\bm u|^2.
+\end{equation}
+两种平衡态为
+\begin{align}
+ f_q^{\rm eq}(p_d,\rho,\bm u)
+ &=3(w_q-\delta_{q0})p_d+w_q\rho P_q(\bm u),\label{eq:feq}\\
+ h_q^{\rm eq}(\phi,\bm u)&=w_q\phi[1+P_q(\bm u)].\label{eq:heq}
+\end{align}
+由 D2Q9 各向同性关系可得
+\begin{align}
+ \sum_q f_q^{\rm eq}&=0,&
+ \sum_q\bm c_qf_q^{\rm eq}&=\rho\bm u,&
+ \sum_q\bm c_q\bm c_qf_q^{\rm eq}&=p_d\bm I+\rho\bm u\bm u,\\
+ \sum_qh_q^{\rm eq}&=\phi,&
+ \sum_q\bm c_qh_q^{\rm eq}&=\phi\bm u.&
+\end{align}
+因此，$\sum f_q$ 不表示材料密度，压力也不能由 $p=c_s^2\rho$ 恢复。
+压力与相场密度解耦是此处处理大密度比的关键。
+
+\src{lattice.py:lattice_direction, lattice_weight, opposite_direction_index, momentum_equilibrium, phase_equilibrium}
+
+\subsection{梯度、拉普拉斯与近壁延拓}
+记沿方向 $q$ 一格和两格的邻值为 $\phi_q^{(1)},\phi_q^{(2)}$，本地值为 $\phi$。
+代码使用两种梯度：
+\begin{align}
+ G_1\phi&=3\sum_qw_q\bm c_q(\phi_q^{(1)}-\phi),\\
+ G\phi&=(1-\eta)G_1\phi+\frac{3\eta}{2}
+   \sum_qw_q\bm c_q(4\phi_q^{(1)}-\phi_q^{(2)}-3\phi),
+   \quad\eta=\frac13,\\
+ L\phi&=6\sum_qw_q(\phi_q^{(1)}-\phi).
+\end{align}
+表面张力与相场法向使用 $G$，密度梯度源项和压力恢复使用 $G_1$，化学势使用 $L$。
+化学势多项式中的相场取 $\clip(\phi,0,1)$；邻域差分读取当前存储的相场。
+若第一邻点不是活动流体，则返回本地值；
+若第一邻点有效而第二邻点无效，两格采样仍返回本地值。
+这是 \code{_phase_neighbor} 的具体延拓规则，没有另行求解接触角边界条件。
+
+\subsection{动量的原点矩 MRT 碰撞}
+\label{sec:collision}
+定义原点矩
+\begin{equation}
+ m_{ab}=\sum_qc_{qx}^{a}c_{qy}^{b}f_q,
+ \qquad (a,b)\in\{0,1,2\}^2.
+\end{equation}
+尽管辅助函数名含有 \code{central_moment}，
+\code{_collide_momentum} 实际传入零平移速度，以原点矩重构分布。
+它与下一节的真正中心矩相场碰撞不同。
+
+以存储动量速度 $\bm v$ 和加速度 $\bm a$ 构造受力速度
+\begin{equation}
+ \bm v=\frac{\sum_q\bm c_q f_q}{\rho},\qquad
+ \bm u=\bm v+\frac12\bm a.
+ \label{eq:physical-u}
+\end{equation}
+本节平衡态与源项均在该 $\bm u$ 下计算。分布源项为
+\begin{equation}
+ R_q=3w_q\left[\bm c_q\cdot\bm F+
+ (\rho_w-\rho_a)(\bm c_q\cdot\bm u)(\bm c_q\cdot G_1\phi)\right].
+ \label{eq:momentum-source}
+\end{equation}
+令 $m^{\rm eq}$、$R_{ab}$ 分别为平衡态和 $R_q$ 的同阶矩。
+对矩向量
+$\bm m=(m_{00},m_{10},m_{01},m_{20}+m_{02},m_{20}-m_{02},m_{11},m_{21},m_{12},m_{22})^{\mathsf T}$，
+碰撞统一写为
+\begin{equation}
+ \bm m^+=\bm m-\mathsf S(\bm m-\bm m^{\rm eq})+
+ (\mathsf I-\tfrac12\mathsf S)\bm R,
+ \label{eq:mrt}
+\end{equation}
+其中
+\begin{equation}
+ \mathsf S=\diag(\omega_p,\omega_p,\omega_p,1,\omega_s,\omega_s,1,1,1).
+\end{equation}
+程序只需读取实际受非单位松弛率影响的原始矩；松弛率为 1 的矩直接取
+$m^{\rm eq}+R/2$。
+
+物理黏性与 Smagorinsky 项确定
+\begin{align}
+ \nu_{\rm loc}&=\bar\phi\nu_w+(1-\bar\phi)\nu_a+\nu_{\rm SGS},\qquad
+ \bar\phi=\clip(\phi,0,1),\\
+ \nu_{\rm SGS}&=C_s^2\sqrt{2\left[(\partial_xv_x)^2+(\partial_yv_y)^2+
+ \tfrac12(\partial_yv_x+\partial_xv_y)^2\right]},\\
+ \tau_p&=\frac12+3\nu_{\rm loc},\qquad\omega_p=\tau_p^{-1}.
+\end{align}
+这里速度梯度使用 D2Q9 一格差分；冰内邻点取刚体壁速，固定壁外取零。
+额外剪切松弛下界为
+\begin{equation}
+ \tau_s=\max\left\{\tau_p,\frac12+(\tau_A-\tfrac12)
+ \max(1-\bar\phi,\chi_{\rm nbr})\right\},\qquad \omega_s=\tau_s^{-1}.
+\end{equation}
+$\chi_{\rm nbr}=1$ 表示八邻域内存在尖锐冰节点，默认 $\tau_A=0.8$。
+该下界只作用于偏应力矩 $m_{20}-m_{02}$ 和 $m_{11}$；
+它是数值稳定化，改变局部剪切耗散，应与材料黏性区分。
+设 \code{air_interface_relaxation_time=None} 时，这一额外下界关闭。
+
+\src{simulator.py:_fluid_force_viscosity_and_gradient, _collide_momentum}
+
+\subsection{相场的中心矩碰撞}
+定义平移后的中心矩
+\begin{equation}
+ k_{ab}=\sum_q(c_{qx}-u_x)^a(c_{qy}-u_y)^b h_q,
+ \qquad Q_q=w_q\Gamma(\bm c_q\cdot\bm n).
+\end{equation}
+以相同变换构造 $k^{\rm eq}_{ab}$ 和 $Q_{ab}$，并令
+\begin{equation}
+ \omega_\phi=(3M_\phi+\tfrac12)^{-1}.
+\end{equation}
+两个一阶中心矩按
+\begin{equation}
+ k_{ab}^+=k_{ab}-\omega_\phi(k_{ab}-k_{ab}^{\rm eq})
+ +(1-\tfrac12\omega_\phi)Q_{ab},\quad (a,b)=(1,0),(0,1)
+\end{equation}
+更新；其余七个矩取
+\begin{equation}
+ k_{ab}^+=k_{ab}^{\rm eq}+\frac12Q_{ab}.
+\end{equation}
+特别地 $Q_{00}=0$，故零阶矩保持为 $\phi$。
+重构时使用非零中心 $\bm u$；完整逆变换见附录 \ref{app:inverse}。
+
+\src{simulator.py:_collide_phase; lattice.py:reconstruct_central_moment_population}
+
+\subsection{迁移、宏观恢复与时间层}
+对目标节点仍为流体的方向，执行推式迁移
+\begin{equation}
+ f_q(\bm x+\bm c_q,t+1)=f_q^+(\bm x,t),\qquad
+ h_q(\bm x+\bm c_q,t+1)=h_q^+(\bm x,t).
+\end{equation}
+壁面链路的反射值在下一节定义。
+每个方向槽有唯一写入来源，碰撞缓存使迁移不覆盖尚未使用的碰撞前状态。
+迁移后先恢复
+\begin{equation}
+ \phi^{n+1}=\sum_qh_q^{n+1},\qquad
+ \bm v^{n+1}=\frac{\sum_q\bm c_qf_q^{n+1}}{\rho(\phi^{n+1})},
+\end{equation}
+再恢复压力
+\begin{equation}
+ p^{n+1}=p_H+\frac35\left[
+ \sum_{q\ne0}f_q^{n+1}+\frac12\bm u\cdot G_1\rho
+ -\frac32w_0\rho|\bm u|^2\right],
+ \quad G_1\rho=(\rho_w-\rho_a)G_1\phi.
+ \label{eq:pressure}
+\end{equation}
+此处 $\bm u=\bm v^{n+1}+\bm a^n/2$，加速度来自本步碰撞前的计算，
+在迁移后暂存并用于压力恢复与热对流；下一步碰撞才重新计算力。
+后续几何改变、分布修正可能再次改变 $\phi$ 和 $\bm v$。
+
+\src{simulator.py:_stream, _update_streamed_macroscopic_fields, _update_pressure}

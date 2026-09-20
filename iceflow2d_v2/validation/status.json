@@ -1,0 +1,1086 @@
+{
+  "full_simulation_validated": false,
+  "updated_local": "2026-09-18T21:21:28.189912+08:00",
+  "target": "10 s full falling/melting scene, 100x200 and 200x400 with time-step and heat-block comparisons",
+  "air_model": "fixed-density numerical air, rho_air=1.25; no EOS; known numerical air mass and heat sources recorded separately",
+  "reference_scope": "../research/reference_scope.md",
+  "precision": "compensated f32 LB/thermal/conserved quantities; f64 geometry, pose and capacity Krylov solve; f32 multigrid",
+  "historical_first_round": "status_first_round_20260917.json",
+  "regression_evidence": [
+    {
+      "log": "../outputs/anchored_frozen_tests.log",
+      "passed": 57,
+      "manifest": "../outputs/anchored_frozen_source/source_manifest.json",
+      "note": "Frozen source, including optional native CUDA execution. Before the subsequent algebraically equivalent parallel CG reduction."
+    },
+    {
+      "log": "../outputs/parallel_projection_tests.log",
+      "passed": 5,
+      "note": "Superseded all-cell atomic f64 reduction; mathematically passed but slower, not the current implementation."
+    },
+    {
+      "log": "../outputs/hierarchical_frozen_tests.log",
+      "passed": 58,
+      "manifest": "../outputs/hierarchical_frozen_source/source_manifest.json",
+      "note": "Earlier frozen source, native CUDA schedule enabled; hierarchical positive f64 CG reductions."
+    },
+    {
+      "log": "../outputs/hierarchical_projection_tests.log",
+      "passed": 5,
+      "note": "Earlier hierarchical f64 positive edge-energy reduction, tiny apertures, potential gauge and moving capacity; subset of 58 tests above."
+    },
+    {
+      "log": "../outputs/full_receiver_tests.log",
+      "passed": 5,
+      "note": "New receiver tests: wall-corner non-collinearity, medium cut regions, long wall, connected film and disconnected corner. Full 60-test frozen suite subsequently passed."
+    },
+    {
+      "log": "../outputs/full_receiver_frozen_tests.log",
+      "passed": 60,
+      "manifest": "../outputs/full_receiver_frozen_source/source_manifest.json",
+      "note": "Earlier frozen source; includes native CUDA schedule and both reproduced cut-patch instability regressions."
+    },
+    {
+      "log": "../outputs/contact_parallel_frozen_tests.log",
+      "passed": 61,
+      "manifest": "../outputs/contact_parallel_frozen_source/source_manifest.json",
+      "note": "Historical source before COM/phase-momentum fixes: exact contact extremum/tie parallelization and surviving-vertex geometry observer, native CUDA enabled."
+    },
+    {
+      "log": "../outputs/geometric_phase_frozen_tests.log",
+      "passed": 66,
+      "seconds": 688.75,
+      "manifest": "../outputs/geometric_phase_frozen_source/source_manifest.json",
+      "note": "Historical geometric phase momentum source, before subgrid viscosity; native CUDA enabled."
+    },
+    {
+      "log": "../outputs/subgrid_viscous_candidate_full_tests.log",
+      "passed": 72,
+      "seconds": 761.99,
+      "manifest": "../outputs/subgrid_viscous_frozen_source/source_manifest.json",
+      "note": "Current numerical core; six new unresolved-body viscous coupling regressions and all prior tests, native CUDA enabled."
+    },
+    {
+      "log": "../outputs/zero_capacity_mask_full_tests.log",
+      "passed": 73,
+      "seconds": 877.31,
+      "manifest": "../outputs/zero_capacity_mask_frozen_source/source_manifest.json",
+      "note": "Current numerical core, native CUDA enabled; includes the zero-fluid-volume/SDF disagreement negative-control regression."
+    }
+  ],
+  "benchmarks": [
+    {
+      "result": "../outputs/freefall_faces_fixed/result.json",
+      "note": "0.01 s; fall distance -0.724% from zero-drag analytic reference, gas drag retained"
+    },
+    {
+      "result": "../outputs/buoyancy_components/result.json",
+      "note": "0.01 s; initial Archimedes relative force error -2.80e-8"
+    },
+    {
+      "result": "../outputs/static_interface_components/result.json",
+      "note": "0.01 s; measured maximum parasitic speed 0.000932 m/s"
+    },
+    {
+      "result": "../outputs/stefan_anchored_100/result.json",
+      "note": "0.03 s accelerated Stefan, final front relative error 11.37%; grid and dt refined together; all per-step guards passed."
+    },
+    {
+      "result": "../outputs/stefan_anchored_200/result.json",
+      "note": "0.03 s accelerated Stefan, final front relative error 2.590%; grid and dt refined together; all per-step guards passed."
+    },
+    {
+      "result": "../outputs/stefan_hierarchical_100/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, completed 0.1 s accelerated Stefan; conservative guards passed. Central PLIC edge intersections can be pinned temporarily at cell corners."
+    },
+    {
+      "result": "../outputs/stefan_hierarchical_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, completed 0.1 s accelerated Stefan; conservative guards passed. Central PLIC edge intersections can be pinned temporarily at cell corners."
+    },
+    {
+      "result": "../outputs/planar_full_receiver_100/result.json",
+      "note": "Revised receiver: planar 0.1 s completed, central front error +21.92%; pointwise section contraction-flux residuals require comparison, not yet a physics acceptance."
+    },
+    {
+      "result": "../outputs/stefan_full_receiver_100/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes; completed 0.1 s. See separate error report; numerical stability alone is not physical accuracy."
+    },
+    {
+      "result": "../outputs/stefan_full_receiver_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes; completed 0.1 s. See separate error report; numerical stability alone is not physical accuracy."
+    },
+    {
+      "result": "../outputs/planar_full_receiver_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes; completed 0.1 s. See separate error report; numerical stability alone is not physical accuracy."
+    },
+    {
+      "result": "../outputs/freefall_full_receiver_100/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/freefall_full_receiver_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/buoyancy_full_receiver_100/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/buoyancy_full_receiver_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/float-equilibrium_full_receiver_100/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/float-equilibrium_full_receiver_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/static-interface_full_receiver_100/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/static-interface_full_receiver_200/result.json",
+      "note": "Historical frozen source before COM/phase-momentum fixes, guarded short mechanics case completed; parasitic-current/angular convergence not established."
+    },
+    {
+      "result": "../outputs/freefall_geometric_phase_100/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/freefall_geometric_phase_200/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/buoyancy_geometric_phase_100/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/buoyancy_geometric_phase_200/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/float-equilibrium_geometric_phase_100/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/float-equilibrium_geometric_phase_200/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/static-interface_geometric_phase_100/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/static-interface_geometric_phase_200/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/planar_geometric_phase_100/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/planar_geometric_phase_200/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/stefan_geometric_phase_100/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    },
+    {
+      "result": "../outputs/stefan_geometric_phase_200/result.json",
+      "note": "Historical geometric-phase source, before subgrid viscosity; completed guarded benchmark. See quantitative comparison, not a blanket physical-accuracy claim."
+    }
+  ],
+  "rejected_or_interrupted_runs": [
+    "../outputs/full_100_mps/result.json",
+    "../outputs/full_200_mps/result.json",
+    "../outputs/stefan_components_100/failure.json",
+    "../outputs/stefan_centroids_100/failure.json",
+    "../outputs/stefan_centroids_200/failure.json",
+    "../outputs/candidate_100/interrupted.json",
+    "../outputs/candidate_200/interrupted.json",
+    "../outputs/candidate_local_100/interrupted.json",
+    "../outputs/candidate_local_200/interrupted.json",
+    "../outputs/candidate_anchored_100/interrupted.json",
+    "../outputs/candidate_anchored_200/interrupted.json",
+    "../outputs/stefan_local_first_100/failure.json",
+    "../outputs/stefan_advective_100/failure.json",
+    "../outputs/stefan_advective_200/failure.json",
+    "../outputs/full_hierarchical_100/result.json",
+    "../outputs/planar_hierarchical_100/failure.json",
+    "../outputs/full_hierarchical_200/interrupted.json",
+    "../outputs/full_hierarchical_dt_half_100/interrupted.json",
+    "../outputs/full_hierarchical_block2_100/interrupted.json",
+    "../outputs/full_hierarchical_block4_100/interrupted.json",
+    "../outputs/full_hierarchical_block8_100/interrupted.json",
+    "../outputs/contact_parallel_100/result.json",
+    "../outputs/contact_parallel_200/interrupted.json",
+    "../outputs/contact_parallel_dt_half_100/interrupted.json",
+    "../outputs/contact_parallel_block2_100/interrupted.json",
+    "../outputs/contact_parallel_block4_100/interrupted.json",
+    "../outputs/contact_parallel_block8_100/interrupted.json",
+    "../outputs/subgrid_viscous_200/result.json"
+  ],
+  "current_work": [
+    "Completed all six from-zero, single-source formal 10 s runs, 23 numerical checks each, zero retries; both recorded movies reviewed.",
+    "73 complete regressions passed and 12 short benchmarks completed.",
+    "Physical spatial/time/thermal-block accuracy remains unaccepted; keep the mandated viscosity floor and separately reported numerical-air approximation."
+  ],
+  "unvalidated": [
+    "spatial, temporal and thermal-block accuracy: full 10 s comparisons completed but discrepancies remain significant",
+    "long-time angular momentum convergence",
+    "complete mechanical energy accounting",
+    "physical geometry/phase adaptive substeps not implemented",
+    "general nonzero ice-air heat transfer and refreezing not implemented"
+  ],
+  "invalid_regression_runs": [
+    {
+      "log": "../outputs/local_full_tests.log",
+      "reason": "Source changed while Taichi lazily compiled later test instances; six compilation failures. Superseded by 57/57 frozen-source tests, not counted as physics evidence."
+    }
+  ],
+  "diagnostic_replays": [
+    {
+      "result": "../outputs/audit_hierarchical_full_first/result.json",
+      "note": "Original coarse full scene first Mach violation at step 209654, 1.3103375 s. Volume constraints closed."
+    },
+    {
+      "result": "../outputs/audit_full_receiver_scene/result.json",
+      "note": "Explicit old-state/new-code diagnostic only: revised receiver damps the growing angular mode and passes to 1.33 s. Not a production continuation."
+    }
+  ],
+  "snibb_accuracy_report": "../outputs/snibb_accuracy_report.json",
+  "snibb_accuracy_limit": "Isolated uniform-viscosity pressure/MRT/SNIBB with analytic signed distances; flat relative L2 0.06526%, 0.009403%, 0.005946%; curved 5.108%, 0.9312%, 0.2789% on N=32/64/128. Does not certify the material SDF proxy or complete cut-volume coupling.",
+  "momentum_operator_audits": [
+    "../outputs/audit_long_momentum_100/result.json",
+    "../outputs/audit_long_momentum_200/result.json"
+  ],
+  "geometry_guard_update": {
+    "report": "../outputs/geometry_guard_observer_change.json",
+    "regression_log": "../outputs/geometry_guard_tests.log",
+    "scope": "Workspace observer now checks actual surviving PLIC vertices at the same 0.2-cell limit. Long runs retain prior frozen, stricter origin/initial-size bound; evolution methods unchanged.",
+    "state_equivalence": "../outputs/geometry_guard_state_equivalence.json",
+    "full_regression": {
+      "passed": 61,
+      "log": "../outputs/vertex_guard_frozen_tests.log",
+      "source_manifest": "../outputs/vertex_guard_frozen_source/source_manifest.json"
+    }
+  },
+  "additional_stress_failures": [
+    "../outputs/last_ice_accelerated/result.json",
+    "../outputs/last_ice_vertex_guard/result.json",
+    "../outputs/last_ice_implicit_candidate/result.json"
+  ],
+  "rejected_experiment": {
+    "source": "../outputs/implicit_phase_candidate/iceflow2d_v2",
+    "result": "../outputs/last_ice_implicit_candidate/result.json",
+    "note": "Implicit outgoing-mass velocity did not resolve terminal geometry-CFL failure at 10000x water conductivity. Not adopted; full-scene evolution remains unchanged."
+  },
+  "contact_optimization": {
+    "regressions_passed": 61,
+    "contact_cases_bitwise_equal": 144,
+    "certificate": "../outputs/contact_optimization_certificate.json",
+    "continuation_manifest": "../outputs/contact_parallel_continuations.json",
+    "array_preserving_migration": true,
+    "whole_trajectory_bitwise_equivalence_claimed": false,
+    "source_versions": 2
+  },
+  "terminal_melting_fix": {
+    "derivation": "../research/phase_momentum_zh.md",
+    "old_first_failure_time_s": 9.39553125,
+    "old_last_accepted_time_s": 9.39,
+    "old_failure": "../outputs/contact_parallel_100/result.json",
+    "pose_negative_control": "../outputs/rigid_pose_negative_control.json",
+    "pose_regressions_passed": 62,
+    "phase_momentum_tests_passed": 4,
+    "stress_result": "../outputs/last_ice_geometric_phase/result.json",
+    "stress_completed_time_s": 0.2,
+    "stress_remaining_body_momentum_SI": [
+      0,
+      0,
+      0
+    ],
+    "diagnostic_replay": "../outputs/audit_geometric_phase_terminal",
+    "diagnostic_replay_counts_as_full_run": false,
+    "fresh_final_runs_required": true
+  },
+  "independent_final_inventory_audit": "audit_restart_inventory.py",
+  "independent_inventory_negative_controls": "../outputs/independent_inventory_negative_controls.json",
+  "launch_hint_experiment": {
+    "adopted": false,
+    "decision": "../outputs/profile_launch_tuning/decision.json"
+  },
+  "acceptance_coverage": "acceptance_coverage_zh.md",
+  "initial_output_checks": "../outputs/initial_output_checks.json",
+  "all_six_numerical_10s_runs_validated": true,
+  "historical_geometric_phase_full_scene_runs": [
+    {
+      "name": "100",
+      "path": "../outputs/geometric_phase_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_numerical_checks_passed",
+      "acceptance_report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "name": "200",
+      "path": "../outputs/geometric_phase_200",
+      "starts_from_initial_state": true,
+      "status": "failed_geometry_guard_at_7p25_s_last_accepted_7p245_s"
+    },
+    {
+      "name": "dt_half_100",
+      "path": "../outputs/geometric_phase_dt_half_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_numerical_checks_passed",
+      "acceptance_report": "../outputs/geometric_phase_completed_10s_comparison/report.json",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "name": "block2_100",
+      "path": "../outputs/geometric_phase_block2_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_numerical_checks_passed",
+      "acceptance_report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "name": "block4_100",
+      "path": "../outputs/geometric_phase_block4_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_numerical_checks_passed",
+      "acceptance_report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "name": "block8_100",
+      "path": "../outputs/geometric_phase_block8_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_numerical_checks_passed",
+      "acceptance_report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "full_A_H_physics_validated": false
+    }
+  ],
+  "historical_geometric_phase_numerical_10s_completed_runs": [
+    {
+      "run": "../outputs/geometric_phase_100",
+      "report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "steps": 1600000,
+      "all_numerical_guards_passed": true,
+      "guard_count": 23,
+      "capacity_solver_retries": 0,
+      "remaining_ice_fraction": 0.013290120770930558,
+      "mass_residual_peak": 1.6138423780120515e-09,
+      "enthalpy_residual_peak": 1.7831203016704596e-09
+    },
+    {
+      "run": "../outputs/geometric_phase_block2_100",
+      "report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "steps": 1600000,
+      "all_numerical_guards_passed": true,
+      "guard_count": 23,
+      "capacity_solver_retries": 0,
+      "remaining_ice_fraction": -1.759168101682361e-24,
+      "mass_residual_peak": 1.075698585276508e-09,
+      "enthalpy_residual_peak": 1.053053710641326e-09
+    },
+    {
+      "run": "../outputs/geometric_phase_block4_100",
+      "report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "steps": 1600000,
+      "all_numerical_guards_passed": true,
+      "guard_count": 23,
+      "capacity_solver_retries": 0,
+      "remaining_ice_fraction": -2.4848408539647173e-24,
+      "mass_residual_peak": 4.39004107381928e-10,
+      "enthalpy_residual_peak": 7.218714619654826e-10
+    },
+    {
+      "run": "../outputs/geometric_phase_block8_100",
+      "report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+      "steps": 1600000,
+      "all_numerical_guards_passed": true,
+      "guard_count": 23,
+      "capacity_solver_retries": 0,
+      "remaining_ice_fraction": -6.025687597690374e-24,
+      "mass_residual_peak": 1.7935417539506666e-09,
+      "enthalpy_residual_peak": 5.088500541496969e-10
+    },
+    {
+      "run": "../outputs/geometric_phase_dt_half_100",
+      "report": "../outputs/geometric_phase_completed_10s_comparison/report.json",
+      "steps": 3200000,
+      "all_numerical_guards_passed": true,
+      "guard_count": 23,
+      "capacity_solver_retries": 0,
+      "remaining_ice_fraction": 0.022314344044344216,
+      "mass_residual_peak": 1.394949042182615e-09,
+      "enthalpy_residual_peak": 1.2305719873580209e-09
+    }
+  ],
+  "subgrid_viscous_fix": {
+    "source": "../outputs/subgrid_viscous_frozen_source",
+    "new_tests_passed": 6,
+    "full_tests_status": "72_passed",
+    "terminal_replay": "../outputs/subgrid_viscous_terminal_replay/result.json",
+    "diagnostic_only": true,
+    "derivation": "../research/subgrid_viscous_zh.md",
+    "status": "adopted",
+    "terminal_extension": "../outputs/subgrid_viscous_terminal_extension/result.json",
+    "independent_inventory": "../outputs/subgrid_viscous_terminal_extension/independent_inventory.json",
+    "scope": "Historical introduction of the unchanged operator; latest complete source and regression evidence are in current_source_manifest/current_regression_log."
+  },
+  "historical_geometric_phase_momentum_operator_audit": "../outputs/momentum_geometric_phase_operator_audit/report.json",
+  "historical_geometric_phase_stefan_comparison": "../outputs/stefan_geometric_phase_comparison/report.json",
+  "historical_geometric_phase_stefan_limit": "Historical geometric-phase source, 0.1 s submerged square: centre endpoint errors +23.706% / +21.678%; late RMS improves 1.438x. Corner pinning remains; no second-order claim.",
+  "historical_geometric_phase_planar_stefan_comparison": "../outputs/planar_geometric_phase_comparison/report.json",
+  "historical_geometric_phase_planar_stefan_limit": "Historical geometric-phase source, 0.1 s slab: centre errors +21.92% / +7.274%; mean errors +31.03% / +13.43%; late RMS improves 2.184x. Actual transported section-flow versus mass-jump L2 differences 0.6889% / 0.6568%; sampled peaks 10.77% / 6.786%.",
+  "historical_geometric_phase_mechanics_report": "../outputs/mechanics_geometric_phase_comparison/report.json",
+  "historical_geometric_phase_full_scene_report": "../outputs/geometric_phase_comparison/report.json",
+  "historical_geometric_phase_parameter_matrix": "../outputs/geometric_phase_parameter_matrix.json",
+  "historical_geometric_phase_finalization_record": "../outputs/geometric_phase_comparison/finalization.json",
+  "historical_geometric_phase_active_runs": [],
+  "historical_geometric_phase_planar_heat_block_matrix": "../outputs/planar_heat_blocks_geometric_phase.json",
+  "historical_geometric_phase_planar_heat_block_report": "../outputs/planar_heat_blocks_geometric_phase_comparison/report.json",
+  "historical_geometric_phase_planar_heat_block_matrix_status": "completed_3_of_3_additional_runs",
+  "historical_geometric_phase_thermal_block_10s_report": "../outputs/geometric_phase_thermal_block_comparison/report.json",
+  "historical_geometric_phase_original_property_extinction_audit": "../outputs/geometric_phase_comparison/block2_post_extinction_restart.json",
+  "historical_geometric_phase_original_property_extinction_summary": "../outputs/geometric_phase_comparison/block2_extinction_summary.json",
+  "historical_geometric_phase_fine_residual_inventory_audit": {
+    "time_s": 6.5,
+    "path": "../outputs/geometric_phase_comparison/fine_residual_6p5_inventory.json",
+    "all_checks_passed": true,
+    "scope": "Intermediate checkpoint only; full 10 s acceptance reported separately."
+  },
+  "historical_geometric_phase_repeatability_probe": {
+    "path": "../outputs/geometric_phase_repeat_100_2s",
+    "status": "completed",
+    "duration_s": 2,
+    "same_physical_configuration_as": "../outputs/geometric_phase_100",
+    "reason": "Assess same-configuration trajectory variation before attributing the full observed difference to thermal block length.",
+    "report": "../outputs/geometric_phase_repeatability/report.json",
+    "all_sampled_ice_mass_and_pose_equal": true,
+    "thermal_block_mass_rms_over_initial": [
+      0.03726499828903746,
+      0.026362108143782023,
+      0.026152399589455512
+    ],
+    "interpretation": "Same-configuration sampled macroscopic trajectories match over 0–2 s; thermal-block trajectories differ materially. Thermal-block accuracy is not validated."
+  },
+  "historical_geometric_phase_initial_output_scope": "Runner now saves its accepted starting checkpoint and frame. Both resolutions checked at zero steps, with unchanged numerical core. Existing frozen long runs retain original samples beginning at 0.1 s; separate initializations were not inserted into those trajectories.",
+  "historical_geometric_phase_completed_10s_report": "../outputs/geometric_phase_completed_10s_comparison/report.json",
+  "historical_subgrid_viscous": {
+    "full_scene_runs": [
+      {
+        "name": "100",
+        "path": "../outputs/subgrid_viscous_100",
+        "starts_from_initial_state": true,
+        "status": "completed_10s_numerical_checks_passed",
+        "acceptance_report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "full_A_H_physics_validated": false
+      },
+      {
+        "name": "200",
+        "path": "../outputs/subgrid_viscous_200",
+        "starts_from_initial_state": true,
+        "status": "failed",
+        "last_accepted_time_s": 6.575,
+        "failure": "NaN/Inf, per-step batch guard (63)"
+      },
+      {
+        "name": "dt_half_100",
+        "path": "../outputs/subgrid_viscous_dt_half_100",
+        "starts_from_initial_state": true,
+        "status": "completed_10s_numerical_checks_passed",
+        "acceptance_report": "../outputs/subgrid_viscous_completed_10s_comparison/report.json",
+        "full_A_H_physics_validated": false
+      },
+      {
+        "name": "block2_100",
+        "path": "../outputs/subgrid_viscous_block2_100",
+        "starts_from_initial_state": true,
+        "status": "completed_10s_numerical_checks_passed",
+        "acceptance_report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "full_A_H_physics_validated": false
+      },
+      {
+        "name": "block4_100",
+        "path": "../outputs/subgrid_viscous_block4_100",
+        "starts_from_initial_state": true,
+        "status": "completed_10s_numerical_checks_passed",
+        "acceptance_report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "full_A_H_physics_validated": false
+      },
+      {
+        "name": "block8_100",
+        "path": "../outputs/subgrid_viscous_block8_100",
+        "starts_from_initial_state": true,
+        "status": "completed_10s_numerical_checks_passed",
+        "acceptance_report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "full_A_H_physics_validated": false
+      }
+    ],
+    "current_source_manifest": "../outputs/subgrid_viscous_frozen_source/source_manifest.json",
+    "current_regression_log": "../outputs/subgrid_viscous_candidate_full_tests.log",
+    "current_regressions_passed": 72,
+    "current_benchmark_matrix": "../outputs/subgrid_viscous_benchmarks.json",
+    "current_benchmark_matrix_status": "completed_12_of_12",
+    "numerical_10s_completed_runs": [
+      {
+        "run": "../outputs/subgrid_viscous_100",
+        "report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "steps": 1600000,
+        "all_numerical_guards_passed": true,
+        "guard_count": 23,
+        "capacity_solver_retries": 0,
+        "remaining_ice_fraction": -1.6617731649562857e-24,
+        "mass_residual_peak": 1.3586972558256554e-09,
+        "enthalpy_residual_peak": 1.3425263720514266e-09,
+        "first_nonpositive_ice_sample_bracket_s": [
+          9.71,
+          9.72
+        ],
+        "subgrid_coupling": {
+          "first_active_sample_time_s": 9.370000000000001,
+          "active_steps": 46141,
+          "dissipated_kinetic_energy_J_m": 1.0676448230590871e-06,
+          "failure_peak": 0.0,
+          "scope": "Conservative implicit coupling only when no SNIBB body links remain. Recorded kinetic-energy loss is one component, not a complete mechanical-energy balance."
+        },
+        "final_mean_water_temperature_C": 76.64357403179709,
+        "full_melt_inventory_prediction_C": 76.64357400435476,
+        "full_A_H_physics_validated": false,
+        "movie": "../outputs/subgrid_viscous_100/acceptance/recorded_10s.mp4",
+        "movie_verification": "../outputs/subgrid_viscous_100/acceptance/movie_verification.json",
+        "movie_contact_sheet": "../outputs/subgrid_viscous_100/acceptance/movie_contact_sheet.png",
+        "visual_reviewed_frame_indices": [
+          0,
+          20,
+          40,
+          60,
+          80,
+          100
+        ],
+        "no_surviving_ice_polygons": true,
+        "half_melt_time_s": 4.046094674775016
+      },
+      {
+        "run": "../outputs/subgrid_viscous_block2_100",
+        "report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "steps": 1600000,
+        "all_numerical_guards_passed": true,
+        "guard_count": 23,
+        "capacity_solver_retries": 0,
+        "remaining_ice_fraction": -4.037562873459382e-24,
+        "mass_residual_peak": 7.04658076395204e-10,
+        "enthalpy_residual_peak": 1.1699019153917292e-09,
+        "first_nonpositive_ice_sample_bracket_s": [
+          9.610000000000001,
+          9.620000000000001
+        ],
+        "no_surviving_ice_polygons": true,
+        "subgrid_coupling": {
+          "first_active_sample_time_s": 9.27,
+          "active_steps": 56695,
+          "dissipated_kinetic_energy_J_m": 1.3121080394525765e-05,
+          "failure_peak": 0.0,
+          "scope": "Conservative implicit coupling only when no SNIBB body links remain. Recorded kinetic-energy loss is one component, not a complete mechanical-energy balance."
+        },
+        "final_mean_water_temperature_C": 76.64357408693893,
+        "full_melt_inventory_prediction_C": 76.64357400435476,
+        "half_melt_time_s": 3.6063893892508845,
+        "full_A_H_physics_validated": false
+      },
+      {
+        "run": "../outputs/subgrid_viscous_block4_100",
+        "report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "steps": 1600000,
+        "all_numerical_guards_passed": true,
+        "guard_count": 23,
+        "capacity_solver_retries": 0,
+        "remaining_ice_fraction": -2.4846389055729807e-24,
+        "mass_residual_peak": 4.39004107381928e-10,
+        "enthalpy_residual_peak": 7.218714619654826e-10,
+        "first_nonpositive_ice_sample_bracket_s": [
+          9.96,
+          9.97
+        ],
+        "no_surviving_ice_polygons": true,
+        "subgrid_coupling": {
+          "first_active_sample_time_s": 9.59,
+          "active_steps": 54109,
+          "dissipated_kinetic_energy_J_m": 8.647378166186978e-06,
+          "failure_peak": 0.0,
+          "scope": "Conservative implicit coupling only when no SNIBB body links remain. Recorded kinetic-energy loss is one component, not a complete mechanical-energy balance."
+        },
+        "final_mean_water_temperature_C": 76.64357409031024,
+        "full_melt_inventory_prediction_C": 76.64357400435476,
+        "half_melt_time_s": 3.802202595321667,
+        "full_A_H_physics_validated": false
+      },
+      {
+        "run": "../outputs/subgrid_viscous_block8_100",
+        "report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+        "steps": 1600000,
+        "all_numerical_guards_passed": true,
+        "guard_count": 23,
+        "capacity_solver_retries": 0,
+        "remaining_ice_fraction": -6.025687597690374e-24,
+        "mass_residual_peak": 1.7935417539506666e-09,
+        "enthalpy_residual_peak": 5.088500541496969e-10,
+        "first_nonpositive_ice_sample_bracket_s": [
+          9.24,
+          9.25
+        ],
+        "no_surviving_ice_polygons": true,
+        "subgrid_coupling": {
+          "first_active_sample_time_s": 8.75,
+          "active_steps": 72495,
+          "dissipated_kinetic_energy_J_m": 1.4007947405460596e-05,
+          "failure_peak": 0.0,
+          "scope": "Conservative implicit coupling only when no SNIBB body links remain. Recorded kinetic-energy loss is one component, not a complete mechanical-energy balance."
+        },
+        "final_mean_water_temperature_C": 76.64357417664885,
+        "full_melt_inventory_prediction_C": 76.64357400435476,
+        "half_melt_time_s": 3.455074446249637,
+        "full_A_H_physics_validated": false
+      },
+      {
+        "run": "../outputs/subgrid_viscous_dt_half_100",
+        "report": "../outputs/subgrid_viscous_completed_10s_comparison/report.json",
+        "steps": 3200000,
+        "all_numerical_guards_passed": true,
+        "guard_count": 23,
+        "capacity_solver_retries": 0,
+        "remaining_ice_fraction": 0.022314344044344216,
+        "mass_residual_peak": 1.394949042182615e-09,
+        "enthalpy_residual_peak": 1.2305719873580209e-09,
+        "subgrid_coupling": {
+          "first_active_sample_time_s": null,
+          "active_steps": 0,
+          "dissipated_kinetic_energy_J_m": 0.0,
+          "failure_peak": 0.0,
+          "scope": "Conservative implicit coupling only when no SNIBB body links remain. Recorded kinetic-energy loss is one component, not a complete mechanical-energy balance."
+        },
+        "full_A_H_physics_validated": false
+      }
+    ],
+    "parameter_matrix": "../outputs/subgrid_viscous_parameter_matrix.json",
+    "full_scene_report": "../outputs/subgrid_viscous_comparison/report.json",
+    "finalization_record": "../outputs/subgrid_viscous_comparison/finalization.json",
+    "process_start_times": "../outputs/subgrid_viscous_process_start_times.json",
+    "active_runs": [],
+    "fine_repeatability_probe": {
+      "path": "../outputs/subgrid_viscous_repeat_200_0p4",
+      "requested_time_s": 0.4,
+      "status": "completed_0p4_s",
+      "reason": "Fine old/new prefixes differ despite zero subgrid activation; same-source repeat to separate repeatability from code-version effects.",
+      "report": "../outputs/subgrid_viscous_repeatability/report.json",
+      "initial_comparison": "../outputs/subgrid_viscous_comparison/fine_repeat_initial_comparison.json",
+      "initial_physical_arrays_identical": true,
+      "initial_scratch_arrays_differ": [
+        "merge.components.parent",
+        "merge.members"
+      ],
+      "ice_mass_rms_over_initial": 0.0002924248797870311,
+      "angle_rms_rad": 0.05823890886171653,
+      "angle_final_difference_rad": 0.2306498697807282,
+      "limits": "One pair, not an ensemble uncertainty or causal proof. Subgrid coupling inactive throughout both compared trajectories."
+    },
+    "matched_viscosity_grid_probe": {
+      "path": "../outputs/subgrid_viscous_matched_nu_100",
+      "requested_time_s": 10,
+      "status": "completed_10s_numerical_checks_passed",
+      "coarse_reference_velocity": 2,
+      "coarse_dt_s": 1.25e-05,
+      "fine_reference_velocity": 4,
+      "fine_dt_s": 3.125e-06,
+      "both_shear_floor_nu_m2_s": 0.0005,
+      "scope": "Additional parabolic-scaling comparison. Original default and dt/2 matrix kept unchanged; no convergence order assumed.",
+      "acceptance_report": "../outputs/subgrid_viscous_matched_nu_100/acceptance/report.json",
+      "movie": "../outputs/subgrid_viscous_matched_nu_100/acceptance/recorded_10s.mp4",
+      "movie_verification": "../outputs/subgrid_viscous_matched_nu_100/acceptance/movie_verification.json",
+      "movie_reviewed": true
+    },
+    "current_mechanics_report": "../outputs/mechanics_subgrid_viscous_comparison/report.json",
+    "current_planar_stefan_comparison": "../outputs/planar_subgrid_viscous_comparison/report.json",
+    "current_stefan_comparison": "../outputs/stefan_subgrid_viscous_comparison/report.json",
+    "current_source_subgrid_residual_inventory": {
+      "time_s": 9.4,
+      "audit": "../outputs/subgrid_viscous_comparison/matched_nu_residual_9p400_restart.inventory.json",
+      "provenance": "../outputs/subgrid_viscous_comparison/matched_nu_residual_9p400_restart.provenance.json",
+      "remaining_ice_kg_m": 1.6222934023793914e-05,
+      "all_checks_passed": true,
+      "scope": "Intermediate current-source matched-viscosity run started at step zero; subgrid coupling active. Final 10 s acceptance still required."
+    },
+    "additional_numerical_10s_runs": [
+      {
+        "run": "../outputs/subgrid_viscous_matched_nu_100",
+        "report": "../outputs/subgrid_viscous_matched_nu_100/acceptance/report.json",
+        "steps": 800000,
+        "all_numerical_guards_passed": true,
+        "guard_count": 23,
+        "capacity_solver_retries": 1,
+        "no_surviving_ice_polygons": true,
+        "subgrid_active_steps": 28590,
+        "subgrid_dissipated_energy_J_m": 1.936134575417995e-05,
+        "mass_residual_peak": 6.105894773555536e-10,
+        "enthalpy_residual_peak": 5.868615301145232e-10,
+        "first_nonpositive_ice_sample_bracket_s": [
+          9.540000000000001,
+          9.55
+        ],
+        "final_mean_water_temperature_C": 76.64357406983135,
+        "full_melt_inventory_prediction_C": 76.64357400435476,
+        "full_A_H_physics_validated": false
+      }
+    ],
+    "live_progress": "../outputs/subgrid_viscous_comparison/progress.json",
+    "thermal_block_10s_report": "../outputs/subgrid_viscous_thermal_block_comparison/report.json",
+    "thermal_block_ice_mass_rms_over_initial": [
+      0.041368406722347144,
+      0.04139385750436252,
+      0.059928141985249476
+    ],
+    "release_detail": {
+      "path": "../outputs/geometric_phase_release_detail_100",
+      "end_time_s": 0.1,
+      "sample_interval_s": 0.001,
+      "matches_long_run_recorded_0p1s_arrays_exactly": true,
+      "comparison": "../outputs/geometric_phase_release_detail_100/comparison_with_long_run.json",
+      "movie": "../outputs/geometric_phase_release_detail_100/release_detail.mp4",
+      "comparison_with_current_source": "../outputs/geometric_phase_release_detail_100/comparison_with_subgrid_run.json",
+      "scope": "Separate coarse 0–0.1 s recording; saved 0.1 s arrays exactly match both coarse long runs, with differing numerical source hashes retained."
+    },
+    "failure_report": "../outputs/subgrid_viscous_200/result.json",
+    "completed_10s_report": "../outputs/subgrid_viscous_completed_10s_comparison/report.json"
+  },
+  "full_scene_runs": [
+    {
+      "name": "100",
+      "path": "../outputs/zero_capacity_mask_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_23_numerical_checks_passed",
+      "capacity_solver_retries": 0,
+      "steps": 1600000,
+      "acceptance_report": "../outputs/zero_capacity_mask_comparison/report.json"
+    },
+    {
+      "name": "200",
+      "path": "../outputs/zero_capacity_mask_200",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_23_numerical_checks_passed",
+      "capacity_solver_retries": 0,
+      "steps": 3200000,
+      "acceptance_report": "../outputs/zero_capacity_mask_comparison/report.json"
+    },
+    {
+      "name": "dt_half_100",
+      "path": "../outputs/zero_capacity_mask_dt_half_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_23_numerical_checks_passed",
+      "capacity_solver_retries": 0,
+      "steps": 3200000,
+      "acceptance_report": "../outputs/zero_capacity_mask_comparison/report.json"
+    },
+    {
+      "name": "block2_100",
+      "path": "../outputs/zero_capacity_mask_block2_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_23_numerical_checks_passed",
+      "capacity_solver_retries": 0,
+      "steps": 1600000,
+      "acceptance_report": "../outputs/zero_capacity_mask_comparison/report.json"
+    },
+    {
+      "name": "block4_100",
+      "path": "../outputs/zero_capacity_mask_block4_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_23_numerical_checks_passed",
+      "capacity_solver_retries": 0,
+      "steps": 1600000,
+      "acceptance_report": "../outputs/zero_capacity_mask_comparison/report.json"
+    },
+    {
+      "name": "block8_100",
+      "path": "../outputs/zero_capacity_mask_block8_100",
+      "starts_from_initial_state": true,
+      "status": "completed_10s_23_numerical_checks_passed",
+      "capacity_solver_retries": 0,
+      "steps": 1600000,
+      "acceptance_report": "../outputs/zero_capacity_mask_comparison/report.json"
+    }
+  ],
+  "current_source_manifest": "../outputs/zero_capacity_mask_frozen_source/source_manifest.json",
+  "current_regression_log": "../outputs/zero_capacity_mask_full_tests.log",
+  "current_regressions_passed": 73,
+  "current_regression_status": "passed_including_native_CUDA",
+  "current_benchmark_matrix_status": "completed_12_of_12",
+  "numerical_10s_completed_runs": [
+    {
+      "run": "../outputs/zero_capacity_mask_100",
+      "numerical_checks_passed": 23,
+      "steps": 1600000,
+      "report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "run": "../outputs/zero_capacity_mask_200",
+      "numerical_checks_passed": 23,
+      "steps": 3200000,
+      "report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "run": "../outputs/zero_capacity_mask_dt_half_100",
+      "numerical_checks_passed": 23,
+      "steps": 3200000,
+      "report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "run": "../outputs/zero_capacity_mask_block2_100",
+      "numerical_checks_passed": 23,
+      "steps": 1600000,
+      "report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "run": "../outputs/zero_capacity_mask_block4_100",
+      "numerical_checks_passed": 23,
+      "steps": 1600000,
+      "report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+      "full_A_H_physics_validated": false
+    },
+    {
+      "run": "../outputs/zero_capacity_mask_block8_100",
+      "numerical_checks_passed": 23,
+      "steps": 1600000,
+      "report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+      "full_A_H_physics_validated": false
+    }
+  ],
+  "additional_numerical_10s_runs": [
+    {
+      "run": "../outputs/zero_capacity_mask_matched_nu_100",
+      "numerical_checks_passed": 23,
+      "report": "../outputs/zero_capacity_mask_matched_nu_100/acceptance/report_zh.md",
+      "formal_six_case_matrix_member": false,
+      "source_manifest": "../outputs/zero_capacity_mask_frozen_source/source_manifest.json",
+      "full_A_H_physics_validated": false
+    }
+  ],
+  "parameter_matrix": "../outputs/zero_capacity_mask_parameter_matrix.json",
+  "full_scene_report": "../outputs/zero_capacity_mask_comparison/report.json",
+  "finalization_record": "../outputs/zero_capacity_mask_comparison/finalization.json",
+  "process_start_times": "../outputs/zero_capacity_mask_process_start_times.json",
+  "live_progress": "../outputs/zero_capacity_mask_comparison/progress.json",
+  "active_runs": [],
+  "zero_capacity_mask_fix": {
+    "derivation": "../research/zero_capacity_mask_zh.md",
+    "negative_control": "../outputs/zero_capacity_mask_before_test.log",
+    "geometry_tests_passed": 10,
+    "geometry_test_log": "../outputs/zero_capacity_mask_geometry_tests.log",
+    "diagnostic_replay": "../outputs/zero_capacity_mask_replay/result.json",
+    "independent_inventory": "../outputs/zero_capacity_mask_replay/independent_inventory.json",
+    "diagnostic_extension": "../outputs/zero_capacity_mask_diagnostic_extension_200",
+    "formal_continuation_claimed": false,
+    "numerical_changed_files": [
+      "geometry.py"
+    ],
+    "post_extinction_inventory": "../outputs/zero_capacity_mask_comparison/diagnostic_post_extinction_inventory.json",
+    "post_extinction_inventory_time_s": 7.4,
+    "diagnostic_ice_disappearance_sample_bracket_s": [
+      7.145,
+      7.15
+    ],
+    "diagnostic_extension_status": "completed_to_10s_from_6p58s_not_formal_from_zero",
+    "diagnostic_final_inventory": "../outputs/zero_capacity_mask_diagnostic_extension_200/independent_inventory.json",
+    "diagnostic_final_inventory_checks_passed": 9,
+    "diagnostic_final_checkpoint_sha256": "5acb2594e1ce4390e9e7f5624d58d251137255c80e04a76eb84d5ff3d15d9393"
+  },
+  "current_benchmark_matrix": "../outputs/zero_capacity_mask_benchmarks.json",
+  "fine_repeatability_probe": {
+    "run": "../outputs/zero_capacity_mask_repeat_200_0p4",
+    "reference": "../outputs/zero_capacity_mask_200",
+    "status": "completed",
+    "physical_end_time_s": 0.4,
+    "report": "../outputs/zero_capacity_mask_repeatability/report.json",
+    "initial_state_comparison": "../outputs/zero_capacity_mask_comparison/fine_repeat_initial_comparison.json",
+    "ice_mass_rms_difference_over_initial": 0.00016060715852644336,
+    "differences": {
+      "mass_ice_kg_m": {
+        "final": -4.343100600085609e-05,
+        "rms": 9.425712919599908e-06,
+        "peak": 4.343100600085609e-05
+      },
+      "body_origin_x_m": {
+        "final": 2.747584997159734e-05,
+        "rms": 4.744310454919249e-05,
+        "peak": 0.0001009243386954576
+      },
+      "body_origin_y_m": {
+        "final": 0.00016456984598462593,
+        "rms": 8.174767679041528e-05,
+        "peak": 0.0002301674398447369
+      },
+      "body_angle_rad": {
+        "final": 0.04854894338804705,
+        "rms": 0.026056941799629054,
+        "peak": 0.06197941918370392
+      }
+    },
+    "physical_arrays_initially_identical": true,
+    "ensemble_uncertainty_estimate": false
+  },
+  "matched_viscosity_grid_probe": {
+    "run": "../outputs/zero_capacity_mask_matched_nu_100",
+    "reference": "../outputs/zero_capacity_mask_200",
+    "status": "completed_both_10s_numerical_checks_passed_accuracy_not_accepted",
+    "note": "Extra coarse run matching the physical maximum shear-viscosity floor scale of the fine run; not proof of pure discretization convergence.",
+    "report": "../outputs/zero_capacity_mask_matched_nu_100/acceptance/report_zh.md",
+    "independent_inventory": "../outputs/zero_capacity_mask_matched_nu_100/independent_inventory.json",
+    "numerical_checks_passed": 23,
+    "capacity_retries": 0,
+    "ice_disappearance_sample_bracket_s": [
+      8.780000000000001,
+      8.790000000000001
+    ],
+    "paired_report": "../outputs/zero_capacity_mask_matched_nu_comparison/report_zh.md",
+    "rms_ice_difference_over_initial": 0.10259879133322741
+  },
+  "current_mechanics_report": "../outputs/mechanics_zero_capacity_mask_comparison/report.json",
+  "current_planar_stefan_comparison": "../outputs/planar_zero_capacity_mask_comparison/report.json",
+  "current_stefan_comparison": "../outputs/stefan_zero_capacity_mask_comparison/report.json",
+  "thermal_block_full_10s_report": "../outputs/zero_capacity_mask_thermal_block_comparison/report_zh.md",
+  "thermal_block_full_10s_rms_ice_difference_over_initial": {
+    "zero_capacity_mask_block2_100": 0.1401216275366199,
+    "zero_capacity_mask_block4_100": 0.06666597691449287,
+    "zero_capacity_mask_block8_100": 0.0881461988629426
+  },
+  "default_full_10s_movie": {
+    "path": "../outputs/zero_capacity_mask_100/acceptance/recorded_10s.mp4",
+    "verification": "../outputs/zero_capacity_mask_100/acceptance/movie_verification.json",
+    "recorded_frames": 101,
+    "physical_interval_s": [
+      0,
+      10
+    ],
+    "speed_multiplier": 2,
+    "visual_review_completed": true
+  },
+  "formal_fine_post_extinction_inventory": {
+    "path": "../outputs/zero_capacity_mask_comparison/formal_fine_post_extinction_inventory.json",
+    "time_s": 7.0,
+    "passed_checks": 9,
+    "ice_disappearance_sample_bracket_s": [
+      6.945,
+      6.95
+    ],
+    "formal_10s_complete": true
+  },
+  "completed_numerical_10s_report": "../outputs/zero_capacity_mask_comparison/report_zh.md",
+  "dt_half_full_10s_comparison": {
+    "reference": "zero_capacity_mask_100",
+    "candidate": "zero_capacity_mask_dt_half_100",
+    "common_end_time_s": 10.0,
+    "same_final_numerical_sources": true,
+    "same_source_versions": true,
+    "differences": {
+      "mass_ice_kg_m": {
+        "final": 0.0008153896870391074,
+        "rms": 0.006627085400802873,
+        "peak": 0.013257298124204522
+      },
+      "body_origin_x_m": {
+        "final": 0.00491486052622654,
+        "rms": 0.006760851374956414,
+        "peak": 0.015328995651285184
+      },
+      "body_origin_y_m": {
+        "final": -0.005972364412290463,
+        "rms": 0.0021352243902856443,
+        "peak": 0.005972364412290463
+      },
+      "body_angle_rad": {
+        "final": -2.0373466898784187,
+        "rms": 4.0822747158981265,
+        "peak": 7.336758896839931
+      }
+    },
+    "final_ice_mass_difference_over_initial_mass": 0.013893635616124375,
+    "rms_ice_mass_difference_over_initial_mass": 0.11292062092425832,
+    "pose_while_both_retain_ice": {
+      "minimum_ice_fraction_each_run": 0.01,
+      "sample_count": 968,
+      "last_compared_time_s": 9.67,
+      "scope": "Reporting subset only: both bodies retain at least 1% of initial mass. No simulation state or acceptance guard is changed.",
+      "differences": {
+        "body_origin_x_m": {
+          "final": 0.00837716413842298,
+          "rms": 0.0067264741611963086,
+          "peak": 0.015328995651285184
+        },
+        "body_origin_y_m": {
+          "final": -0.003973288531051462,
+          "rms": 0.002001183589137151,
+          "peak": 0.005598061466268973
+        },
+        "body_angle_rad": {
+          "final": -2.5597649692301605,
+          "rms": 4.139321441407141,
+          "peak": 7.336758896839931
+        }
+      }
+    },
+    "milestone_time_differences_s": {
+      "0.5": 0.8193668576747344,
+      "0.1": 1.0638937820044791,
+      "0.01": null,
+      "0.001": null
+    }
+  },
+  "numerical_10s_formal_total_steps": 12800000,
+  "source_and_scope_audit": "../outputs/zero_capacity_mask_comparison/source_and_scope_audit.json",
+  "artifact_review": "../outputs/zero_capacity_mask_comparison/artifact_review.json",
+  "gpu_service_cleanup": "../outputs/zero_capacity_mask_comparison/mps_cleanup.json",
+  "full_10s_movies": [
+    {
+      "path": "../outputs/zero_capacity_mask_comparison/full_10s_100.mp4",
+      "verification": "../outputs/zero_capacity_mask_comparison/full_10s_100_verification.json",
+      "recorded_frames": 101,
+      "physical_interval_s": [
+        0,
+        10
+      ],
+      "speed_multiplier": 2,
+      "visual_review_completed": true
+    },
+    {
+      "path": "../outputs/zero_capacity_mask_comparison/full_10s_200.mp4",
+      "verification": "../outputs/zero_capacity_mask_comparison/full_10s_200_verification.json",
+      "recorded_frames": 101,
+      "physical_interval_s": [
+        0,
+        10
+      ],
+      "speed_multiplier": 2,
+      "visual_review_completed": true
+    }
+  ],
+  "accuracy_comparisons": {
+    "formal_report": "../outputs/zero_capacity_mask_comparison/report.json",
+    "rms_ice_difference_over_initial": {
+      "zero_capacity_mask_200": 0.19688349659153817,
+      "zero_capacity_mask_dt_half_100": 0.11292062092425832,
+      "zero_capacity_mask_block2_100": 0.1401216275366199,
+      "zero_capacity_mask_block4_100": 0.06666597691449287,
+      "zero_capacity_mask_block8_100": 0.0881461988629426
+    },
+    "accepted": false,
+    "matched_viscosity_report": "../outputs/zero_capacity_mask_matched_nu_comparison/report.json"
+  }
+}

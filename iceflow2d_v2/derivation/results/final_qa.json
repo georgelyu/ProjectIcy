@@ -1,0 +1,16 @@
+{
+  "display_equations_checked": 65,
+  "inline_math_checked": 123,
+  "latex_braces_balanced": true,
+  "source_hashes_match": true,
+  "passed_verification_groups": 12,
+  "visually_inspected_figures": [
+    "verification_overview",
+    "stefan_profiles",
+    "closed_melting",
+    "motion_transport",
+    "translating_melt"
+  ],
+  "visual_notes": "All five PNG figures inspected. Overlapping log-axis minor tick labels in the overview were removed, and the revised overview was inspected again.",
+  "scope": "Thermal and prescribed-motion verification only; force-coupled free flotation and air-water free surface are not implemented."
+}

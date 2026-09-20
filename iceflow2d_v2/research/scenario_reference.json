@@ -1,0 +1,75 @@
+{
+  "source": "iceflow2d/examples/coupled_falling_ice_melting_2d.py, scene parameters only",
+  "domain_m": [
+    0.025,
+    0.05
+  ],
+  "resolution": [
+    100,
+    200
+  ],
+  "wall_cells": 3,
+  "water_level_m": 0.03,
+  "ice_size_m": [
+    0.008,
+    0.008
+  ],
+  "ice_angle_deg": 5,
+  "air_gap_m": 0.0015,
+  "ice_center_m": [
+    0.0125,
+    0.035833401763357614
+  ],
+  "initial_velocity_m_s": [
+    0,
+    0
+  ],
+  "initial_angular_velocity_rad_s": 0,
+  "temperature_C": {
+    "water": 90,
+    "ice": 0,
+    "air": 20,
+    "melting": 0
+  },
+  "density_kg_m3": {
+    "water": 1000,
+    "ice": 917,
+    "air": 1.25
+  },
+  "specific_heat_J_kg_K": {
+    "water": 4186,
+    "ice": 2100,
+    "air": 1005
+  },
+  "conductivity_W_m_K": {
+    "water": 0.6,
+    "ice": 2.2,
+    "air": 0.026
+  },
+  "kinematic_viscosity_m2_s": {
+    "water": 1e-06,
+    "air": 1.5e-05
+  },
+  "latent_heat_J_kg": 334000,
+  "gravity_m_s2": [
+    0,
+    -9.8
+  ],
+  "surface_tension_N_m": 0.072,
+  "water_beta_1_K": 0.00021,
+  "buoyancy_reference_C": 90,
+  "end_time_s": 10,
+  "output_interval_s": 0.01,
+  "water_air_thermal_BC": "adiabatic",
+  "container_thermal_BC": "all four adiabatic",
+  "container_flow_BC": "all four closed no-slip",
+  "flow_parameters": {
+    "interface_width_cells": 5,
+    "mobility_lattice": 0.1,
+    "smagorinsky_constant": 0.1,
+    "air_interface_tau": 0.8,
+    "phase_warmup_steps": 500
+  },
+  "selected_air_closure": "Fixed-density numerical air; strictly conserve ice + water mass; explicitly report air mass error and numerical air enthalpy source.",
+  "selected_by_user": true
+}

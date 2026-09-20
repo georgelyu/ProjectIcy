@@ -1,0 +1,815 @@
+                                       PHYSICAL REVIEW E 106, 055308 (2022)
+
+
+
+                         Thermal lattice Boltzmann model for liquid-vapor phase change
+
+                                                 Lei Wang,* Jiangxu Huang, and Kun He
+                       School of Mathematics and Physics, China University of Geosciences, Wuhan 430074, China
+                      and Center for Mathematical Sciences, China University of Geosciences, Wuhan 430074, China
+
+                   (Received 11 May 2022; revised 23 August 2022; accepted 27 October 2022; published 10 November 2022)
+
+                 The lattice Boltzmann method is adopted to solve the liquid-vapor phase change problems in this article.
+               By modifying the collision term for the temperature evolution equation, a thermal lattice Boltzmann model is
+               constructed. As compared with previous studies, the most striking feature of the present approach is that it could
+               avoid the calculations of both the Laplacian term of temperature [∇ · (κ∇T )] and the gradient term of heat
+               capacitance [∇(ρcv )]. In addition, since the present approach adopts a simple linear equilibrium distribution
+               function, it is possible to use the D2Q5 lattice for the two-dimensional cases considered here. Thus, the present
+               model is more efficient than previous models in which the lattice is usually limited to the D2Q9. The proposed
+               model is first validated by the problems of droplet evaporation in open space and droplet evaporation on a heated
+               surface, and the numerical results show good agreement with the analytical results and the finite difference
+               method. Then it is used to model the nucleate boiling problem, and the relationship between detachment bubble
+               diameter and gravitational acceleration obtained with the present approach fits well with previous works.
+
+               DOI: 10.1103/PhysRevE.106.055308
+
+
+
+                       I. INTRODUCTION                                    interface is captured by the interface-capturing equation like
+                                                                          the Cahn-Hilliard equation, and the phase-change process is
+    Liquid-vapor phase change processes play a vital role in
+                                                                          established by adding a source term to the interface capturing
+many industrial applications including nuclear reactor cool-
+                                                                          equation. Also, the energy equation in this approach is used
+ing system, power plants, and electronic cooling [1,2]. For
+                                                                          to define the latent heat. To trigger the liquid-vapor phase
+decades, many theoretical and experimental studies have been
+                                                                          change, the phase-field method usually assumes an initial
+conducted to reveal the fluid flow and heat transfer during
+                                                                          vapor profile in the system [20] such that it is not efficient
+liquid-vapor phase change [3–5]. However, due to the vari-
+                                                                          in modeling bubble nucleation in the boiling heat transfer,
+ous complex phenomena involved in these processes such as
+                                                                          while this assumption is not required for the pseudopotential
+interface changes, nonequilibrium effects, or other complex
+                                                                          method [14]. The key point of the pseudopotential method
+dynamic interaction between the phases, the mechanisms of
+                                                                          is that the interaction between different phases is mimicked
+liquid-vapor phase change heat transfer are still not fully
+                                                                          via an attractive or repulsive force among the neighboring
+comprehended [6–8]. With recent advances in computer tech-
+                                                                          fluid particles [29]. As a consequence, the nonideal gas be-
+nology, numerical modeling of such problems has attracted
+                                                                          havior and phase separation can be realized without using any
+great attention due to its ability to provide the details of flow
+                                                                          specific techniques to track or capture interface [13,14,17].
+dynamics during liquid-vapor phase change [9–11].
+                                                                          Historically, the pioneering work on simulating liquid-vapor
+    The lattice Boltzmann method (LBM), developed about
+                                                                          phase change with the pseudopotential method may be at-
+two decades ago, has gained great success in modeling and
+                                                                          tributed to Zhang and Cheng in 2003 [25]. In their work
+simulating of both single-phase and multiphase flows [12–16].
+                                                                          the boiling heat transfer is successfully simulated with the
+Different from traditional computational fluid dynamics meth-
+                                                                          proposed method. Then Hazi and Markus [26] proposed an-
+ods based on the macroscopic governing equations, the LBM
+                                                                          other LB model to simulate the heterogeneous boiling on
+is actually a mesoscopic numerical approach, and its kinetic
+                                                                          a horizontal plate. Different from Zhang and Chen’s work,
+characteristics bring some distinctive features to this method,
+                                                                          the temperature equation in Hazi and Markus’s model is de-
+such as the simple algorithm structure, easy boundary treat-
+                                                                          rived from the entropy balance equation, and it is coupled
+ment, and natural parallelism [17,18]. In recent years the
+                                                                          with the pseudopotential multiphase LB model through an
+LBM was also adopted by some scholars to simulate liquid-
+                                                                          artificial equation of state (EOS). On the basis of the work
+vapor phase change heat transfer such as boiling [19,20]
+                                                                          of Hazi and Markus, Gong and Cheng [27] developed an
+and evaporation [21,22]. These existing LB models usually
+                                                                          improved thermal LB model for liquid-vapor phase change
+fall into two main categories: (1) the phase-field method
+                                                                          heat transfer by employing the Peng-Robinson EOS. Utilizing
+[20,22–24] and (2) the pseudopotential method [19,21,25–
+                                                                          this model, they successfully simulated the bubble growth
+28]. For the phase field method [20,22–24], the vapor-liquid
+                                                                          and departure in pool boiling. Subsequently, Li et al. [28]
+                                                                          pointed out that the replacement of ∇ · (κ∇T )/(ρcv ) with
+                                                                          ∇ · [(κ/ρcv )∇T ] (here κ, ρcv , and T are the thermal con-
+ *
+     Corresponding author: wangleir1989@126.com                           ductivity, heat capacitance, and temperature, respectively) in
+
+2470-0045/2022/106(5)/055308(12)                                   055308-1                                 ©2022 American Physical Society
+LEI WANG, JIANGXU HUANG, AND KUN HE                                                                  PHYSICAL REVIEW E 106, 055308 (2022)
+
+the work of Gong and Cheng is an inappropriate treatment,                 in which ci is the discrete velocity at position x and time t.
+which will yield considerable errors for the multiphase flows             For the D2Q9 model considered here, the discrete velocities
+due to the variable density between different phases, and                 are defined as [17]
+they then proposed another improved thermal LB model for                       ⎧
+simulation of liquid-vapor phase change. The same authors                      ⎨(0, 0),                                        i = 0,
+also constructed a hybrid LB model for liquid-vapor phase                 ci =    (cos [(i − 1)π /2], sin [(i − 1)π /2])c, √   i = 1–4,
+                                                                               ⎩
+change [30], in which the velocity field is solved by us-                         (cos [(2i − 9)π /4], sin [(2i − 9)π /4]) 2c, i = 5–8,
+ing the pseudopotential LB approach, while the temperature
+field is solved by the finite-difference method. Thereafter,                                                                                          (2)
+a thermal multiple-relaxation-time (MRT) LB model with
+a nondiagonal matrix based on the two-dimensional nine-                   where c = x/t is the lattice speed with x and t denot-
+velocity (D2Q9) lattice was developed for liquid-vapor phase              ing the lattice spacing and time step (both are set to 1 in the
+change by Zhang et al. [31]. Different from the model of Li               present work). fi(eq) (x, t ) is the equilibrium distribution given
+et al. [28], the calculation of the Laplacian term of temperature         by [37]
+is avoided in this model, and the latent heat of vaporization                                                                     
+is also decoupled with the EOS, and thus it is more flexi-                                                 ci · u (ci · u)2   |u|2
+                                                                                  fi(eq) (x, t ) = ωi ρ 1 + 2 +             −       ,                 (3)
+ble in simulating liquid-vapor phase change. However, due                                                    cs     2cs4      2cs2
+to the nondiagonal matrix in this approach relying on the
+lattice model, it cannot be extended to the three-dimensional             where ωi is the weight coefficient given by ω0 = 4/9, ω1−4 =
+case directly. More recently, a three-dimensional thermal LB                √ ω5−8 = 1/36, u = (ux , uy ) is the velocity, and cs =
+                                                                          1/9,
+model was constructed for liquid-vapor phase change by Li                 c/ 3 is the sound speed. M is the transformation matrix given
+et al. [32]. Different from previous works, this model is pos-            by [38]
+sible to use the D3Q7 lattice due to the convection term in
+                                                                          ⎡                                                                  ⎤
+the corresponding LB equation actually treated as a source                  1        1       1       1       1      1      1       1       1
+term, while it still needs to calculate the gradient term of heat         ⎢−4       −1      −1      −1      −1      2      2       2       2⎥
+capacitance ∇(ρcv ).                                                      ⎢                                                                  ⎥
+                                                                          ⎢ 4       −2      −2      −2       1      1      1       1       1⎥
+                                                                          ⎢                                                                  ⎥
+    In this work we propose a thermal LB model for liquid-                ⎢ 0        1       0      −1       0      1     −1      −1       1⎥
+                                                                          ⎢                                                                  ⎥
+vapor phase change. By modifying the collision term for                   ⎢ 0       −2       0       2       0      1     −1      −1       1⎥.        (4)
+the temperature equation, the calculations of the Laplacian               ⎢ 0                               −1                    −1      −1⎥
+                                                                          ⎢          0       1       0              1      1                 ⎥
+term of temperature [∇ · (κ∇T )] and the gradient term of                 ⎢ 0               −2                                    −1      −1⎥
+                                                                          ⎢          0               0       2      1      1                 ⎥
+heat capacitance [∇(ρcv )] are both avoided, resulting in                 ⎣ 0        1      −1       1      −1      0      0       0       0⎦
+the possibility to retain the main advantages of the original               0        0       0       0       0      1     −1       1      −1
+LBM. Moreover, due to the present thermal model’s being
+constructed based on a linear equilibrium distribution, it is             Note that when Eq. (1) is multiplied by the transformation
+possible to use a more simple D2Q5 lattice, and also a D3Q7               matrix M, the original collision step implemented in velocity
+lattice when it is extended to 3D space. The rest of the paper            space will turn to execute in the momentum space,
+is organized as follows. In Sec. II a pseudopotential model
+is briefly introduced. Then a thermal LB model is proposed                          m∗ (x, t ) = m(x, t ) − S[m(x, t ) − meq (x, t )]
+in Sec. III. Numerical validation of the proposed model is                                                   
+presented in Sec. IV. Finally, a brief summary is concluded                                                 S
+                                                                                                 + t I −      F(x, t ),                              (5)
+in Sec. V.                                                                                                  2
+
+                                                                          while the streaming step is still implemented in the velocity
+II. PSEUDOPOTENTIAL LATTICE BOLTZMANN MODEL                               space,
+    The pseudopotential multiphase model, originally pro-                                    fi (x + ci t, t + t ) = fi∗ (x, t ).                   (6)
+posed by Shan and Chen [29], is a particularly popular
+method in the LB community for its simplicity and in-                     Here m(x, t ) = Mf is the rescaled moment with f (x, t ) =
+tuitive connection to classical nonideal gas EOS [33]. To                 [ f0 (x, t ), . . . , f8 (x, t )]T , and fi∗ (x, t ) = M−1 m∗ (x, t ) is the
+achieve the thermodynamic consistency, various improved                   postcollision distribution function, I is the unit matrix, and
+pseudopotential models have been proposed in the past two                 S = diag(s0 , se , sε , s j , sq , s j , sq , s p , s p ) is the diagonal relax-
+decades [34–36]. In this work, an improved D2Q9 multiple-                 ation matrix. meq (x, t ) is the equilibrium function in the
+relaxation-time (MRT) pseudopotential model developed by                  moment space given by
+Li et al. [34] is considered, and the evolution equation of the
+density distribution fi in this model is written as                                           
+                                                                               meq (x, t ) = ρ 1, −2 + 3|u|2 , 1 − 3|u|2 , ux , −ux , uy ,
+                                                                                                                       T
+  fi (x + ci t, t + t ) − fi (x, t )                                                         − uy , ux2 − uy2 , ux uy .                  (7)
+                                                 
+      = −(M−1 SM)i j f j (x, t ) − f j(eq) (x, t ) + tF  i (x, t ),     In addition, F(x, t ) is the forcing term in the moment space
+                                                                    (1)   satisfying (I − 0.5S)F(x, t ) = MF . Following the work of Li
+
+                                                                    055308-2
+THERMAL LATTICE BOLTZMANN MODEL FOR …                                                              PHYSICAL REVIEW E 106, 055308 (2022)
+
+et al. [34], it can be written as                                            where D(·)/Dt = ∂t (·) + u · ∇(·) is the material derivative, s
+                    ⎡                                      ⎤                 is the entropy, and λ is the thermal conductivity. To simplify
+                             0
+               ⎢                                           ⎥                 the above equation, the following thermodynamic relation is
+                                       m|
+               ⎢ 6u · Fn + ψ 2 tσ(s|F−1
+                                          2
+                                                           ⎥                 considered [41]:
+               ⎢                      e −0.5)              ⎥
+               ⎢ −6u · F −         σ |Fm |2                ⎥                                                          
+               ⎢         n    ψ 2 t (sε −1 −0.5)          ⎥                                                 ∂ pE OS
+               ⎢                                           ⎥                                      cv                      1
+               ⎢            Fn,x                           ⎥                                ds = dT +                   d              (13)
+               ⎢                                           ⎥                                      T            ∂T         ρ
+             F=⎢           −F                              ⎥,         (8)                                             ρ
+               ⎢              n,x                          ⎥
+               ⎢            Fn,y                           ⎥
+               ⎢                                           ⎥                 in which cv is the specific heat at constant volume. According
+               ⎢           −Fn,y                           ⎥                 to Eq. (13), and note that the continuity equation Dρ/Dt =
+               ⎢                                           ⎥
+               ⎢                                           ⎥                 −ρ∇ · u, the temperature equation for liquid-vapor phase
+               ⎣   2(ux Fn,x − uy Fn,y )                   ⎦
+                     ux Fn,y + uy Fn,x                                       change can be written as
+                                                                                                                                   
+where σ is a tunable parameter used to achieve thermody-                           ∂T                                       ∂ pE OS
+                                                                               ρcv     + ρcv u · ∇T = ∇ · (λ∇T ) − T                   ∇ · u.
+namic consistency and Fn = (Fn,x , Fn,y ) is the total force, and                  ∂t                                         ∂T     ρ
+it is defined as Fn = Fm + Fb , with Fb and Fm representing the                                                                            (14)
+external force and the intermolecular interaction force, respec-                In order to solve the above equation within the framework
+tively. For the D2Q9 lattice considered here, the interaction                of LBM, various models have been proposed in previous
+force is given by [39]                                                       works [27,28,31,32]; however, the evolution equations that
+                                                                             appeared in these existing works are rather heuristic. In fact, to
+                         
+                         8
+      Fm = −Gψ (x)                 (|ci t|2 )ψ (x + ci t )ci t,    (9)    match the corresponding thermal LB models, these models are
+                          i=1
+                                                                             almost constructed based on the following variant temperature
+                                                                             equation [27,28,31,32]:
+where      (|ci t|2 ) are the weights, which are given as
+   (x ) = 1/3, (2x 2 ) = 1/12, G is a parameter that con-
+       2                                                                                   ∂T
+                                                                                              + ∇ · (uT ) = ∇ · (η∇T ) + R,               (15)
+trols the strength of the interparticle force, whose value is                              ∂t
+usually set to be −1 in many simulations, and ψ (x) is
+the mean-field potential, which is calculated from ψ (x) =                   where η is the thermal diffusivity or an artificial parameter
+
+  2(pE OS − ρcs2 )/(Gx 2 ) with pE OS being the nonideal                    depending on the expression of the source term of R. Since
+EOS [33]. In the present work, the Peng-Robinson EOS is                      Eq. (15) is a standard convection-diffusion equation with a
+used [13], which is given as                                                 source term, many universal models can be adopted for solv-
+                                                                             ing this equation in the LB community [42–44]. Following
+                         ρRT        aϕ(T )ρ 2                                this idea, Gong and Cheng [27] proposed an LB model for
+             pE OS =           −                  ,                  (10)
+                        1 − bρ   1 + 2bρ − b2 ρ 2                            liquid-vapor phase change where
+where R is the gas constant, a = 0.45724R2 Tc2 /pc , and                                                              
+                                                                                        λ                  1 ∂ pE OS
+b = 0.0778RTc /pc , with Tc and pc representing the critical                      η=       , R=T 1−                         ∇ · u.    (16)
+                                                                                       ρcv                ρcv     ∂T
+temperature and the critical pressure, respectively.
+                                               √      ϕ(T ) =                                                           ρ
+
+[1 + (0.37464 + 1.54226ω̄ − 0.26992ω̄2 )(1 − T /Tc )]2 , in
+                                                                             Comparing Eq. (16) with Eq. (14), one can find that the term
+which ω̄ = 0.344 is the acentric factor and T is the tem-
+                                                                             of ∇ · (λ∇T )/(ρcv ) is replaced by ∇ · {[λ/(ρcv )]∇T } in the
+perature, and it is calculated from the energy equation in
+                                                                             Gong and Cheng model. Although this treatment is acceptable
+the real simulations. For the other parameters, we choose
+                                                                             for the single-phase flow in the incompressible limit, it is
+a = 3/49, b = 2/21, and R = 1, which have been widely used
+                                                                             not correct for the multiphase flows, especially for the liquid-
+in previous works. Finally, the macroscopic density ρ and
+                                                                             vapor interface, where the density varies significantly. In this
+velocity u in the pseudopotential model are calculated by
+                                                                             setting, Li et al. [28] proposed an improved LBM, and in their
+                  
+                  8                     
+                                        8
+                                                        t                   model,
+             ρ=         fi ,     ρu =         ci fi +      Fn .      (11)
+                  i=0                   i=0
+                                                        2                                η = k,
+                                                                                               1
+             III. NUMERICAL FORMULATIONS                                                 R=       ∇ · (λ∇T ) − ∇ · (k∇T )
+                                                                                              ρcv
+    A. Reexamination of previous lattice Boltzmann models                                                          
+                                                                                                         1 ∂ pE OS
+   Before proceeding further, the governing equation for                                      +T 1−                    ∇ · u,             (17)
+                                                                                                        ρcv   ∂T     ρ
+liquid-vapor phase change is first revisited. According to the
+work of Anderson et al. [40], by neglecting the effect of                    where k is an artificial parameter. For this model, due to the
+viscous heat dissipation, the energy equation for liquid-vapor               source term R being related to the Laplacian or gradient term
+phase change can be expressed as (also called the local bal-                 of temperature, one must calculate it with the help of a finite-
+ance law for entropy)                                                        difference scheme, making it unable to hold the advantages
+                               Ds                                            of the LBM very well. In addition, Zhang et al. [31] also
+                        ρT        = ∇ · (λ∇T ),                      (12)    proposed another improved thermal LBM for liquid-vapor
+                               Dt
+
+                                                                       055308-3
+LEI WANG, JIANGXU HUANG, AND KUN HE                                                      PHYSICAL REVIEW E 106, 055308 (2022)
+
+phase change where                                                           1. BGK model for liquid-vapor phase change
+                                                                      The lattice BGK equation for the temperature distribution
+          λ
+   η=        ,                                                     function gi is expressed as
+         ρcv
+                                                                  ρcv gi (x + ci t, t + t ) − gi (x, t )
+         λ∇T · ∇(ρcv )        ρH   pE OS
+   R=                  +  T −    −        ∇ · u,           (18)                                            1                         
+           (ρcv )2            cv   ρcv                                  = (ρcv − 1)gi (x + ci t, t ) −       gi (x, t ) − g(eq)
+                                                                                                                            i (x, t )
+                                                                                                           τg
+in which H is a parameter related to the latent heat of va-
+porization. In contrast to the model of Li et al., this model is          + tGi + tSi ,                                           (21)
+not necessary to calculate the Laplacian of temperature, and       where τg is the relaxation time, g(eq) is the local equilibrium
+                                                                                                     i
+the latent heat is decoupled with the EOS. However, it still       distribution function defined as
+needs to calculate the gradient term of ∇(ρcv ) with the finite-
+difference scheme, which will bring some numerical errors                                     g(eq)
+                                                                                               i    = ŵi T,                        (22)
+into the system. This phenomenon may be more remarkable
+                                                                   Gi is the source term given by
+around the liquid-vapor interface. On the other hand, since
+the calculation of temperature in the model of Zhang et al.                 Gi = −ŵi [ρcv u · ∇T + T (∂T pE OS )ρ ∇ · u],          (23)
+is related to the source term R, causing the corresponding
+expression to be implicit, an iteration procedure is needed        and the correction term Si is chosen as
+theoretically. Apart from the above models, Li et al. [32]                                         t 2
+                                                                                          Si = ŵi ρcv  ∂ T.                        (24)
+recently also proposed a 3D thermal LBM for phase change                                            2 t
+heat transfer in which                                             The temperature T is calculated from
+              λ                                                                                 
+          η=     ,                                                                         T =       gi .                           (25)
+             ρcv                                                                                      i
+             λ∇T · ∇(ρcv )                                             Since the equilibrium distribution function is a linear form,
+          R=               − u · ∇T
+                 (ρcv )2                                           it is possible to use a simpler D2Q5 lattice model, in which
+                                                                 the discrete velocity set is expressed as
+                T ∂ pE OS
+             −                ∇ · u + ∇ · (uT ).           (19)             
+               ρcv     ∂T   ρ                                                 (0, 0),                                   i=0
+                                                                       ci =                                                      ,
+                                                                              (cos [(i − 1)π /2], sin [(i − 1)π /2])c, i = 1–4
+Substituting Eq. (19) into Eq. (15), one can find that the
+convection term in the temperature equation (14) is actually                                                                        (26)
+treated as a source term in this model; however, the calculation   and the corresponding weight coefficient in such a case can
+of ∇(ρcv ) still exists.                                           be defined as ŵi=0 = 1 − ẇ, ŵi=1−4 = ẇ/4 [ŵ is a parameter
+                                                                   satisfying ẇ ∈ (0, 1)] with the sound speed given by ĉs2 =
+             B. Thermal lattice Boltzmann model
+                                                                   ẇ/2 [48].
+                                                                       To recover the macroscopic temperature equation from
+   In this section we propose a thermal LB model for liquid-       the lattice BGK equation, in what follows we will perform
+vapor phase change. To this end the temperature equation is        a multiscale analysis of the present model. To this end, the
+changed to                                                         distribution function gi and the time and space derivatives are
+                                                               first expanded as [18]
+     ∂T                                    ∂ pE OS
+ ρcv     = ∇ · (λ∇T ) − ρcv u · ∇T + T                ∇·u .        gi = g(0)   (1)  2 (2)
+     ∂t                                      ∂T     ρ                    i + gi +  gi ,           ∂t = ∂t1 +  2 ∂t2 ,   ∇ = ∇ 1 ,
+                                                                                                                                    (27)
+                                                           (20)
+                                                                   where t1 is the fast convective scale, t2 is the slow diffusive
+Apparently, the above equation can be viewed as a pure diffu-      scale, and  is a small parameter which is proportional to the
+sion equation ρcv ∂t T = ∇ · (λ∇T ) + Q with a corresponding       Knudsen number in the classical kinetic theory for fluid flows.
+source term Q = −[ρcv u · ∇T + T (∂ pE OS /∂T )ρ ∇ · u]. Al-          By Taylor expansion the lattice BGK equation yields
+though it is not difficult to develop an LBM for solving the                                            
+pure diffusion equation [45,46], how to incorporate ρcv in                                     t 2 2
+                                                                         ρcv gi + tDi gi +        Di gi
+front of ∂T /∂t into the temperature evolution equation is                                      2
+a problem that must be addressed. Inspired by the work of                                                                   
+                                                                                                                  t 2 2
+Cartalade et al. [47], a thermal LB model is proposed for                      − gi + (1 − ρcv ) gi + tdi gi +        di gi
+simulating liquid-vapor phase change. To have a better un-                                                         2
+derstanding of the proposed LBM, we first present the model                       1            
+by using the simplest Bhatnagar-Gross-Krook (BGK) opera-                    =−       gi − g(eq)   + tGi + tSi ,                   (28)
+                                                                                  τg       i
+tor, and then extend it to the multiple-relaxation-time (MRT)
+model, which is a generalized model and has distinct advan-        where Di = ∂t + di with di = ci · ∇. Then substituting
+tages over the BGK model in terms of stability and accuracy.       Eq. (27) into Eq. (28), and equating the coefficients of each
+
+                                                             055308-4
+THERMAL LATTICE BOLTZMANN MODEL FOR …                                                                            PHYSICAL REVIEW E 106, 055308 (2022)
+
+order of , we have                                                                    Comparing Eq. (38) with Eq. (30), the dimensionless relax-
+                  (eq)                                                                 ation time τg is determined by λ = ĉs2 (τg − 21 )t.
+  O( 0 ) : g(0)
+             i = gi ,                                                         (29)         Through the above multiscale analysis, it is clear that
+                                                       1 (1)                           the temperature equation is recovered without any deviation
+  O( 1 ) : ρcv ∂t1 g(0)      (0)
+                     i + d1i gi = −                      g + ŵi Q(1) , (30)           terms. In addition, although a temperature space derivative
+                                                     τgt i
+                                                                                       appears in the discrete source term of Gi , it can be computed
+                                              t 2 (0)                                                                              (eq )
+  O( 2 ) : ρcv D1i g(1)          (0)
+                     i + ρcv ∂t2 gi + ρcv          D g                                 locally using Eq. (36) with g(1) i ≈ gi − gi      . More impor-
+                                               2 1i i                                  tantly, the calculations of ∇ · (κ∇T ) or ∇(ρcv ) do not appear
+                                                  t 2 (0)                             in the present scheme, such that the formulation of the present
+                  + (1 − ρcv )d1i g(1)
+                                   i + (1 − ρcv )   d g
+                                                  2 1i i                               LBM is more concise in contrast to previous models, and
+                      1 (2)            t                                              therefore, it holds the advantages of the original LBM very
+                 =−     g + ŵi ρcv (∂t1 )2 T,                                (31)     well.
+                    τgt i             2
+where D1i = ∂t1 + d1i = ∂t1 + ci · ∇ 1 . If we expand D1i and
+  2                                                                                                 2. MRT model for liquid-vapor phase change
+D1i in Eq. (31), then the corresponding equation can be rewrit-
+ten as                                                                                    We now turn to extend the above BGK model to the MRT
+                                                                                       version, and the evolution equation with a MRT collision
+                                                                 t 2 (0)
+             ρcv ∂t1 g(1)      (1)          (0)
+                      i + d1i gi + ρcv ∂t2 gi + ρcv                ∂ g                 operator M̂ can be expressed as
+                                                                 2 t1 i
+                        t                    t 2 (0)                                  ρcv gi (x + ci t, t + t )
+                      + ρcv (2∂t1 d1i )g(0)
+                                        i +     d g
+                         2                    2 1i i
+                                                                                             = gi (x, t ) + (ρcv − 1)gi (x + ci t, t )
+                       1 (2)              t
+                  =−     g + ŵi ρcv (∂t1 )2 T.                               (32)                                                     
+                     τgt i                 2                                                  − (M̂−1 M̂)i j g j (x, t ) − g(eq)
+                                                                                                                               j (x, t ) + tGi + tSi ,
+
+From Eqs. (22)–(24) and Eq. (29), one can obtain that                                                                                              (39)
+    (0)            (0)            
+      gi = T,         ci gi = 0,        ci ci g(0)                                     where  is a nonnegative diagonal relaxation matrix given by
+                                               i = ĉs T I,
+                                                     2
+
+         i                      i                        i                              = (ς0 , ς1 , . . . , ς4 ) with ςi ∈ (0, 1). Unlike most previous
+                                                                                    MRT models based on the orthogonal transformation matrix,
+                              t 2
+                 Si = ρcv       ∂ T,              ci Si = 0,           Gi = Q,         the present MRT scheme is constructed using a nonorthog-
+             i
+                              2 t            i                     i                   onal one, which is simpler and more efficient because it
+                                                                                      contains more zero elements than the orthogonal transforma-
+             ci Gi = 0.                                                       (33)     tion matrix [48]. For the D2Q5 lattice considered here, the
+     i
+                                                                                       nonorthogonal transformation matrix M̂ is defined as [49,50]
+Summing Eqs. (30) and (32) over i with the help of Eq. (33),
+                                                                                                             ⎡                            ⎤
+and noting that d1i2 = ∇ 1 ∇ 1 : I, we obtain                                                                  1      1    1     1     1
+                                                                                                             ⎢ 0      1   0     −1     0 ⎥
+                                    ρcv ∂t1 T = Q(1) ,                                                       ⎢                            ⎥
+                                                                              (34)                      M̂ = ⎢ 0      0    1    0      −1 ⎥.            (40)
+                                                                                                             ⎣ 0      1    1     1     1 ⎦
+                                                t
+    ∇1 ·              ci g(1)
+                          i + ρcv ∂t2 T +           ∇ 1 ∇ 1 : ĉs2 T I = 0.   (35)                             0      1   −1     1     −1
+                  i
+                                                 2
+                                                                                         The aforementioned multiscale analysis is adopted again to
+In order to evaluate i ci g(1)
+                           i in Eq. (35), we multiply Eq. (30)                         show that the temperature equation can be recovered correctly
+by ci and taking summation over i,                                                     from the present MRT model. Applying the Taylor expansion
+           1  (1)               (0)                                                 to Eq. (39), and noting that Eq. (27), we can obtain the fol-
+    −           ci gi = ρcv ∂t1        ci gi +∇ 1 ·   ci ci g(0)                       lowing equations at different orders of :
+         τgt i                   i                 i
+                                                             i
+
+                                                                                                             (eq)
+                        −       ŵi ci Q(1)                                                 O( 0 ) :   g(0)
+                                                                                                         i = gi ,                                       (41)
+                                         i                                                  O( 1 ) :   ρcv ∂t1 g(0)      (0)
+                                                                                                                 i + d1i gi
+                                = ĉs2 ∇ 1 T.                                 (36)                     1
+                                                                                                   =−     (M̂−1 M̂)i j g(1)
+                                                                                                                           j + ŵi Q ,
+                                                                                                                                    (1)
+                                                                                                                                                        (42)
+Substituting Eq. (36) into Eq. (35) yields                                                             t
+                                                                                                                                      t 2 (0)
+                                     1                                                      O( 2 ) : ρcv D1i g(1)           (0)
+                                                                                                               i + ρcv ∂t2 gi + ρcv         D g
+             ρcv ∂t2 T = ∇ 1 · τg −     t ĉs2 ∇ 1 T.                        (37)                                                       2 1i i
+                                     2
+                                                                                                                                         t 2 (0)
+                                                                                                      + (1 − ρcv )d1i g(1)
+                                                                                                                       i + (1 − ρcv )        d g
+Based on Eqs. (34) and (37), we obtain                                                                                                    2 1i i
+                                
+                                1 2                                                                    1                               t
+          ρcv ∂t T = ∇ · τg −      ĉ t∇T + Q.                               (38)                  = − (M̂−1 M̂)i j g(2) j + ŵi ρcv     (∂t1 )2 T.   (43)
+                                2 s                                                                    t                               2
+
+                                                                                 055308-5
+LEI WANG, JIANGXU HUANG, AND KUN HE                                                                         PHYSICAL REVIEW E 106, 055308 (2022)
+
+
+   Multiplying M̂ on both sides of the above equations, we                            MRT model, and Eqs. (49) and (50) give the corresponding
+can obtain the following equations in the moment space:                               algorithm.
+
+   O( 0 ) :     m̂(0) = m̂(eq) ,                                            (44)
+                                                                                                      C. Wetting boundary condition
+                                                         1
+        1
+   O( ) :       ρcv I∂t1 m̂    (0)
+                                      + d1 m̂   (0)
+                                                      = − m̂(1) + M̂Ĝ(1) ,              To model fluid-solid interactions, the geometric formu-
+                                                         t                           lation proposed by Ding and Spelt [51] is adopted in our
+                                                                        (45)          following simulations, which can be expressed as
+   O( 2 ) :     ρcv I∂t1 m̂(1) + d1 m̂(1) + ρcv I∂t2 m̂(0)                                                            
+                                                                                                                π
+                                                                                            ρx,0 = ρx,2 + tan     − θ |ρx+1,1 − ρx−1,1 |,
+                                                                                                                     eq
+                                                                                                                                              (54)
+                             t 2 (0)      t                                                                   2
+                + ρcv I        ∂t1 m̂ + ρcv (2∂t1 d1 )m̂(0)
+                             2             2                                          where θ eq is an analytical prescribed equilibrium contact
+                t 2 (0)                                                              angle, and ρx,0 denotes the fluid density at the ghost layer
+              +    d m̂
+                  2 1                                                                 next to the solid boundary. Here the first index in ρx,y rep-
+                1                                                                     resents the coordinate along the horizontal solid wall, while
+            = − m̂(2) + MŜ(2) ,                                            (46)     the second one denotes the coordinate normal to the solid
+               t
+                                                                                      wall. In addition, the phase interface position is defined as
+where d1 = M̂diag[c0 · ∇, . . . , c4 · ∇]M̂−1 , Ĝ(1) = [ŵ0 Q(1) ,                   ρ = 0.5(ρl + ρg ) throughout this work, in which ρl , ρg are
+. . . , ŵ4 Q(1) ]T , Ŝ(2) = [0.5ŵ0 ρcv ∂t21 T, . . . , 0.5ŵ4 ρcv ∂t21 T ]T . In   the liquid density and gas density, respectively.
+addition, m̂ = M̂g is the moment function, and m̂(eq ) is the
+equilibrium function in the moment space defined as                                                 IV. RESULTS AND DISCUSSION
+                m̂   (eq )
+                             = M̂g    (eq )
+                                              = [T, 0, 0, ẇT, 0] .
+                                                                 T
+                                                                             (47)        In this section several benchmark liquid-vapor phase
+According to Eq. (45), we can rewrite the first-order equa-                           change problems are selected to validate the performance of
+tions in t1 scale, but here we just present the first, second, and                    our proposed LB model. These typical examples include the
+third ones since only these equations are useful in deducing                          D2 law for droplet evaporation, droplet evaporation on heated
+the macroscopic equation,                                                             surfaces, and bubble nucleation and departure in nucleate
+                                                                                      boiling. In addition, unless otherwise specified, the afore-
+                                ρcv ∂t1 T = Q(1) ,                           (48)     mentioned MRT model is adopted in our simulations for its
+                                                                                      good numerical accuracy and stability. Moreover, it should be
+                                          1                                           noted that apart from the relaxation times related to physical
+                             cs2 ∂x1 T = −   ς1 m1(1) ,                      (49)
+                                          t                                          parameters, the other relaxation factors in the velocity field
+                                          1                                           are the same as those used in the work of Li et al. [34], while
+                             cs2 ∂y1 T = − ς2 m2(1) .                        (50)     they are all set to 1.0 for the temperature field.
+                                          t
+Note that d12 m̂(0) = (E · ∇ 1 )(E · ∇ 1 )m̂(0) where E =
+                                                                                                        A. Validation of the D2 law
+(Ex , Ey ),    and         Ex = M̂diag[c0x , . . . , c4x ]M̂−1 ,       Ey =
+M̂diag[c0y , . . . , c4y ]M̂−1 , we can also obtain the following                        We first validate the present thermal LB model by con-
+equation for conservative variable T at t2 scale:                                     sidering the droplet evaporation in open space, and it is well
+                                                                                  known that the variation of the droplet diameter in this prob-
+                             t 2                           t 2                      lem is described by the D2 law, which states that the square
+ ρcv ∂t2 T + ∂x1 m̂(1) +         ĉs ∂x1 T + ∂y1 m̂(2) +         ĉs ∂y1 T
+                              2                              2                        of the evaporating droplet diameter D decreases linearly with
+                                                                                      time [52],
+     = 0.                                                                    (51)
+                                                                                                             D 2
+Substituting Eqs. (49) and (50) into Eq. (51), we have                                                              = 1 − κt,                   (55)
+                                                                                                          D0
+                                1    1 2
+           ρcv ∂t2 T = ∂x1 t      −     ĉs ∂x1 T                                    where D0 is the droplet initial diameter and κ is the evapora-
+                                ς1   2                                                tion constant. The computational domain in our simulations is
+                                                  
+                                   1   1 2                                            a square cavity, and the lattice size of it is set to be 200×200.
+                       + ∂y1 t      −       ĉ ∂y1 T .                      (52)     Initially, a droplet with a diameter of D0 = 60 is located at
+                                  ς2   2 s
+                                                                                      the center of the cavity, and the temperature of the droplet
+Based on Eq. (48) and Eq. (52), we can get                                            is equal to the saturation temperature Tsat = 0.86Tc , while a
+                         ρcv ∂t T = ∇ · (λ∇T ) + Q,                          (53)     higher temperature of Tg = 1.0Tc is assigned to the surround-
+                                                                                      ing vapor phase. In such a case, the droplet is expected to
+where λ = t (ς1 −1 − 0.5)ĉs2 = t (ς2 −1 − 0.5)ĉs2 .                               evaporation as a result of the temperature gradient around
+   The above procedure shows that the temperature equa-                               the liquid-vapor interface. In addition, the Dirichlet boundary
+tion can be recovered correctly from the present MRT model,                           (i.e., T = Tg) is adopted for the temperature field, which can
+and since the convection term is actually treated as a source                         be easily established by employing the halfway bounce-back
+term, the nondiagonal relaxation time used in [31] is not                             scheme [53]. For the velocity field, the periodic scheme is
+needed. In addition, the temperature gradient appeared in the                         used to determine the unknown density distribution functions
+source term Q can also be calculated locally in the present                           streaming from the outside of the boundary [17]. The thermal
+
+                                                                                055308-6
+THERMAL LATTICE BOLTZMANN MODEL FOR …                                                     PHYSICAL REVIEW E 106, 055308 (2022)
+
+
+
+
+    FIG. 1. Comparisons of the density contours given by the Gong-Cheng model (a), the proposed model (b), and the WENO scheme (c) at
+t ∗ = 0.1, t ∗ = 0.25, and t ∗ = 0.75 (from left to right).
+
+conductivity, the kinematic viscosity, and the specific heat at      statement, the time evolution of the square of the dimension-
+constant volume are chosen as 1/3, 5.0, and 0.1 in the whole         less diameter is also presented in Fig. 2, in which the results
+domain, which are all the same as previous works [28,31].            obtained with the work in [28] and [31] are also incorporated.
+   Figure 1 presents the density contours at different di-           As seen from this figure, apart from the the Gong-Cheng
+mensionless time t ∗ = t/ttotal . In order to test the numerical     model [27], all of the other models follow the D2 law. On the
+performance of the present LB model, the results obtained            other hand, although the numerical results obtained from the
+from the Gong-Cheng [27] model and the fifth-order fi-               present model and [31] agree well with the WENO scheme,
+nite difference weighted essentially nonoscillatory (WENO)           the current model is more concise.
+scheme [54] are also included in this figure. It is clear that the
+simulation results using the present LBM agree well with the
+WENO scheme, which suggests that the present model could                       B. Droplet evaporation on a heated surface
+provide acceptable numerical results in simulating liquid-              Since the solid surface is usually encountered in most
+vapor phase change. However, it is noted that the evaporation        liquid-vapor phase transition problems, in the following we
+rate predicted by the Gong-Cheng model [27] is much larger           intend to study the problem of the droplet evaporation on a
+than the present LB and the WENO schemes, which is caused            heated surface, which is a standard simple test for liquid-vapor
+by the incorrect treatment of the temperature equation (see          phase change. Apart from the thermal diffusivity is taken as
+Sec. III A for details). To have a better understanding on this      η = 0.08, the setup of the other physical parameters are the
+
+                                                               055308-7
+LEI WANG, JIANGXU HUANG, AND KUN HE                                                          PHYSICAL REVIEW E 106, 055308 (2022)
+
+
+           1                                                                       1
+                                                                                                               WENO
+                                                                                 0.9                           Gong & Cheng [26]
+                                                                                                               Li et al. [27]
+         0.9                                                                                                   Zhang et al. [30]
+                                                                                 0.8                           Present LBM
+
+                                                                                 0.7
+         0.8
+                                    Li et al. [27]                               0.6
+                                    WENO
+         0.7                        Present LBM                                  0.5
+                                    Gong & Cheng [26]
+                                    Zhang et al. [30]                            0.4
+         0.6                                                                           0    0.2      0.4      0.6      0.8         1
+               0     0.2      0.4        0.6      0.8      1
+                                                                           FIG. 4. Time evolution of the dimensionless droplet mass for
+    FIG. 2. Time evolution of the square of the dimensionless diam-    different models.
+eter for different models.
+                                                                       where x0 = (100x, 0)T , R0 = 35x, and wlg is chosen as
+                                                                       5x. The simulation is first conducted without evaporation
+same as the first example. The physical domain is a rectangu-          until the contact angle of the droplet equals the prescribed
+lar enclosure which is covered by 100×200 mesh points. The             value.
+bottom wall is a solid wall with a contact angle of 90◦ , and it is        The comparisons of density contours among the Gong-
+maintained at a temperature of Th in the simulations, while the        Cheng, present, and WENO solutions are shown in Fig. 3,
+temperature for the top wall is taken as Ts . The open boundary        where the density distributions from our model and WENO
+condition and the periodic boundary condition are imposed at           schemes match very very well, but the evaporation pro-
+the top wall and the horizontal direction, respectively. Initially,    cess predicted by the Gong-Cheng model [27] is a little bit
+the density and velocity are set according to                          slower than the other two models, and we note that a similar
+                                                                       phenomenon is also reported by Li et al. [28] and Zhang
+                                                                     et al. [31]. In order to further validate our model, the variations
+        ρl + ρg ρl − ρg        |x − x0 | − R0
+     ρ=        −        tanh                   ,               (56)    of the normalized droplet mass for different models are also
+           2       2               0.5wlg
+                                                                       depicted in Fig. 4. It is seen that apart from the Gong-Cheng
+                           u(x, 0) = 0,                        (57)    model [27], the other solutions have excellent agreement.
+
+
+
+
+    FIG. 3. Comparisons of the density contours given by the Gong-Cheng model (a), the proposed model (b), and the WENO scheme (c) at
+t ∗ = 0.1, t ∗ = 0.25, and t ∗ = 0.75 (from left to right).
+
+                                                                 055308-8
+THERMAL LATTICE BOLTZMANN MODEL FOR …                                                     PHYSICAL REVIEW E 106, 055308 (2022)
+
+
+
+
+   FIG. 5. Distributions of the density contours in nucleate boiling at t = 5000t (a), t = 10 000t (b), and t = 16 000t (c) (g =
+3.0×10−5 ).
+
+                  C. Bubble nucleation and departure                The physical parameters used in the fluid field are the same
+   Last, to show the potential of the present model, we con-        as previous cases, while the thermal conductivity here is set
+sider a extremely complex liquid-vapor phase change problem         to 2/3, and the contact angle at the solid surface is equal to
+of bubble nucleation and departure in nucleate boiling. In our      75◦ . In addition, a buoyant force given by Fb = (ρ − ρave )g
+simulation, the computational mesh is a 150×300 rectangular         is applied in the vertical direction, in which ρave is the mean
+domain with the periodic boundary condition in the horizontal       density over the whole domain, and g = (0, −g) is the gravity
+direction. Initially, the enclosure is filled with the saturated    acceleration.
+water, and the temperature within the domain is set to Tsat =           Figure 5 presents several typical snapshots of the nucleate
+0.86Tc . For the velocity field, the bottom surface is the solid    boiling processes. It can be seen from Fig. 5 that owing to the
+wall imposed by the no-slip boundary condition, while the           influence of the high temperature, a small bubble is initially
+open boundary condition [55] is used for the top plane. Apart       formed at the center of the solid wall. Then the size of the
+from the central five grids at the bottom wall with a higher        bubble gradually increases until it departs from the bottom
+temperature of T = 1.05Tc , the temperatures at the rest of the     wall. After that, the detached bubble moves upward under the
+bottom and top walls are all fixed at Tsat in the simulations.      effect of the buoyancy force, and a new bubble appears at the
+                                                                    center of the solid wall, whose behavior is similar to the first
+                                                                    bubble. To give a quantitative analysis, we follow the theoreti-
+        100
+                                                                    cal result given by Fritz [56], which states that the relationship
+                                                                    between detachment bubble diameter and gravitational ac-
+                                                                    celeration satisfying Dd ∝ g−0.5 . To this end, simulations are
+         90                                                         carried out under different gravitational acceleration, and the
+                                                                    corresponding results are shown in Fig. 6. It is clear that the
+         80                                                         detachment bubble diameter predicted by the present model is
+                                                                    indeed proportional to g−0.5 , which further illustrates that our
+         70                                                         model is adequate for liquid-vapor phase change problems.
+
+         60                                                                               V. CONCLUSIONS
+
+         50
+                                                                       Liquid-vapor phase change phenomenon often arises in na-
+              1           1.5        2         2.5        3         ture and scientific researchers, but numerical modeling of such
+                                                       10-5         problem still remains a challenging task in the LB community.
+                                                                    The present work proposes a thermal lattice Boltzmann model
+   FIG. 6. Variation of detachment bubble diameter with gravity     for liquid-vapor phase change, which can correctly recover the
+acceleration.                                                       temperature equation through multiscale analysis. In contrast
+
+                                                              055308-9
+LEI WANG, JIANGXU HUANG, AND KUN HE                                                               PHYSICAL REVIEW E 106, 055308 (2022)
+
+    TABLE I. Comparisons of the stability and computational time
+per 10 000 steps between the present and previous models, in which
+ς̂ denotes the relaxation times related to the “diffusion” coefficient
+(i.e., η or λ) and all the other free relaxation factors in  are set as
+1.0; the symbols  and × indicate that the corresponding method is
+stable and unstable, respectively.
+
+                           Present model Li et al. [28] Zhang et al. [31]
+Stability (ς̂ = 1.0)                                        
+Stability (ς̂ = 2.0/3.0)                     ×               
+CPU time (s)                 752.3894      1127.6723       984.2197
+
+
+                                                                              FIG. 7. Time evolutions of the square of the normalized diameter
+to previous models, the basic idea of the present model is                  (D/D0 )2 obtained from different lattices.
+that the temperature equation is treated as a pure diffusion
+equation with a source term. Additionally, in order to avoid
+the calculation of the gradient term of ∇(ρcv ), a collision term           summarized in Table I. As shown in this table, due to the
+is introduced to the evolution equation of the temperature dis-             models developed by Li et al. [28] and Zhang et al. [31] are
+tribution function, making it possible to retain the main merits            constructed using the D2Q9 lattice, the computational time of
+of the LBM. Several numerical tests show that our approach                  their models is much larger than our model, which suggests
+could provide comparable results to the WENO scheme, and it                 that the D2Q5 lattice used in our model is more efficient. In
+is expected to be an efficient method in modeling liquid-vapor              addition, it is noted that when the relaxation time τ̂ equals
+phase change.                                                               2.0/3.0, it becomes unstable for the model of Li et al., while
+                                                                            the present model and that of Zhang et al perform well. Be-
+                                                                            cause of these advantages, the present model could be a good
+                     ACKNOWLEDGMENTS                                        candidate for simulating liquid-vapor phase change.
+   L.W. is grateful to Qing Li and Rongzong Huang for their
+useful discussions. We also would like to thank anonymous                         APPENDIX B: COMPARISON OF THE D2Q5, D2Q7,
+referees for their valuable comments which greatly improved                              AND D2Q9 LATTICE MODELS
+the work. This work is financially supported by the National                   Because the temperature equilibrium distribution equa-
+Natural Science Foundation of China (Grant No. 12002320).                   tion used in our model does not involve the second-order
+                                                                            velocity term (also first-order term), it is possible to use the
+                                                                            D2Q5, D2Q7, or D2Q9 lattice to simulate the liquid-vapor
+  APPENDIX A: ASSESSMENT OF THE PERFORMANCE
+                                                                            phase change in practical applications. In such a case, one
+      OF THE PRESENT AND PREVIOUS MODELS
+                                                                            may wonder if some differences exist when using these lattice
+    As mentioned previously, compared with some previous                    models. To this end, this Appendix intends to conduct a com-
+LB models for liquid-vapor phase change, the most striking                  parison study for these lattice models. A series of numerical
+feature of the present model is that it could avoid the calcu-              simulations for droplet evaporation in open space is perfor-
+lations of some gradient terms [i.e., ∇(k∇T ) and ∇(ρcv )].                 med again, and the time evolutions of the square of the nor-
+In this setting, the present method is expected to be more                  malized diameter (D/D0 )2 obtained from different lattices are
+efficient than previous approaches. To better understand this               depicted in Fig. 7, in which the two snapshots of the local
+point, in this Appendix, we intend to compare the numerical                 density and isotherms are also presented. From this figure, it
+performance between the present and previous models. The                    can be seen that the D2 law is well predicted by all lattice
+problem considered is the droplet evaporation in open space,                models, and the numerical difference among these models is
+and the physical parameters used here are all the same as                   so insignificant that it can be neglected. In addition, we note
+that adopted in Sec. IV A. Additionally, the custom C code is               that the D2Q9 and D2Q7 lattice models require 952.0031 sec
+executed on a personal computer with Intel CoreTM i7-9700                  CPU time and 809.2025 sec CPU time, respectively, while the
+CPU at 3.0 GHz base frequency and 8.0 GB shared memory.                     D2Q5 lattice needs only 752.3894 sec CPU time. Thus, from
+The detailed comparison of the stability at different relaxation            the point of view of computational efficiency, the D2Q5 lattice
+times ς̂ and the computational time per 10 000 steps are                    model is recommended.
+
+
+
+ [1] R. Wen, X. Ma, Y. C. Lee, and R. G. Yang, Liquid-vapor phase-           [3] B. Widom and J. S. Rowlinson, New model for the study
+     change heat transfer on functionalized nanowired surfaces and               of liquid–vapor phase transitions, J. Chem. Phys. 52, 1670
+     beyond, Joule 2, 2307 (2018).                                               (1970).
+ [2] H. J. Cho, D. J. Preston, Y. Zhu, and E. N. Wang, Nanoengi-             [4] S. G. Liter and M. Kaviany, Pool-boiling CHF enhancement by
+     neered materials for liquid–vapour phase-change heat transfer,              modulated porous-layer coating: Theory and experiment, Int. J.
+     Nat. Rev. Mater. 2, 16092 (2016).                                           Heat Mass Transfer 44, 4287 (2001).
+
+                                                                      055308-10
+THERMAL LATTICE BOLTZMANN MODEL FOR …                                                           PHYSICAL REVIEW E 106, 055308 (2022)
+
+ [5] M. E. Steinke and S. G. Kandlikar, An experimental inves-                phase change in two-phase fluid flow, Phys. Rev. E 81, 036707
+     tigation of flow boiling characteristics of water in parallel            (2010).
+     microchannels, J. Heat Transfer 126, 518 (2004).                    [25] R. Zhang and H. Chen, Lattice Boltzmann method for simula-
+ [6] R. A. Taylor and P. E. Phelan, Pool boiling of nanofluids:               tions of liquid-vapor thermal flows, Phys. Rev. E 67, 066711
+     Comprehensive review of existing data and limited new data,              (2003).
+     Int. J. Heat Mass Transfer 52, 5339 (2009).                         [26] A. Márkus and G. Házi, Simulation of evaporation by an ex-
+ [7] M. Dadhich and O. S. Prajapati, A brief review on factors                tension of the pseudopotential lattice Boltzmann method: A
+     affecting flow and pool boiling, Renewable Sustainable Energy            quantitative analysis, Phys. Rev. E 83, 046705 (2011).
+     Rev. 112, 607 (2019).                                               [27] S. Gong and P. Cheng, A lattice Boltzmann method for simu-
+ [8] S. Kakaç and B. Bon, A review of two-phase flow dynamic                  lation of liquid–vapor phase-change heat transfer, Int. J. Heat
+     instabilities in tube boiling systems, Int. J. Heat Mass Transfer        Mass Transfer 55, 4923 (2012).
+     51, 399 (2008).                                                     [28] Q. Li, P. Zhou, and H. J. Yan, Improved thermal lattice
+ [9] J. Liu, C. M. Landis, and H. Gomez, Liquid–vapor phase                   Boltzmann model for simulation of liquid-vapor phase change,
+     transition: Thermomechanical theory, entropy stable numerical            Phys. Rev. E 96, 063303 (2017).
+     formulation, and boiling simulations, Comput. Methods Appl.         [29] X. Shan and H. Chen, Lattice Boltzmann model for simulating
+     Mech. Eng. 297, 476 (2015).                                              flows with multiple phases and components, Phys. Rev. E 47,
+[10] D. Jamet, O. Lebaigue, and N. Coutris, The second gradient               1815 (1993).
+     method for the direct numerical simulation of liquid–vapor          [30] Q. Li, Q. J. Kang, M. M. Francois, Y. L. He, and K. H. Luo, Lat-
+     flows with phase change, J. Comput. Phys. 169, 624 (2001).               tice Boltzmann modeling of boiling heat transfer: The boiling
+[11] G. Son, A numerical method for bubble motion with phase                  curve and the effects of wettability, Int. J. Heat Mass Transfer
+     change, Numer. Heat Transfer B 39, 509 (2001).                           85, 787 (2015).
+[12] C. K. Aidun and J. R. Clausen, Lattice-Boltzmann method for         [31] S. Zhang, J. Tang, H. Wu, and R. Z. Huang, Improved thermal
+     complex flows, Annu. Rev. Fluid Mech. 42, 439 (2010).                    multiple-relaxation-time lattice Boltzmann model for liquid-
+[13] H. Huang, M. C. Sukop, and X. Y. Lu, Multiphase Lattice                  vapor phase change, Phys. Rev. E 103, 043308 (2021).
+     Boltzmann Methods: Theory and Application (John Wiley &             [32] Q. Li, Y. Yu, and K. H. Luo, Improved three-dimensional ther-
+     Sons, New York, 2015).                                                   mal multiphase lattice Boltzmann model for liquid-vapor phase
+[14] Q. Li, K. H. Luo, and Q. J. Kang, Lattice Boltzmann                      change, Phys. Rev. E 105, 025308 (2022).
+     methods for multiphase flow and phase-change heat transfer,         [33] P. Yuan and L. Schaefer, Equations of state in a lattice Boltz-
+     Prog. Energy Combust. Sci. 52, 62 (2016).                                mann model, Phys. Fluids 18, 042101 (2006).
+[15] R. Huang, H. Y. Wu, and N. A. Adams, Mesoscopic Lattice             [34] Q. Li, K. H. Luo, and X. J. Li, Lattice Boltzmann mod-
+     Boltzmann Modeling of the Liquid-Vapor Phase Transition,                 eling of multiphase flows at large density ratio with an
+     Phys. Rev. Lett. 126, 244501 (2021).                                     improved pseudopotential model, Phys. Rev. E 87, 053301
+[16] J. Huang, L. Wang, and K. He, Three-dimensional study                    (2013).
+     of double droplets impact on a wettability-patterned surface,       [35] A. L. Kupershtokh, D. A. Medvedev, and D. T. Karpov, On
+     Comput. Fluids 248, 105669 (2022).                                       equations of state in a lattice Boltzmann method, Comput.
+[17] T. Krüger, H. Kusumaatmaja, A. Kuzmin, O. Shardt, G. Silva,              Math. Appl. 58, 965 (2009).
+     and E. M. Viggen, The Lattice Boltzmann Method: Principles          [36] R. Huang and H. Wu, Third-order analysis of pseudopotential
+     and Practice (Springer, Cham, 2017).                                     lattice Boltzmann model for multiphase flow, J. Comput. Phys.
+[18] Z. Guo and C. Shu, Lattice Boltzmann Method and Its Applica-             327, 121 (2016).
+     tions in Engineering (World Scientific, Singapore, 2013).           [37] S. Y. Chen and G. D. Doolen, Lattice Boltzmann method for
+[19] K. H. Luo, L. L. Fei, and G. Wang, A unified lattice Boltzmann           fluid flows, Annu. Rev. Fluid Mech. 30, 329 (1998).
+     model and application to multiphase flows, Philos. Trans. R.        [38] P. Lallemand and L.-S. Luo, Theory of the lattice Boltzmann
+     Soc. A 379, 20200397 (2021).                                             method: Dispersion, dissipation, isotropy, Galilean invariance,
+[20] Z. Dong, W. Li, and Y. Song, Lattice Boltzmann simula-                   and stability, Phys. Rev. E 61, 6546 (2000).
+     tion of growth and deformation for a rising vapor bubble            [39] X. Shan, Pressure tensor calculation in a class of nonideal
+     through superheated liquid, Numer. Heat Transfer A 55, 381               gas lattice Boltzmann models, Phys. Rev. E 77, 066702
+     (2009).                                                                  (2008).
+[21] C. Zhang, H. Zhang, X. Zhang, C. Yang, and P. Cheng, Evap-          [40] D. M. Anderson, G. B. McFadden, and A. A. Wheeler, Diffuse-
+     oration of a sessile droplet on flat surfaces An axisymmetric            interface methods in fluid mechanics, Annu. Rev. Fluid Mech.
+     lattice Boltzmann model with consideration of contact angle              30, 139 (1998).
+     hysteresis, Int. J. Heat. Mass Transfer 178, 121577 (2021).         [41] R. B. Bird, W. E. Stewart, and E. N. Lightfoot, Transport Phe-
+[22] M. Sugimoto, Y. Sawada, M. Kaneda, and K. Suga, Consistent               nomena, 2nd ed. (John Wiley & Sons, New York, 2001).
+     evaporation formulation for the phase-field lattice Boltzmann       [42] Z. H. Chai and B. C. Shi, Multiple-relaxation-time lat-
+     method, Phys. Rev. E 103, 053307 (2021).                                 tice Boltzmann method for the Navier-Stokes and nonlinear
+[23] T. Sun and W. Li, Three-dimensional numerical simulation                 convection-diffusion equations: Modeling, analysis, and ele-
+     of nucleate boiling bubble by lattice Boltzmann method,                  ments, Phys. Rev. E 102, 023306 (2020).
+     Comput. Fluids 88, 400 (2013).                                      [43] B. Shi and Z. Guo, Lattice Boltzmann model for nonlin-
+[24] A. Fakhari, M. H. Rahimian, and M. Krafczyk, Extended lat-               ear convection-diffusion equations, Phys. Rev. E 79, 016701
+     tice Boltzmann method for numerical simulation of thermal                (2009).
+
+
+                                                                   055308-11
+LEI WANG, JIANGXU HUANG, AND KUN HE                                                          PHYSICAL REVIEW E 106, 055308 (2022)
+
+[44] L. Wang, B. C. Shi, and Z. H. Chai, Regularized lattice Boltz-   [50] D. Lycett-Brown and K. H. Luo, Multiphase cascaded lat-
+     mann model for a class of convection-diffusion equations,             tice Boltzmann method, Comput. Math. Appl. 67, 350
+     Phys. Rev. E 92, 043311 (2015).                                       (2014).
+[45] H. Yoshida and M. Nagaoka, Multiple-relaxation-time lattice      [51] H. Ding and P. D. M. Spelt, Wetting condition in diffuse in-
+     Boltzmann model for the convection and anisotropic diffusion          terface simulations of contact line motion, Phys. Rev. E 75,
+     equation, J. Comput. Phys. 229, 7774 (2010).                          046708 (2007).
+[46] R. Z. Huang and H. Y. Wu, Lattice Boltzmann model for the        [52] S. Zheng, F. Eimann, T. Fieback, G. Xie, and U. Gross, Numer-
+     correct convection-diffusion equation with divergence-free ve-        ical investigation of convective dropwise condensation flow by
+     locity field, Phys. Rev. E 91, 033302 (2015).                         a hybrid thermal lattice Boltzmann method, Appl. Therm. Eng.
+[47] A. Cartalade, A. Younsi, and M. Plapp, Lattice Boltzmann              145, 590 (2018).
+     simulations of 3D crystal growth: Numerical schemes for a        [53] T. Zhang, B. C. Shi, Z. L. Guo et al., General bounce-back
+     phase-field model with anti-trapping current, Comput. Math.           scheme for concentration boundary condition in the lattice-
+     Appl. 71, 1784 (2016).                                                Boltzmann method, Phys. Rev. E 85, 016701 (2012).
+[48] Y. L. He, Q. Liu, Q. Li, and W. Q. Tao, Lattice Boltzmann        [54] G. S. Jiang and C. W. Shu, Efficient implementation of weighted
+     methods for single-phase and solid-liquid phase-change heat           ENO schemes, J. Comput. Phys. 126, 202 (1996).
+     transfer in porous media: A review, Int. J. Heat Mass Transfer   [55] Q. Lou, Z. Guo, and B. Shi, Evaluation of outflow boundary
+     129, 160 (2019).                                                      conditions for two-phase lattice Boltzmann equation, Phys. Rev.
+[49] Q. Liu, Y. L. He, D. Li, and Q. Li, Non-orthogonal multiple-          E 87, 063301 (2013).
+     relaxation-time lattice Boltzmann method for incompressible      [56] W. Fritz, Berechnung des Maximalvolumes von Dampfblasen,
+     thermal flows, Int. J. Heat Mass Transfer 102, 1334 (2016).           Phys. Z. 36, 379 (1935).
+
+
+
+
+                                                                055308-12
+

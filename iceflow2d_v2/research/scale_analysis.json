@@ -1,0 +1,49 @@
+{
+  "dx_m": 0.00025,
+  "dt_s": 6.25e-06,
+  "reference_velocity_m_s": 4.0,
+  "reference_velocity_lattice": 0.1,
+  "steps_for_10s": 1600000,
+  "rho_scale_kg_m3": 1000.0,
+  "gravity_lattice": 1.53125e-06,
+  "initial_center_cells": [
+    50.0,
+    143.33360705343046
+  ],
+  "tau_flow_water": 0.5003,
+  "tau_flow_air": 0.5045,
+  "thermal_diffusivity_m2_s": {
+    "water": 1.433349259436216e-07,
+    "ice": 1.1424417095082308e-06,
+    "air": 2.0696517412935322e-05
+  },
+  "initial_areas_sharp_geometry_m2_per_m_depth": {
+    "water": 0.0006873749999999999,
+    "ice": 6.4e-05,
+    "air": 0.0003883750000000002,
+    "active_domain": 0.0011397500000000001
+  },
+  "initial_masses_sharp_geometry_kg_per_m_depth": {
+    "water": 0.687375,
+    "ice": 0.058688,
+    "air": 0.0004854687500000003
+  },
+  "fully_melted_water_volume_added_m2": 5.8688e-05,
+  "condensed_volume_contraction_m2": 5.311999999999999e-06,
+  "closed_constant_density_air_relative_mass_error_at_full_melt": 0.013677502413904079,
+  "full_melt_incompressible_gas_volume_incompatibility_note": "Nonzero phase volume contraction in a fixed sealed box requires gas compression/expansion, an open boundary, or explicitly nonconserved numerical air.",
+  "closed_adiabatic_condensed_only_final_T_C": 76.64372534070566,
+  "water_stefan_number": 1.1279640718562873,
+  "gas_to_water_volume_heat_capacity_ratio": 0.0003001075011944577,
+  "roundoff_note": "These are host float64 scale calculations, not a coupled simulation validation.",
+  "thermal_fourier_per_fluid_step": {
+    "water": 1.4333492594362161e-05,
+    "ice": 0.00011424417095082309,
+    "air": 0.0020696517412935322
+  },
+  "thermal_weight_if_tau_1_phase_reference_capacity": {
+    "water": 5.7333970377448644e-05,
+    "ice": 0.00045697668380329236,
+    "air": 0.008278606965174129
+  }
+}

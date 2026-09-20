@@ -1,0 +1,38 @@
+{
+  "rows": [
+    {
+      "n": 64,
+      "steps": 256,
+      "relative_solid_volume_error": 4.080905846581828e-08,
+      "relative_energy_error": 1.503406868626674e-09,
+      "shape_l1_per_solid_volume": 0.20512174518629245,
+      "centroid_error_over_domain": 0.0001169860819786193,
+      "relative_geometric_inertia_error": 0.0526246460667541,
+      "maximum_absolute_temperature": 0.0
+    },
+    {
+      "n": 128,
+      "steps": 512,
+      "relative_solid_volume_error": 4.265839448347464e-08,
+      "relative_energy_error": 2.045753245212484e-09,
+      "shape_l1_per_solid_volume": 0.12340772875467207,
+      "centroid_error_over_domain": 4.297121042393982e-05,
+      "relative_geometric_inertia_error": 0.018444602688196587,
+      "maximum_absolute_temperature": 0.0,
+      "shape_order": 0.733047691510057
+    },
+    {
+      "n": 256,
+      "steps": 1024,
+      "relative_solid_volume_error": 4.2854786941326495e-08,
+      "relative_energy_error": 2.4061077184291276e-09,
+      "shape_l1_per_solid_volume": 0.07430025770395646,
+      "centroid_error_over_domain": 1.7096121207526797e-05,
+      "relative_geometric_inertia_error": 0.006616815203055237,
+      "maximum_absolute_temperature": 0.0,
+      "shape_order": 0.7319936303876295
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 2.526393848937005
+}

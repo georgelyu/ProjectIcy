@@ -1,0 +1,384 @@
+{
+  "metadata": {
+    "taichi_version": "1.7.4",
+    "arch": "cuda",
+    "gpu_precision": "f32",
+    "host_diagnostics_precision": "float64",
+    "grids": [
+      64,
+      128,
+      256
+    ]
+  },
+  "moments": {
+    "maximum_moment_residual": 8.881784197001252e-16,
+    "matrix_rank": 5,
+    "passes": true,
+    "runtime_seconds": 0.0002947340253740549
+  },
+  "uniform": {
+    "max_temperature_error": 1.1874362826347351e-07,
+    "max_fraction_error": 2.8405338525772095e-08,
+    "max_enthalpy_error": 1.1874362826347351e-07,
+    "heat_then_cool_error": 0.0,
+    "passes": true,
+    "runtime_seconds": 0.6951971490634605
+  },
+  "diffusion": {
+    "rows": [
+      {
+        "n": 64,
+        "steps": 737,
+        "l2_error": 2.6737819239492805e-05,
+        "relative_diffusivity_error": 0.000804316616690226,
+        "energy_drift_per_cell": 0.0
+      },
+      {
+        "n": 128,
+        "steps": 2949,
+        "l2_error": 6.679248687886653e-06,
+        "relative_diffusivity_error": 0.00020087228791942913,
+        "energy_drift_per_cell": 0.0,
+        "order": 2.001124066656145
+      },
+      {
+        "n": 256,
+        "steps": 11796,
+        "l2_error": 1.6698288842667057e-06,
+        "relative_diffusivity_error": 5.0209611621720995e-05,
+        "energy_drift_per_cell": 0.0,
+        "order": 1.9999855608762898
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 2.001942524104379
+  },
+  "layers": {
+    "rows": [
+      {
+        "n": 64,
+        "steps": 24576,
+        "max_temperature_error": 3.3378601071998304e-07,
+        "left_flux_relative_error": 1.6119027301808586e-06,
+        "right_flux_relative_error": 4.102753761170419e-07,
+        "energy_balance_per_cell": 1.0710209608078003e-08
+      },
+      {
+        "n": 128,
+        "steps": 98304,
+        "max_temperature_error": 5.483627318891848e-07,
+        "left_flux_relative_error": 2.657780879822269e-06,
+        "right_flux_relative_error": 6.529598569615658e-07,
+        "energy_balance_per_cell": 5.4169504437595606e-09
+      },
+      {
+        "n": 256,
+        "steps": 393216,
+        "max_temperature_error": 3.3974647521972656e-06,
+        "left_flux_relative_error": 1.687122648530437e-05,
+        "right_flux_relative_error": 2.793657976285502e-06,
+        "energy_balance_per_cell": 1.3603312254417688e-08
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 22.322865958092734
+  },
+  "stefan_one_phase": {
+    "parameters": {
+      "c_s": 0.5,
+      "c_l": 1.0,
+      "latent": 2.0,
+      "k_s": 2.0,
+      "k_l": 1.0,
+      "hot": 1.0,
+      "cold": 0.0,
+      "initial_time": 0.002
+    },
+    "rows": [
+      {
+        "n": 64,
+        "steps": 922,
+        "lambda": 0.46478592064624447,
+        "time": 0.0200078125,
+        "front": 0.13329814102670312,
+        "exact_front": 0.131486984045871,
+        "relative_front_error": 0.013774420289389688,
+        "temperature_l2_error": 0.000698097887641381,
+        "min_temperature": -3.9469787225243635e-06,
+        "max_temperature": 0.9363844394683838,
+        "energy_balance_relative": 1.2727742878410014e-08,
+        "boundary_heat_relative_error_vs_analytic": 0.01637925167825105
+      },
+      {
+        "n": 128,
+        "steps": 3686,
+        "lambda": 0.46478592064624447,
+        "time": 0.019998046875,
+        "front": 0.13265763561594401,
+        "exact_front": 0.13145489134957256,
+        "relative_front_error": 0.009149482792337071,
+        "temperature_l2_error": 0.002567585935679338,
+        "min_temperature": 0.0,
+        "max_temperature": 0.9680972099304199,
+        "energy_balance_relative": 1.3529908308309373e-08,
+        "boundary_heat_relative_error_vs_analytic": 0.008102093966194213,
+        "front_order": 0.5902295055227917
+      },
+      {
+        "n": 256,
+        "steps": 14746,
+        "lambda": 0.46478592064624447,
+        "time": 0.02000048828125,
+        "front": 0.13198357642860614,
+        "exact_front": 0.13146291525812792,
+        "relative_front_error": 0.003960517454339785,
+        "temperature_l2_error": 0.0005835649736016452,
+        "min_temperature": -4.445535353170271e-07,
+        "max_temperature": 0.984041690826416,
+        "energy_balance_relative": 2.5436733823128856e-08,
+        "boundary_heat_relative_error_vs_analytic": 0.004055127707219608,
+        "front_order": 1.2080012567722709
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 2.272515745018609
+  },
+  "stefan_two_phase": {
+    "parameters": {
+      "c_s": 0.5,
+      "c_l": 1.0,
+      "latent": 2.0,
+      "k_s": 2.0,
+      "k_l": 1.0,
+      "hot": 1.0,
+      "cold": -0.25,
+      "initial_time": 0.002
+    },
+    "rows": [
+      {
+        "n": 64,
+        "steps": 922,
+        "lambda": 0.42792638636048164,
+        "time": 0.0200078125,
+        "front": 0.12309417221695185,
+        "exact_front": 0.12105949736591386,
+        "relative_front_error": 0.01680723029014386,
+        "temperature_l2_error": 0.0055190225369887115,
+        "min_temperature": -0.24568772315979004,
+        "max_temperature": 0.9312822818756104,
+        "energy_balance_relative": 8.399077522596431e-09,
+        "boundary_heat_relative_error_vs_analytic": 0.01214414466775815
+      },
+      {
+        "n": 128,
+        "steps": 3686,
+        "lambda": 0.42792638636048164,
+        "time": 0.019998046875,
+        "front": 0.1216635094024241,
+        "exact_front": 0.1210299497592728,
+        "relative_front_error": 0.005234734414179654,
+        "temperature_l2_error": 0.0008438916666998293,
+        "min_temperature": -0.24581356346607208,
+        "max_temperature": 0.9657151699066162,
+        "energy_balance_relative": 2.0747937126094256e-08,
+        "boundary_heat_relative_error_vs_analytic": 0.006027702062006091,
+        "front_order": 1.68289374990475
+      },
+      {
+        "n": 256,
+        "steps": 14746,
+        "lambda": 0.42792638636048164,
+        "time": 0.02000048828125,
+        "front": 0.12137626559706405,
+        "exact_front": 0.12103733733716632,
+        "relative_front_error": 0.002800195934198335,
+        "temperature_l2_error": 0.0007953439738294096,
+        "min_temperature": -0.24586956202983856,
+        "max_temperature": 0.9828615188598633,
+        "energy_balance_relative": 1.2377004367380922e-08,
+        "boundary_heat_relative_error_vs_analytic": 0.003090646183824486,
+        "front_order": 0.9025885650604242
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 2.2692168770590797
+  },
+  "manufactured": {
+    "rows": [
+      {
+        "n": 64,
+        "steps": 1536,
+        "temperature_l2_error": 6.283003229273089e-05
+      },
+      {
+        "n": 128,
+        "steps": 6144,
+        "temperature_l2_error": 1.5711964383702777e-05,
+        "order": 1.9995907571560996
+      },
+      {
+        "n": 256,
+        "steps": 24576,
+        "temperature_l2_error": 3.925903304880916e-06,
+        "order": 2.000767019698496
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 4.560138687957078
+  },
+  "advection_diffusion": {
+    "rows": [
+      {
+        "n": 64,
+        "steps": 737,
+        "temperature_l2_error": 3.5996134445577046e-05,
+        "cell_peclet": 0.125
+      },
+      {
+        "n": 128,
+        "steps": 2949,
+        "temperature_l2_error": 8.58861422018535e-06,
+        "cell_peclet": 0.0625,
+        "order": 2.0673447114280483
+      },
+      {
+        "n": 256,
+        "steps": 11796,
+        "temperature_l2_error": 2.0981833321676153e-06,
+        "cell_peclet": 0.03125,
+        "order": 2.0332846288966735
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 5.157165487995371
+  },
+  "translation": {
+    "rows": [
+      {
+        "n": 64,
+        "steps": 320,
+        "relative_solid_volume_error": 6.492131943147683e-08,
+        "relative_energy_error": 3.6647118880258253e-09,
+        "shape_l1_per_solid_volume": 0.1814762765623032,
+        "centroid_error_over_domain": 1.5370587883575388e-05,
+        "relative_geometric_inertia_error": 0.09327198536615944,
+        "maximum_absolute_temperature": 0.0
+      },
+      {
+        "n": 128,
+        "steps": 640,
+        "relative_solid_volume_error": 8.292967346168467e-08,
+        "relative_energy_error": 4.886860423930475e-09,
+        "shape_l1_per_solid_volume": 0.11217557619110816,
+        "centroid_error_over_domain": 3.614639449781513e-06,
+        "relative_geometric_inertia_error": 0.03501769555444256,
+        "maximum_absolute_temperature": 0.0,
+        "shape_order": 0.6940223701712371
+      },
+      {
+        "n": 256,
+        "steps": 1280,
+        "relative_solid_volume_error": 9.134491074647144e-08,
+        "relative_energy_error": 5.786366772126591e-09,
+        "shape_l1_per_solid_volume": 0.06912583931198102,
+        "centroid_error_over_domain": 4.231176867800256e-08,
+        "relative_geometric_inertia_error": 0.013480173423073838,
+        "maximum_absolute_temperature": 0.0,
+        "shape_order": 0.6984615969744239
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 2.6123092100024223
+  },
+  "rotation": {
+    "rows": [
+      {
+        "n": 64,
+        "steps": 256,
+        "relative_solid_volume_error": 4.080905846581828e-08,
+        "relative_energy_error": 1.503406868626674e-09,
+        "shape_l1_per_solid_volume": 0.20512174518629245,
+        "centroid_error_over_domain": 0.0001169860819786193,
+        "relative_geometric_inertia_error": 0.0526246460667541,
+        "maximum_absolute_temperature": 0.0
+      },
+      {
+        "n": 128,
+        "steps": 512,
+        "relative_solid_volume_error": 4.265839448347464e-08,
+        "relative_energy_error": 2.045753245212484e-09,
+        "shape_l1_per_solid_volume": 0.12340772875467207,
+        "centroid_error_over_domain": 4.297121042393982e-05,
+        "relative_geometric_inertia_error": 0.018444602688196587,
+        "maximum_absolute_temperature": 0.0,
+        "shape_order": 0.733047691510057
+      },
+      {
+        "n": 256,
+        "steps": 1024,
+        "relative_solid_volume_error": 4.2854786941326495e-08,
+        "relative_energy_error": 2.4061077184291276e-09,
+        "shape_l1_per_solid_volume": 0.07430025770395646,
+        "centroid_error_over_domain": 1.7096121207526797e-05,
+        "relative_geometric_inertia_error": 0.006616815203055237,
+        "maximum_absolute_temperature": 0.0,
+        "shape_order": 0.7319936303876295
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 2.526393848937005
+  },
+  "closed": {
+    "n": 80,
+    "steps": 47000,
+    "initial_solid_volume": 1600.0,
+    "predicted_final_solid_volume": 720.0,
+    "final_solid_volume": 720.145608663559,
+    "relative_final_volume_error": 0.00020223425494303449,
+    "relative_energy_error": 8.477229360797652e-09,
+    "max_final_temperature": 0.00019931793212890625,
+    "passes": true,
+    "runtime_seconds": 2.3030994489090517
+  },
+  "translating_melt": {
+    "interpretation": "Prescribed comoving water/ice velocity; no hydrodynamic force solver.",
+    "rows": [
+      {
+        "n": 64,
+        "steps": 1638,
+        "initial_solid_volume": 832.0,
+        "reference_solid_volume": 544.7674698233604,
+        "moving_solid_volume": 536.0138383507729,
+        "relative_solid_volume_difference": 0.016068564951989384,
+        "temperature_l2_error": 0.013762003742158413,
+        "fraction_l1_error": 0.004038259852677584,
+        "relative_energy_error": 6.601966464110288e-10
+      },
+      {
+        "n": 128,
+        "steps": 6554,
+        "initial_solid_volume": 3328.0,
+        "reference_solid_volume": 2182.0084369778633,
+        "moving_solid_volume": 2164.3405144810677,
+        "relative_solid_volume_difference": 0.008097091742351958,
+        "temperature_l2_error": 0.006923453416675329,
+        "fraction_l1_error": 0.0017955300863832235,
+        "relative_energy_error": 4.38783691095209e-10
+      },
+      {
+        "n": 256,
+        "steps": 26214,
+        "initial_solid_volume": 13056.0,
+        "reference_solid_volume": 8510.274608969688,
+        "moving_solid_volume": 8474.671497642994,
+        "relative_solid_volume_difference": 0.004183544358153823,
+        "temperature_l2_error": 0.0034433642867952585,
+        "fraction_l1_error": 0.0010878648608922958,
+        "relative_energy_error": 4.7880067451499154e-11
+      }
+    ],
+    "passes": true,
+    "runtime_seconds": 11.49703077902086
+  },
+  "runtime_seconds": 58.21996896399651
+}

@@ -1,0 +1,36 @@
+\section{局部开口重映射与剩余冰体}
+\label{sec:remap}
+\subsection{当前水体积与局部温度}
+当前合法湿流体格点的目标面积直接取
+\begin{equation}
+ V_i'=A\clip(\phi_i,0,1),\quad i\in\mathcal W;
+ \qquad V_i'=0,\quad i\notin\mathcal W.
+\end{equation}
+已有水保持局部比显热 $e_i=E_i/V_i$。新湿格点从最近湿邻域读取比显热，
+最多搜索三格，并按旧水体积与距离平方倒数加权；没有湿邻域时取零比显热，即熔点温度。
+所有读取都来自未修改的旧数组，下一内核才写入 $V_i'$ 和 $E_i'=V_i'e_i$。
+此过程不对全局水量或能量作校正，也不计算残差或容量闭合判断。
+
+\src{simulator.py:synchronize_water_aperture, _build_phase_aperture_targets, _apply_phase_aperture_transfer}
+
+\subsection{局部相场限幅}
+每格独立把 $\phi$ 限制在 $[0,1]$，并将截止阈值之外的数值尾部归为精确纯相。
+同步修改该格两组分布的平衡部分，使相场、密度和分布函数一致。
+不设置全局水量目标，也不移动其它界面格点补偿水量。
+\src{simulator.py:_bound_water_phase}
+
+\subsection{质量、质心与惯量}
+\label{sec:constraints}
+剩余冰体的质量和材料质心为
+\begin{equation}
+ M=\sum_a m_a,\qquad \bar{\bm X}=\frac{\sum_a m_a\bm X_a}{M}.
+\end{equation}
+格子单位下，质量为 $m_a^\ell=m_a/(\rho_wA)$，剩余比例为 $s_a=m_a/(\rho_iA)$。
+各材料单元按等面积小方块计算自身惯量：
+\begin{equation}
+ I^\ell=\sum_a m_a^\ell\left(|\bm X_a|^2+s_a/6\right)
+       -M^\ell|\bar{\bm X}|^2.
+\end{equation}
+质心变化时，剩余材料保持同一刚体速度场，新质心速度随旋转速度作相应平移。
+消失材料的线动量和角动量直接移除。完全融化后质量、惯量和几何覆盖均为零。
+\src{simulator.py:_reduce_moving_body_mass_properties, _apply_moving_body_mass_properties}

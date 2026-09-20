@@ -1,0 +1,9 @@
+...............................                                          [100%]
+=============================== warnings summary ===============================
+../../.local/lib/python3.13/site-packages/taichi/_lib/utils.py:70
+  /home/georgelyu/.local/lib/python3.13/site-packages/taichi/_lib/utils.py:70: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.
+    return path.encode(locale.getdefaultlocale()[1])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/georgelyu/Repos/ProjectIcy/iceflow2d_v2/validation/pytest_cuda.xml -
+31 passed, 1 warning in 47.24s

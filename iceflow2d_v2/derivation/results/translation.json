@@ -1,0 +1,38 @@
+{
+  "rows": [
+    {
+      "n": 64,
+      "steps": 320,
+      "relative_solid_volume_error": 6.492131943147683e-08,
+      "relative_energy_error": 3.6647118880258253e-09,
+      "shape_l1_per_solid_volume": 0.1814762765623032,
+      "centroid_error_over_domain": 1.5370587883575388e-05,
+      "relative_geometric_inertia_error": 0.09327198536615944,
+      "maximum_absolute_temperature": 0.0
+    },
+    {
+      "n": 128,
+      "steps": 640,
+      "relative_solid_volume_error": 8.292967346168467e-08,
+      "relative_energy_error": 4.886860423930475e-09,
+      "shape_l1_per_solid_volume": 0.11217557619110816,
+      "centroid_error_over_domain": 3.614639449781513e-06,
+      "relative_geometric_inertia_error": 0.03501769555444256,
+      "maximum_absolute_temperature": 0.0,
+      "shape_order": 0.6940223701712371
+    },
+    {
+      "n": 256,
+      "steps": 1280,
+      "relative_solid_volume_error": 9.134491074647144e-08,
+      "relative_energy_error": 5.786366772126591e-09,
+      "shape_l1_per_solid_volume": 0.06912583931198102,
+      "centroid_error_over_domain": 4.231176867800256e-08,
+      "relative_geometric_inertia_error": 0.013480173423073838,
+      "maximum_absolute_temperature": 0.0,
+      "shape_order": 0.6984615969744239
+    }
+  ],
+  "passes": true,
+  "runtime_seconds": 2.6123092100024223
+}
