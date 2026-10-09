@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .config import IceFlowConfig, create_iceflow_config
+from .config import IceBodyConfig, IceFlowConfig, create_iceflow_config
 from .config import (
     LatticeScales,
     MovingBodyThermalScheme,
@@ -12,12 +12,14 @@ from .config import (
     ThermalBoundary,
     ThermalBoundarySet,
     ThermalConfig,
+    ThermalScheme,
 )
 
 if TYPE_CHECKING:
     from .simulator import IceFlow2D
 
 __all__ = [
+    "IceBodyConfig",
     "IceFlowConfig",
     "LatticeScales",
     "MovingBodyThermalScheme",
@@ -26,6 +28,7 @@ __all__ = [
     "ThermalBoundary",
     "ThermalBoundarySet",
     "ThermalConfig",
+    "ThermalScheme",
     "create_iceflow_config",
 ]
 

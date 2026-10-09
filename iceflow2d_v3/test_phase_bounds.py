@@ -1,4 +1,4 @@
-"""Local phase bounds and population consistency without a volume target."""
+"""Strict out-of-range phase repair without altering valid distributions."""
 
 import unittest
 
@@ -39,35 +39,94 @@ class PhaseBoundsCudaTests(unittest.TestCase):
         except RuntimeError as exc:
             raise unittest.SkipTest(str(exc)) from exc
 
-    def test_clipping_changes_only_unbounded_cells_and_updates_populations(self):
+    def test_clipping_changes_only_out_of_bounds_fluid_cells(self):
         simulation = IceFlow2D(_falling_config(phase_warmup_steps=10))
         active = (simulation.wall_mask.to_numpy() == 0) & (
             simulation.solid_mask.to_numpy() == 0
         )
         phase = simulation.water_phase.to_numpy()
         populations = simulation.phase_populations.to_numpy()
-        cells = [tuple(cell) for cell in np.argwhere(active)[:4]]
-        for cell, value in zip(cells, (-0.02, 1.02, 0.0001, 0.37)):
+        values = (
+            -0.02,
+            1.02,
+            -1.0e-7,
+            np.nextafter(np.float32(1.0), np.float32(2.0)),
+            0.0,
+            0.0001,
+            0.37,
+            0.999688,
+            1.0,
+        )
+        cells = [tuple(cell) for cell in np.argwhere(active)[: len(values)]]
+        for cell, value in zip(cells, values):
             # Keep the supplied zeroth moment consistent before the bound operation.
+            populations[cell][0] += value - float(phase[cell])
+            phase[cell] = value
+        # The function must not repair covered ice or wall reservoir values.
+        inactive_cells = [tuple(cell) for cell in np.argwhere(~active)[:2]]
+        for cell, value in zip(inactive_cells, (-0.25, 1.25)):
             populations[cell][0] += value - float(phase[cell])
             phase[cell] = value
         simulation.water_phase.from_numpy(phase)
         simulation.phase_populations.from_numpy(populations)
+        momentum_before = simulation.momentum_populations.to_numpy()
+        velocity_before = simulation.physical_velocity_lattice.to_numpy()
+        pressure_before = simulation.pressure_lattice.to_numpy()
         simulation._bound_water_phase()
         result = simulation.water_phase.to_numpy()
+        result_populations = simulation.phase_populations.to_numpy()
         np.testing.assert_allclose(
-            [result[cell] for cell in cells], (0.0, 1.0, 0.0, 0.37), atol=1e-7
+            [result[cell] for cell in cells], np.clip(values, 0.0, 1.0), atol=1e-7
         )
-        unchanged = active.copy()
-        for cell in cells[:3]:
-            unchanged[cell] = False
+        unchanged = ~active | ((phase >= 0.0) & (phase <= 1.0))
         np.testing.assert_array_equal(result[unchanged], phase[unchanged])
+        np.testing.assert_array_equal(
+            result_populations[unchanged], populations[unchanged]
+        )
         np.testing.assert_allclose(
-            simulation.phase_populations.to_numpy().sum(axis=-1)[active],
+            result_populations.sum(axis=-1)[active],
             result[active],
             atol=2e-7,
         )
+        np.testing.assert_array_equal(
+            simulation.momentum_populations.to_numpy(), momentum_before
+        )
+        np.testing.assert_array_equal(
+            simulation.physical_velocity_lattice.to_numpy(), velocity_before
+        )
+        np.testing.assert_array_equal(
+            simulation.pressure_lattice.to_numpy(), pressure_before
+        )
+        # Once repaired, a second call must be a complete no-op.
+        simulation._bound_water_phase()
+        np.testing.assert_array_equal(simulation.water_phase.to_numpy(), result)
+        np.testing.assert_array_equal(
+            simulation.phase_populations.to_numpy(), result_populations
+        )
         self.assertFalse(hasattr(simulation, "water_volume_target"))
+
+    def test_valid_endpoints_do_not_trigger_population_regularization(self):
+        simulation = IceFlow2D(_falling_config())
+        active = (simulation.wall_mask.to_numpy() == 0) & (
+            simulation.solid_mask.to_numpy() == 0
+        )
+        phase = simulation.water_phase.to_numpy()
+        populations = simulation.phase_populations.to_numpy()
+        cells = [tuple(cell) for cell in np.argwhere(active)[:2]]
+        for cell, value in zip(cells, (0.0, 1.0)):
+            phase[cell] = value
+            # Large cancelling populations used to trigger unrelated L1
+            # regularization despite the phase being exactly in range.
+            populations[cell] = (value, 4.0, 0.0, -4.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        simulation.water_phase.from_numpy(phase)
+        simulation.phase_populations.from_numpy(populations)
+
+        simulation._bound_water_phase()
+
+        np.testing.assert_array_equal(simulation.water_phase.to_numpy(), phase)
+        np.testing.assert_array_equal(
+            simulation.phase_populations.to_numpy(), populations
+        )
 
 
 if __name__ == "__main__":

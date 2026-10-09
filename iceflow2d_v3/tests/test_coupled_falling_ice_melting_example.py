@@ -149,11 +149,66 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
             self.assertEqual(boundary.kind, "adiabatic")
             self.assertEqual(boundary.value, 0.0)
         self.assertEqual(config.gravity, (0.0, -9.8))
-        self.assertEqual(config.sigma, 0.072)
+        self.assertEqual(config.sigma, 0.0)
         self.assertEqual(config.reference_velocity, 4.0)
-        self.assertEqual(config.air_interface_relaxation_time, 0.8)
-        self.assertEqual(args.end_time_s, 10.0)
+        self.assertIsNone(config.viscosity_water)
+        self.assertIsNone(config.viscosity_air)
+        self.assertEqual(config.momentum_collision_model, "cm_mrt")
+        self.assertEqual(config.phase_normal_epsilon, 1e-3)
+        self.assertEqual(config.cm_acoustic_relaxation_rate, 0.25)
+        self.assertEqual(args.end_time_s, 5.0)
         self.assertEqual(args.output_interval_s, 0.01)
+
+    def test_cli_selects_momentum_model_and_its_acoustic_default(self):
+        defaults = example.create_config().to_dict()
+        defaults.pop("momentum_collision_model")
+        defaults.pop("cm_acoustic_relaxation_rate")
+        for model in ("rm_mrt", "cm_mrt"):
+            with self.subTest(model=model):
+                args = example.parse_args(["--momentum-collision-model", model])
+                selected = example.create_config(args).to_dict()
+                self.assertEqual(selected.pop("momentum_collision_model"), model)
+                self.assertEqual(
+                    selected.pop("cm_acoustic_relaxation_rate"),
+                    0.25 if model == "cm_mrt" else 1.0,
+                )
+                self.assertEqual(selected, defaults)
+
+    def test_cli_selects_stability_controls_without_changing_physics(self):
+        defaults = example.create_config(example.parse_args([])).to_dict()
+        for epsilon, rate in ((0.0, 0.25), (1e-3, 1.0), (1e-3, 0.25)):
+            selected = example.create_config(
+                example.parse_args(
+                    [
+                        "--momentum-collision-model",
+                        "cm_mrt",
+                        "--phase-normal-epsilon",
+                        str(epsilon),
+                        "--cm-acoustic-relaxation-rate",
+                        str(rate),
+                    ]
+                )
+            ).to_dict()
+            expected = dict(
+                defaults,
+                momentum_collision_model="cm_mrt",
+                phase_normal_epsilon=epsilon,
+                cm_acoustic_relaxation_rate=rate,
+            )
+            self.assertEqual(selected, expected)
+        with self.assertRaisesRegex(
+            ValueError, "requires momentum_collision_model='cm_mrt'"
+        ):
+            example.create_config(
+                example.parse_args(
+                    [
+                        "--momentum-collision-model",
+                        "rm_mrt",
+                        "--cm-acoustic-relaxation-rate",
+                        "0.25",
+                    ]
+                )
+            )
 
     def test_initial_rigid_velocity_is_not_artificially_capped(self):
         args = example.parse_args(
@@ -178,8 +233,8 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
         self.assertAlmostEqual(scales.dt_s, 6.25e-6)
         self.assertEqual(targets[0], 0)
         self.assertEqual(targets[1], 1600)
-        self.assertEqual(targets[-1], 1600000)
-        self.assertEqual(len(targets), 1001)
+        self.assertEqual(targets[-1], 800000)
+        self.assertEqual(len(targets), 501)
         self.assertTrue(
             all(
                 target % config.thermal.update_interval_lbm_steps == 0
@@ -187,7 +242,7 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
             )
         )
         self.assertGreaterEqual(targets[-1] * scales.dt_s, args.end_time_s)
-        self.assertEqual(example._progress_chunk_steps(targets[-1]), 800)
+        self.assertEqual(example._progress_chunk_steps(targets[-1]), 400)
 
     def test_chunked_advance_updates_step_progress_before_a_field_frame(self):
         class FakeSimulation:
@@ -232,7 +287,17 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
                         example.parse_args(argv)
 
     def test_output_contract_contains_motion_and_temperature(self):
-        args = example.parse_args(["--save-npz"])
+        args = example.parse_args(
+            [
+                "--save-npz",
+                "--momentum-collision-model",
+                "cm_mrt",
+                "--phase-normal-epsilon",
+                "0.001",
+                "--cm-acoustic-relaxation-rate",
+                "0.25",
+            ]
+        )
         config = example.create_config(args)
         simulation = _FakeMovingSimulation(config)
         phase = np.zeros((config.nx, config.ny), dtype=np.float32)
@@ -286,10 +351,18 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
                 temperature_sequence=None,
             )
             metadata = json.loads((output / "metadata.json").read_text())
+            self.assertEqual(metadata["config"]["phase_normal_epsilon"], 1e-3)
+            self.assertEqual(metadata["config"]["cm_acoustic_relaxation_rate"], 0.25)
             self.assertTrue(removed.isdisjoint(metadata["results"]))
             self.assertNotIn("closed_bath_reference", metadata)
             self.assertIn("disappears", metadata["phase_change"])
             self.assertEqual(metadata["results"]["water_mean_temperature_c"], 35.0)
+            self.assertEqual(
+                metadata["viscosity"]["water_model"], "iapws_local_temperature"
+            )
+            self.assertEqual(
+                metadata["viscosity"]["air_model"], "sutherland_prescribed_temperature"
+            )
             self.assertTrue(metadata["field_output"]["raw_fields_retained"])
 
     def test_common_sequence_writers_accept_a_falling_melting_title(self):

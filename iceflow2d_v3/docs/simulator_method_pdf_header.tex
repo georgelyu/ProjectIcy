@@ -1,0 +1,15 @@
+% Pandoc / XeLaTeX header fragment; not a standalone document.
+\usepackage{fvextra}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+  commandchars=\\\{\},breaklines,breakanywhere,fontsize=\small}
+\fvset{breaklines=true,breakanywhere=true,fontsize=\small}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small IceFlow2D v3}
+\fancyhead[R]{\small 模拟器原理与逐步验证}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{15pt}
+\setlength{\emergencystretch}{3em}
+\allowdisplaybreaks
+\AtBeginDocument{\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}}

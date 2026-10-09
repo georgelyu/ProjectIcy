@@ -8,7 +8,6 @@ NumPy, and Matplotlib. Results must go into a new directory.
 ```bash
 python iceflow2d_v3/benchmarks/check_surface_vortex.py --case baseline --output iceflow2d_v3/outputs/iceflow2d_v3/my_checks/baseline
 python iceflow2d_v3/benchmarks/check_surface_vortex.py --case no_buoyancy --output iceflow2d_v3/outputs/iceflow2d_v3/my_checks/no_buoyancy
-python iceflow2d_v3/benchmarks/check_surface_vortex.py --case shear_065 --output iceflow2d_v3/outputs/iceflow2d_v3/my_checks/shear_065
 python iceflow2d_v3/benchmarks/check_surface_vortex.py --case width_4 --output iceflow2d_v3/outputs/iceflow2d_v3/my_checks/width_4
 python iceflow2d_v3/benchmarks/check_surface_vortex.py --case cutoff_1e5 --output iceflow2d_v3/outputs/iceflow2d_v3/my_checks/cutoff_1e5
 python iceflow2d_v3/benchmarks/check_surface_vortex.py --case grid_200 --output iceflow2d_v3/outputs/iceflow2d_v3/my_checks/grid_200
@@ -21,19 +20,20 @@ budgets are not continuous mechanical-energy integrals. NPZ axes are x,y.
 Do not confuse speed magnitude with positive horizontal velocity.
 
 The grid control preserves physical wall and diffuse-interface thickness,
-phase mobility, shear-viscosity floor, thermal cadence, angular damping time,
-and Smagorinsky filter scale. The sharp-ice stabilization stencil remains
-one cell, so its physical thickness changes. This is a sensitivity check,
-not proof of convergence. The 20260915 grid run failed at 2.0322125 s.
+phase mobility, thermal cadence, angular damping time, and the molecular
+viscosity laws. Artificial shear-viscosity floors and Smagorinsky viscosity
+have been removed, together with the `shear_065` control. This is a sensitivity
+check, not proof of convergence. Historical stability results used the previous
+viscosity model; the 20260915 grid run failed at 2.0322125 s.
 
 A complete checkpoint is saved at 1.8 s by the current diagnostic script.
 For paired restarts, `--source` must end in one of the case names above:
 
 ```bash
-python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/shear_065 --mode same
-python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/shear_065 --mode cutoff
-python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/shear_065 --mode flow_cutoff
-python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/shear_065 --mode gauge
+python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/baseline --mode same
+python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/baseline --mode cutoff
+python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/baseline --mode flow_cutoff
+python iceflow2d_v3/benchmarks/restart_surface_vortex.py --source iceflow2d_v3/outputs/iceflow2d_v3/my_checks/baseline --mode gauge
 ```
 
 `flow_cutoff` leaves the thermal wet-cell threshold at its original value.

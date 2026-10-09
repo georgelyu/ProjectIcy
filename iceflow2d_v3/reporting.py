@@ -47,6 +47,7 @@ class CoupledSnapshot:
     equivalent_uniform_melt_depth_m: float
     water_volume_current_cells: float
     water_mean_temperature_c: float
+    solid_body_id: np.ndarray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +88,20 @@ class TemperatureSequenceSummary:
     observed_max_c: float
     color_min_c: float
     color_max_c: float
+
+
+@dataclass(frozen=True, slots=True)
+class PhaseSequenceSummary:
+    """Files and the fixed [0, 1] scale used by the air-water phase field."""
+
+    frame_directory: str
+    frame_pattern: str
+    frame_count: int
+    animation: str
+    observed_min: float
+    observed_max: float
+    color_min: float = 0.0
+    color_max: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +263,11 @@ def _capture_snapshot(
         enthalpy_j_m3=thermal_fields["enthalpy_j_m3"],
         water_phase=phase,
         solid=solid,
+        solid_body_id=(
+            scalar_host(simulation.solid_body_id, np.int32)
+            if hasattr(simulation, "solid_body_id")
+            else np.where(solid != 0, 0, -1).astype(np.int32)
+        ),
         sdf=scalar_host(simulation.body_signed_distance_m, np.float32),
         phase_change_material=thermal_fields["phase_change_material"],
         velocity_lattice=momentum_velocity,
@@ -315,6 +335,14 @@ def snapshot_arrays(
         enthalpy_j_m3=np.stack([item.enthalpy_j_m3 for item in snapshots]),
         water_phase=np.stack([item.water_phase for item in snapshots]),
         solid=np.stack([item.solid for item in snapshots]),
+        solid_body_id=np.stack(
+            [
+                item.solid_body_id
+                if item.solid_body_id is not None
+                else np.where(item.solid != 0, 0, -1).astype(np.int32)
+                for item in snapshots
+            ]
+        ),
         sdf=np.stack([item.sdf for item in snapshots]),
         phase_change_material=np.stack(
             [item.phase_change_material for item in snapshots]
@@ -478,7 +506,7 @@ def _water_vorticity_s_1(
 
 
 def _contains_contour(values: np.ndarray, level: float) -> bool:
-    finite = np.asarray(values)[np.isfinite(values)]
+    finite = np.ma.masked_invalid(values).compressed()
     return bool(finite.size and np.min(finite) < level < np.max(finite))
 
 
@@ -521,12 +549,20 @@ def _flow_plot_geometry(config: IceFlowConfig) -> _FlowPlotGeometry:
     )
 
 
+def _flow_figure_size(config: IceFlowConfig) -> tuple[float, float]:
+    """Give wide baths a landscape canvas while preserving physical aspect."""
+    if config.nx <= config.ny:
+        return (6.4, 8.0)
+    return (10.0, max(4.2, 2.0 + 8.0 * config.ny / config.nx))
+
+
 def _draw_flow_boundaries(
     axis: object,
     snapshot: CoupledSnapshot,
     extent_m: tuple[float, float, float, float],
     *,
     water_surface_color: str,
+    water_phase: np.ndarray | None = None,
 ) -> None:
     signed_distance = getattr(snapshot, "sdf", None)
     if signed_distance is not None and _contains_contour(signed_distance, 0.0):
@@ -549,7 +585,27 @@ def _draw_flow_boundaries(
                 origin="lower",
                 extent=extent_m,
             )
-    water_phase = np.asarray(snapshot.water_phase)
+    bodies = getattr(snapshot, "bodies", ())
+    if len(bodies) > 1:
+        for body_id, body in enumerate(bodies):
+            if body.body_active:
+                axis.text(
+                    body.body_center_x_m,
+                    body.body_center_y_m,
+                    str(body_id),
+                    ha="center",
+                    va="center",
+                    color="white",
+                    fontsize=8,
+                    bbox=dict(
+                        boxstyle="round,pad=0.15",
+                        facecolor="#263238",
+                        alpha=0.65,
+                        edgecolor="none",
+                    ),
+                )
+    if water_phase is None:
+        water_phase = np.asarray(snapshot.water_phase)
     if _contains_contour(water_phase, 0.5):
         axis.contour(
             water_phase,
@@ -647,7 +703,9 @@ def _render_velocity_frame(
     colormap = plt.get_cmap("viridis").copy()
     colormap.set_bad("#aeb4ba")
 
-    figure, axis = plt.subplots(figsize=(6.4, 8.0), constrained_layout=True)
+    figure, axis = plt.subplots(
+        figsize=_flow_figure_size(config), constrained_layout=True
+    )
     speed_image = axis.imshow(
         plotted_speed,
         origin="lower",
@@ -845,7 +903,9 @@ def _render_vorticity_frame(
     colormap = plt.get_cmap("RdBu_r").copy()
     colormap.set_bad("#aeb4ba")
 
-    figure, axis = plt.subplots(figsize=(6.4, 8.0), constrained_layout=True)
+    figure, axis = plt.subplots(
+        figsize=_flow_figure_size(config), constrained_layout=True
+    )
     vorticity_image = axis.imshow(
         plotted_vorticity,
         origin="lower",
@@ -1017,30 +1077,28 @@ def _temperature_field_for_plot(
     *,
     frame_index: int,
 ) -> tuple[np.ma.MaskedArray, np.ndarray]:
-    """Return temperature masked to the water/ice thermal domain."""
+    """Return water temperature using the same visible domain as velocity."""
 
     expected_shape = (config.ny, config.nx)
     temperature_c = np.asarray(snapshot.temperature_c, dtype=np.float64)
     water_phase = np.asarray(snapshot.water_phase)
-    phase_change_material = np.asarray(snapshot.phase_change_material)
+    solid = np.asarray(snapshot.solid)
     if (
         temperature_c.shape != expected_shape
         or water_phase.shape != expected_shape
-        or phase_change_material.shape != expected_shape
+        or solid.shape != expected_shape
     ):
         raise ValueError(
             f"temperature frame {frame_index} fields must have shape {expected_shape}"
         )
 
-    visible = (~_static_wall_mask(config)) & (
-        (water_phase >= 0.5) | (phase_change_material != 0)
-    )
+    visible = (~_static_wall_mask(config)) & (solid == 0) & (water_phase >= 0.5)
     if not np.any(visible):
         raise ValueError(f"temperature frame {frame_index} has no visible cells")
     if not np.isfinite(temperature_c[visible]).all():
         raise ValueError(
             f"temperature frame {frame_index} contains NaN or infinity in "
-            "the water/ice domain"
+            "the visible water domain"
         )
     return np.ma.masked_where(~visible, temperature_c), visible
 
@@ -1080,7 +1138,9 @@ def _render_temperature_frame(
     colormap = plt.get_cmap("inferno").copy()
     colormap.set_bad("#aeb4ba")
 
-    figure, axis = plt.subplots(figsize=(6.4, 8.0), constrained_layout=True)
+    figure, axis = plt.subplots(
+        figsize=_flow_figure_size(config), constrained_layout=True
+    )
     temperature_image = axis.imshow(
         plotted_temperature,
         origin="lower",
@@ -1099,12 +1159,12 @@ def _render_temperature_frame(
     figure.colorbar(
         temperature_image,
         ax=axis,
-        label="temperature (°C), shared across all cases",
+        label="water temperature (°C), shared across all cases",
     )
     axis.set_xlabel("x (m)")
     axis.set_ylabel("y (m)")
     axis.set_title(
-        f"Temperature during {scenario_label}\n"
+        f"Water temperature during {scenario_label}\n"
         f"T_water,0={config.thermal.initial_water_temperature_c:g} degC, "
         f"t={snapshot.physical_time_s:.4f} s, "
         f"melted={100.0 * snapshot.melted_fraction:.2f}%"
@@ -1179,6 +1239,151 @@ class TemperatureSequenceStream:
                 observed_max_c=self.observed_max_c,
                 color_min_c=self.color_min_c,
                 color_max_c=self.color_max_c,
+            )
+            self._closed = True
+        assert self._summary is not None
+        return self._summary
+
+
+def _phase_field_for_plot(
+    config: IceFlowConfig,
+    snapshot: CoupledSnapshot,
+    *,
+    frame_index: int,
+) -> np.ma.MaskedArray:
+    """Show the full air-water phase, masking only ice and container walls."""
+
+    expected_shape = (config.ny, config.nx)
+    water_phase = np.asarray(snapshot.water_phase, dtype=np.float64)
+    solid = np.asarray(snapshot.solid)
+    if water_phase.shape != expected_shape or solid.shape != expected_shape:
+        raise ValueError(
+            f"phase frame {frame_index} fields must have shape {expected_shape}"
+        )
+    visible = (~_static_wall_mask(config)) & (solid == 0)
+    if not np.any(visible):
+        raise ValueError(f"phase frame {frame_index} has no visible cells")
+    if not np.isfinite(water_phase[visible]).all():
+        raise ValueError(
+            f"phase frame {frame_index} contains NaN or infinity in the fluid domain"
+        )
+    return np.ma.masked_where(~visible, water_phase)
+
+
+def _render_phase_frame(
+    path: Path,
+    config: IceFlowConfig,
+    snapshot: CoupledSnapshot,
+    *,
+    frame_index: int,
+    scenario_label: str = DEFAULT_SCENARIO_LABEL,
+) -> tuple[float, float]:
+    """Render one air-water phase frame and return its observed fluid range."""
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    phase = _phase_field_for_plot(config, snapshot, frame_index=frame_index)
+    extent_m = (0.0, config.nx * config.dx, 0.0, config.ny * config.dx)
+    colormap = plt.get_cmap("Blues").copy()
+    colormap.set_bad("#aeb4ba")
+
+    figure, axis = plt.subplots(
+        figsize=_flow_figure_size(config), constrained_layout=True
+    )
+    phase_image = axis.imshow(
+        phase,
+        origin="lower",
+        extent=extent_m,
+        cmap=colormap,
+        vmin=0.0,
+        vmax=1.0,
+        interpolation="nearest",
+        aspect="equal",
+    )
+    _draw_flow_boundaries(
+        axis,
+        snapshot,
+        extent_m,
+        water_surface_color="black",
+        water_phase=phase,
+    )
+    figure.colorbar(
+        phase_image,
+        ax=axis,
+        label=r"water phase $\phi$ (0: air, 1: water)",
+    )
+    axis.legend(
+        handles=[Patch(facecolor="#aeb4ba", label="Ice / walls")],
+        loc="upper right",
+    )
+    axis.set_xlabel("x (m)")
+    axis.set_ylabel("y (m)")
+    axis.set_title(
+        f"Air-water phase during {scenario_label}\n"
+        f"T_water,0={config.thermal.initial_water_temperature_c:g} degC, "
+        f"t={snapshot.physical_time_s:.4f} s, "
+        f"melted={100.0 * snapshot.melted_fraction:.2f}%"
+    )
+    figure.savefig(path, dpi=170)
+    plt.close(figure)
+    return float(phase.min()), float(phase.max())
+
+
+class PhaseSequenceStream:
+    """Write air-water phase PNG/GIF frames incrementally with fixed limits."""
+
+    def __init__(
+        self,
+        output_dir: Path,
+        config: IceFlowConfig,
+        *,
+        scenario_label: str = DEFAULT_SCENARIO_LABEL,
+    ) -> None:
+        self.config = config
+        self.scenario_label = str(scenario_label)
+        self.frame_directory = output_dir / "phase_frames"
+        self.frame_directory.mkdir(parents=True, exist_ok=True)
+        for stale_frame in self.frame_directory.glob("frame_*.png"):
+            stale_frame.unlink()
+        self.animation_path = output_dir / "phase_field.gif"
+        self._gif = _StreamingGif(self.animation_path)
+        self.frame_count = 0
+        self.observed_min = math.inf
+        self.observed_max = -math.inf
+        self._closed = False
+        self._summary: PhaseSequenceSummary | None = None
+
+    def append(self, snapshot: CoupledSnapshot) -> Path:
+        if self._closed:
+            raise RuntimeError("cannot append to a closed phase sequence")
+        frame_path = self.frame_directory / f"frame_{self.frame_count:05d}.png"
+        observed_min, observed_max = _render_phase_frame(
+            frame_path,
+            self.config,
+            snapshot,
+            frame_index=self.frame_count,
+            scenario_label=self.scenario_label,
+        )
+        self._gif.append_png(frame_path)
+        self.observed_min = min(self.observed_min, observed_min)
+        self.observed_max = max(self.observed_max, observed_max)
+        self.frame_count += 1
+        return frame_path
+
+    def close(self) -> PhaseSequenceSummary:
+        if not self._closed:
+            self._gif.close()
+            self._summary = PhaseSequenceSummary(
+                frame_directory=self.frame_directory.name,
+                frame_pattern="frame_*.png",
+                frame_count=self.frame_count,
+                animation=self.animation_path.name,
+                observed_min=self.observed_min,
+                observed_max=self.observed_max,
             )
             self._closed = True
         assert self._summary is not None

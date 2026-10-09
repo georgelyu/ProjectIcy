@@ -67,7 +67,6 @@ def _falling_config(**overrides):
         ice_initial_angle=math.radians(5.0),
         ice_fixed=False,
         rigid_boundary_scheme="unified",
-        air_interface_relaxation_time=0.8,
         thermal=_thermal_config(),
     )
     values.update(overrides)
@@ -80,10 +79,12 @@ def _assert_body_inside(test: unittest.TestCase, simulation: IceFlow2D) -> None:
     cosine = abs(math.cos(angle))
     sine = abs(math.sin(angle))
     extent_x = (
-        cosine * simulation._body_half_width + sine * simulation._body_half_height
+        cosine * simulation.config.ice_width / 2
+        + sine * simulation.config.ice_height / 2
     )
     extent_y = (
-        sine * simulation._body_half_width + cosine * simulation._body_half_height
+        sine * simulation.config.ice_width / 2
+        + cosine * simulation.config.ice_height / 2
     )
     boundary = simulation.config.boundary_cells
     tolerance = 2.0e-5
@@ -122,13 +123,11 @@ class IceFlowConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex((TypeError, ValueError), message):
                     _falling_config(**overrides)
 
-    def test_numerical_guards_remain_bounded(self):
-        for value in (0.5, 2.01, float("nan")):
-            with self.subTest(air_interface_relaxation_time=value):
-                with self.assertRaisesRegex(
-                    ValueError, "air_interface_relaxation_time"
-                ):
-                    _falling_config(air_interface_relaxation_time=value)
+    def test_removed_artificial_viscosity_options_are_rejected(self):
+        for name in ("air_interface_relaxation_time", "smagorinsky_constant"):
+            with self.subTest(option=name):
+                with self.assertRaisesRegex(TypeError, "Unknown IceFlowConfig option"):
+                    _falling_config(**{name: 0.8})
 
     def test_initial_geometry_respects_the_physical_walls(self):
         with self.assertRaisesRegex(ValueError, "side wall"):

@@ -33,7 +33,6 @@ from iceflow2d_v3.examples.coupled_falling_ice_melting_2d import (  # noqa: E402
 CASES = [
     "baseline",
     "no_buoyancy",
-    "shear_065",
     "width_4",
     "grid_200",
     "cutoff_1e5",
@@ -41,6 +40,8 @@ CASES = [
 
 
 def configuration(case):
+    if case not in CASES:
+        raise ValueError(f"Unknown current solver control: {case}")
     args = []
     if case == "no_buoyancy":
         args += ["--thermal-expansion-water-1-k", "0"]
@@ -48,7 +49,7 @@ def configuration(case):
         args += ["--interface-width", "4"]
     if case == "grid_200":
         # Keep physical geometry, interface width, mobility, thermal interval,
-        # phase warmup time, angular damping time and shear viscosity floor.
+        # phase warmup time and angular damping time.
         args += [
             "--resolution-x",
             "200",
@@ -68,20 +69,22 @@ def configuration(case):
     cfg = create_config(parse_args(args))
     if case == "cutoff_1e5":
         cfg = replace(cfg, water_phase_cutoff=1e-5)
-    if case == "shear_065":
-        cfg = replace(cfg, air_interface_relaxation_time=0.65)
     if case == "grid_200":
         cfg = replace(
             cfg,
-            air_interface_relaxation_time=1.1,
             angular_damping=0.999**0.5,
-            smagorinsky_constant=0.2,
         )
     return cfg
 
 
+def sample_force(s, out):
+    # Geometry and phase may have advanced since the preceding collision.
+    s._prepare_capillary_stress()
+    _sample_force(s, out)
+
+
 @ti.kernel
-def sample_force(s: ti.template(), out: ti.types.ndarray(dtype=ti.f32, ndim=3)):
+def _sample_force(s: ti.template(), out: ti.types.ndarray(dtype=ti.f32, ndim=3)):
     for i, j in s.water_phase:
         if s._is_fluid_cell(i, j):
             ph = ti.min(1.0, ti.max(0.0, s.water_phase[i, j]))
@@ -101,24 +104,11 @@ def sample_force(s: ti.template(), out: ti.types.ndarray(dtype=ti.f32, ndim=3)):
                 )
                 * g
             )
-            data = s._fluid_force_viscosity_and_gradient(i, j)
+            data = s._fluid_force_and_gradient(i, j)
             ft = rho * ti.Vector([data[0], data[1]])
             fc = ft - fg - fb
-            near = 0.0
-            for di, dj in ti.static(ti.ndrange((-1, 2), (-1, 2))):
-                ni, nj = i + di, j + dj
-                if 0 <= ni < s.nx and 0 <= nj < s.ny:
-                    if s.solid_mask[ni, nj] != 0:
-                        near = 1.0
-            nu = (
-                ph * s._water_viscosity_lattice
-                + (1.0 - ph) * s._air_viscosity_lattice
-                + data[2]
-            )
-            tau = ti.max(
-                0.5 + 3.0 * nu,
-                0.5 + (s._air_interface_relaxation_time - 0.5) * ti.max(1.0 - ph, near),
-            )
+            nu = s._fluid_kinematic_viscosity_lattice(i, j)
+            tau = 0.5 + 3.0 * nu
             out[i, j, 0] = fg.x
             out[i, j, 1] = fg.y
             out[i, j, 2] = fb.x
@@ -128,7 +118,6 @@ def sample_force(s: ti.template(), out: ti.types.ndarray(dtype=ti.f32, ndim=3)):
             out[i, j, 6] = tau
             out[i, j, 7] = temp
             out[i, j, 8] = rho
-            out[i, j, 9] = data[2]
 
 
 def fields(s):
@@ -308,8 +297,7 @@ def main():
             "Production solver unchanged. Diagnostic stages preserve production order.",
             "Force sampled using current phi/T; production stored half-force velocity uses preceding collision force.",
             "Stage budgets sample one full thermal cycle before each 0.1 s output; not continuous time integrals.",
-            "Grid control preserves physical interface width, mobility, thermal cadence, damping time and shear viscosity floor.",
-            "Grid control retains one-cell ice stabilization stencil, so its physical thickness halves.",
+            "Grid control preserves physical interface width, mobility, thermal cadence, damping time and molecular viscosity laws.",
             "NPZ array order x,y; force densities N/m3, pressure Pa, velocity m/s, energy per out-of-plane metre.",
             "Map names stage_delta_ke_* are energy except __delta_phi (dimensionless) and __delta_ux/__delta_uy (m/s).",
         ],
@@ -353,7 +341,7 @@ def main():
             hw.writerow(_history_row(snap))
             hfile.flush()
             state = fields(s)
-            force = np.zeros((s.nx, s.ny, 10), dtype=np.float32)
+            force = np.zeros((s.nx, s.ny, 9), dtype=np.float32)
             sample_force(s, force)
             force[:, :, :6] *= cfg.rho_water * cfg.dx / dt**2
             metric_rows.append(diagnostics(s, state, force))
@@ -379,7 +367,6 @@ def main():
                     force_buoyancy=force[:, :, 2:4],
                     force_capillary=force[:, :, 4:6],
                     shear_tau=force[:, :, 6],
-                    sgs_nu_lattice=force[:, :, 9],
                     wall=s.wall_mask.to_numpy(),
                     **{"stage_delta_ke_" + k: v for k, v in maps.items()},
                 )

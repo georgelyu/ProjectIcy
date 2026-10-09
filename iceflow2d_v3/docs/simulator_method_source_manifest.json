@@ -1,0 +1,676 @@
+{
+  "snapshot_date": "2026-10-08",
+  "time_zone": "Asia/Shanghai",
+  "scope": "current workspace contents including uncommitted changes",
+  "sources": [
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "sha256": "6949c417e5ebbc58678f93c3644247aa4458da79583089ac7cbbbf6fae402866"
+    },
+    {
+      "path": "iceflow2d_v3/config.py",
+      "sha256": "e27a4cf6c8a86f1d27e1b29f3159030856c764233caa2fde2e16dba787386fea"
+    },
+    {
+      "path": "iceflow2d_v3/lattice.py",
+      "sha256": "d598ec6d1e4f0ffa4528a4b37f2a5dd0dd6af3a936f0d6147e3719a6a47d3b5f"
+    },
+    {
+      "path": "iceflow2d_v3/body_state.py",
+      "sha256": "e3e93d6fafbde8254532146046924b96b1ad7ffbc5356826459c21fd90a7b6a0"
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "sha256": "63bd534e9e7e1c8aa20668a9cdb814c9ca4c8758ab5ce512b65f0c0be03d18b2"
+    },
+    {
+      "path": "iceflow2d_v3/stability_options.py",
+      "sha256": "65ee8776ff205413d308534b00595255621f438c530020404f5e4635b789fd83"
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "sha256": "9ebfb0cb2ca33306366592377f6ba85ad7404ec33f4e1d4385bf765498242ea3"
+    },
+    {
+      "path": "iceflow2d_v3/viscosity.py",
+      "sha256": "69c215e4d9ee1759e97e05f31e3d70c6e83091d21c682599527bfd133caf7208"
+    },
+    {
+      "path": "iceflow2d_v3/examples/coupled_falling_ice_melting_2d.py",
+      "sha256": "5a4cf9b61a094d4aae40f8c061ce05a391bb8821cd18d21bf9281499baabbc9a"
+    },
+    {
+      "path": "iceflow2d_v3/examples/four_falling_ice_melting_2d.py",
+      "sha256": "3f3c4659a543a831eef9e3140c9a192dd18322dd858f5097e16b57f319909279"
+    }
+  ],
+  "simulator_callable_count": 124,
+  "methods": [
+    {
+      "owner": "_DerivedField",
+      "name": "__init__",
+      "definition_line": 78
+    },
+    {
+      "owner": "_DerivedField",
+      "name": "__getitem__",
+      "definition_line": 86
+    },
+    {
+      "owner": "_DerivedField",
+      "name": "__setitem__",
+      "definition_line": 99
+    },
+    {
+      "owner": "_DerivedField",
+      "name": "to_numpy",
+      "definition_line": 104
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "__init__",
+      "definition_line": 128
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "maximum_advection_time_step_s",
+      "definition_line": 280
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_validate_substep_count",
+      "definition_line": 290
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "required_advection_substeps",
+      "definition_line": 315
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "required_diffusion_substeps",
+      "definition_line": 339
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "initialize",
+      "definition_line": 351
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "advance_fast",
+      "definition_line": 367
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "advance_slow",
+      "definition_line": 396
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "synchronize_water_aperture",
+      "definition_line": 440
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_initialize_body_state",
+      "definition_line": 458
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_initialize_water_state",
+      "definition_line": 472
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_build_phase_aperture_targets",
+      "definition_line": 501
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_apply_phase_aperture_transfer",
+      "definition_line": 547
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_accumulate_body_conduction",
+      "definition_line": 560
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_compute_water_conduction_flux_x",
+      "definition_line": 587
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_compute_water_advection_flux_x",
+      "definition_line": 685
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_compute_water_conduction_flux_y",
+      "definition_line": 736
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_compute_water_advection_flux_y",
+      "definition_line": 834
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_update_water_advection",
+      "definition_line": 885
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_update_water_conduction",
+      "definition_line": 904
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_exchange_interface_heat",
+      "definition_line": 916
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_apply_body_heat_and_phase_change",
+      "definition_line": 1057
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_body_fraction_at",
+      "definition_line": 1074
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_body_temperature_at",
+      "definition_line": 1084
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_water_temperature_at",
+      "definition_line": 1094
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_body_grid_coordinates",
+      "definition_line": 1104
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_water_aperture_target",
+      "definition_line": 1133
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_body_fraction_numpy",
+      "definition_line": 1151
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_body_temperature_numpy",
+      "definition_line": 1160
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "_water_temperature_numpy",
+      "definition_line": 1173
+    },
+    {
+      "owner": "MovingBodyThermal2D",
+      "name": "sample_world_fields",
+      "definition_line": 1185
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "__init__",
+      "definition_line": 1269
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "step",
+      "definition_line": 1535
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_advance_fluid",
+      "definition_line": 1549
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_advance_body",
+      "definition_line": 1558
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_refresh_fluid_domain",
+      "definition_line": 1562
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_advance_thermal",
+      "definition_line": 1568
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "physical_time_s",
+      "definition_line": 1579
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_advance_moving_thermal_fast",
+      "definition_line": 1582
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_advance_moving_thermal_slow",
+      "definition_line": 1598
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_refresh_eroded_body",
+      "definition_line": 1610
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_is_fluid_cell",
+      "definition_line": 1621
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_measure_water_outflow_rate",
+      "definition_line": 1625
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_collect_thermal_stability_metrics",
+      "definition_line": 1661
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_check_thermal_advection_stability",
+      "definition_line": 1690
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_validate_thermal_advection_velocity",
+      "definition_line": 1702
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_body_velocity_at",
+      "definition_line": 1770
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_cell_point",
+      "definition_line": 1776
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_phase_sample_inside_walls",
+      "definition_line": 1780
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_ice_mirror_sample",
+      "definition_line": 1801
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_ice_phase_ghost",
+      "definition_line": 1833
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_phase_neighbor",
+      "definition_line": 1854
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_body_local_coordinates",
+      "definition_line": 1882
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_nearest_body_index",
+      "definition_line": 1898
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_sample_body_fraction",
+      "definition_line": 1915
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_calculate_moving_body_fraction",
+      "definition_line": 1947
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_commit_moving_body_raster",
+      "definition_line": 1959
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_initialize_body",
+      "definition_line": 1967
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_initialize_geometry",
+      "definition_line": 1989
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_initialize_fluid",
+      "definition_line": 1996
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_build_hydrostatic_reference",
+      "definition_line": 2028
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_initialize_hydrostatic_equilibrium",
+      "definition_line": 2067
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_initialize_moving_body_geometry",
+      "definition_line": 2101
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_update_solid_mask",
+      "definition_line": 2107
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_update_moving_body_mass_properties",
+      "definition_line": 2124
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_reduce_moving_body_mass_properties",
+      "definition_line": 2131
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_apply_moving_body_mass_properties",
+      "definition_line": 2161
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_extrapolate_exposed_fluid",
+      "definition_line": 2199
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_refill_changed_nodes",
+      "definition_line": 2245
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_prepare_capillary_stress",
+      "definition_line": 2297
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_phase_central_gradient",
+      "definition_line": 2336
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_capillary_traction",
+      "definition_line": 2348
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_ice_capillary_stress",
+      "definition_line": 2357
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_capillary_force_density",
+      "definition_line": 2390
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_fluid_kinematic_viscosity_lattice",
+      "definition_line": 2438
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_fluid_force_and_gradient",
+      "definition_line": 2454
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_collide_momentum",
+      "definition_line": 2497
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_collide_momentum_kernel",
+      "definition_line": 2513
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_collide_phase",
+      "definition_line": 2777
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_stream",
+      "definition_line": 2938
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_stream_phase_only",
+      "definition_line": 2980
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_update_streamed_macroscopic_fields",
+      "definition_line": 3016
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_update_streamed_phase",
+      "definition_line": 3048
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_warm_start_phase",
+      "definition_line": 3059
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_update_pressure",
+      "definition_line": 3066
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_prepare_moving_body_contact_support",
+      "definition_line": 3097
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_prepare_moving_body_contact_support_kernel",
+      "definition_line": 3111
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_reset_moving_body_contact_support",
+      "definition_line": 3123
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_reduce_moving_body_contact_extrema",
+      "definition_line": 3130
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_finalize_moving_body_contact_support",
+      "definition_line": 3157
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_integrate_rigid_ice",
+      "definition_line": 3164
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_project_moving_body_inside_container",
+      "definition_line": 3215
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_solve_contact_and_rasterize",
+      "definition_line": 3286
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_reduce_phase_change_geometry_volume",
+      "definition_line": 3330
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "phase_change_solid_volume_cells",
+      "definition_line": 3337
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "phase_change_geometry_volume_cells",
+      "definition_line": 3340
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_bound_water_phase",
+      "definition_line": 3344
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "sample_thermal_fields",
+      "definition_line": 3369
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_wall_at",
+      "definition_line": 3373
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_wall_numpy",
+      "definition_line": 3383
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_signed_distance_at",
+      "definition_line": 3394
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_signed_distance_numpy",
+      "definition_line": 3402
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_reference_pressure_at",
+      "definition_line": 3412
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_reference_density_at",
+      "definition_line": 3416
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_physical_velocity_at",
+      "definition_line": 3420
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_physical_velocity_numpy",
+      "definition_line": 3429
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_read_body_initial_mass_lattice",
+      "definition_line": 3440
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_read_body_active",
+      "definition_line": 3445
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_read_cumulative_melted_mass_lattice",
+      "definition_line": 3450
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_read_phase_change_initial_solid_volume",
+      "definition_line": 3455
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_read_phase_change_current_solid_volume",
+      "definition_line": 3464
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_read__body_contact_geometry_active",
+      "definition_line": 3473
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_body_center_at",
+      "definition_line": 3482
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_body_center_numpy",
+      "definition_line": 3492
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_set_body_center_host",
+      "definition_line": 3505
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_body_level_at",
+      "definition_line": 3521
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_cut_link_fraction",
+      "definition_line": 3528
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_prepare_momentum_cut_links",
+      "definition_line": 3545
+    },
+    {
+      "owner": "IceFlow2D",
+      "name": "_allocate_populations",
+      "definition_line": 3661
+    }
+  ],
+  "validation": {
+    "selected_existing_tests": {
+      "passed": 50,
+      "failed": 1,
+      "skipped": 0,
+      "failure": "StabilityConfigurationTests.test_options_default_off_and_are_independent",
+      "reason": "example CLI defaults to consistent_flux while test expects legacy",
+      "command": "python -m pytest -q iceflow2d_v3/test_iceflow.py iceflow2d_v3/test_phase_bounds.py iceflow2d_v3/test_thermal_coupling.py iceflow2d_v3/test_thermal_d2q5.py iceflow2d_v3/test_stability_options.py iceflow2d_v3/test_physical_viscosity.py iceflow2d_v3/test_momentum_collision.py::MomentumCollisionTests::test_both_frames_match_matrix_collision_with_full_source iceflow2d_v3/test_capillary_coupling.py::CapillaryCouplingTests::test_flat_interface_has_no_capillary_acceleration iceflow2d_v3/test_capillary_coupling.py::CapillaryCouplingTests::test_ice_receives_opposite_capillary_force_and_torque iceflow2d_v3/test_multibody.py::MultiBodyCudaTests::test_shared_water_heat_is_limited_once_and_split_symmetrically iceflow2d_v3/test_multibody.py::MultiBodyCudaTests::test_contact_separates_eroded_bodies_and_balances_impulses iceflow2d_v3/test_multibody.py::MultiBodyCudaTests::test_unresolved_remnant_freezes_only_its_own_motion iceflow2d_v3/test_gpu_state.py::DerivedGpuStateTests::test_invalid_step_counts_do_not_advance_state"
+    },
+    "document_example": "passed on CUDA; state identities, eight-step thermal schedule and split calls"
+  }
+}

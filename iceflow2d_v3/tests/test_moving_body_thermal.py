@@ -111,10 +111,8 @@ class ThermalMaterialAndBoundaryTests(unittest.TestCase):
         for name in (
             "specific_heat_water_j_kg_k",
             "specific_heat_ice_j_kg_k",
-            "specific_heat_air_j_kg_k",
             "conductivity_water_w_m_k",
             "conductivity_ice_w_m_k",
-            "conductivity_air_w_m_k",
             "latent_heat_j_kg",
         ):
             value = getattr(properties, name)

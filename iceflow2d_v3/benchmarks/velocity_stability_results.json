@@ -1,0 +1,80 @@
+{
+  "baseline_commit": "2f728ea79f7b074ede0df3eec5d15e74e4ffb800",
+  "resolution": [
+    100,
+    200
+  ],
+  "dt_s": 6.25e-06,
+  "sampling_steps": 32,
+  "comparison_time_window_s": [
+    0.06,
+    0.2
+  ],
+  "metric": "Temporal mean and p95 of sqrt(mean_current_wet(|u(t)-u(t-32*dt)|^2)); u is physical velocity in m/s.",
+  "cases": {
+    "baseline": {
+      "end_time_s": 0.2,
+      "early_mean_velocity_delta_rms_m_s": 0.010872947710789302,
+      "early_p95_velocity_delta_rms_m_s": 0.023559174441341296,
+      "early_peak_water_speed_m_s": 0.5829043979905639,
+      "entire_run_peak_water_speed_m_s": 0.5829043979905639,
+      "final_melted_fraction": 0.06286953147099228,
+      "error": null
+    },
+    "no_melt": {
+      "end_time_s": 0.2,
+      "early_mean_velocity_delta_rms_m_s": 0.00016439165982295707,
+      "early_p95_velocity_delta_rms_m_s": 0.00027966764876885314,
+      "early_peak_water_speed_m_s": 0.15273825885765321,
+      "entire_run_peak_water_speed_m_s": 0.15273825885765321,
+      "final_melted_fraction": -7.327471962526033e-15,
+      "error": null
+    },
+    "no_sigma": {
+      "end_time_s": 0.2,
+      "early_mean_velocity_delta_rms_m_s": 0.00038537576739975895,
+      "early_p95_velocity_delta_rms_m_s": 0.0005835998756832721,
+      "early_peak_water_speed_m_s": 0.19084565686044544,
+      "entire_run_peak_water_speed_m_s": 0.19084565686044544,
+      "final_melted_fraction": 0.05809394901017406,
+      "error": null
+    },
+    "no_motion": {
+      "end_time_s": 0.2,
+      "early_mean_velocity_delta_rms_m_s": 7.924951104848893e-07,
+      "early_p95_velocity_delta_rms_m_s": 1.4370454538679978e-06,
+      "early_peak_water_speed_m_s": 0.005698638465118719,
+      "entire_run_peak_water_speed_m_s": 0.005698638465118719,
+      "final_melted_fraction": 0.00036718393819357154,
+      "error": null
+    },
+    "no_body": {
+      "end_time_s": 0.2,
+      "early_mean_velocity_delta_rms_m_s": 8.535718793900198e-08,
+      "early_p95_velocity_delta_rms_m_s": 1.9073207786535637e-07,
+      "early_peak_water_speed_m_s": 0.0005998358725537539,
+      "entire_run_peak_water_speed_m_s": 0.0005998358725537539,
+      "final_melted_fraction": 1.0,
+      "error": null
+    },
+    "ambient_refill": {
+      "end_time_s": 0.2,
+      "early_mean_velocity_delta_rms_m_s": 0.00017259280690404407,
+      "early_p95_velocity_delta_rms_m_s": 0.000283424126586414,
+      "early_peak_water_speed_m_s": 0.15265972527550228,
+      "entire_run_peak_water_speed_m_s": 0.15265972527550228,
+      "final_melted_fraction": 0.06295493750309944,
+      "error": null
+    },
+    "refactored": {
+      "end_time_s": 4.0,
+      "early_mean_velocity_delta_rms_m_s": 0.00014244499792575858,
+      "early_p95_velocity_delta_rms_m_s": 0.00024019691157903055,
+      "early_peak_water_speed_m_s": 0.1519374596340101,
+      "entire_run_peak_water_speed_m_s": 0.1519374596340101,
+      "final_melted_fraction": 0.7860726918015165,
+      "error": null
+    }
+  },
+  "mean_fluctuation_reduction_percent": 98.68991370404173
+}

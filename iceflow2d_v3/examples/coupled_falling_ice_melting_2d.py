@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
 from iceflow2d_v3.config import IceFlowConfig, create_iceflow_config  # noqa: E402
 from iceflow2d_v3 import reporting  # noqa: E402
 from iceflow2d_v3.config import (  # noqa: E402
+    DEFAULT_REFERENCE_VELOCITY_M_S,
     LatticeScales,
     PhaseChangeProperties,
     ThermalBoundarySet,
@@ -39,9 +40,6 @@ from iceflow2d_v3.config import (  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = "iceflow2d_v3/outputs/iceflow2d_v3/coupled_falling_ice_melting_2d"
 DEFAULT_BOUNDARY_CELLS = 3
-# Representing 4 m/s by 0.1 LU keeps the first-contact transient in the
-# low-Mach lattice envelope at the default 100 x 200 resolution.
-DEFAULT_REFERENCE_VELOCITY_M_S = 4.0
 DEFAULT_THERMAL_UPDATE_INTERVAL = 8
 DEFAULT_VELOCITY_VISUALIZATION_MAX_M_S = 0.1
 DEFAULT_VORTICITY_VISUALIZATION_MAX_S_1 = 250.0
@@ -67,6 +65,8 @@ class FallingMeltingSnapshot:
     body_solid_center_local_x_cells: float
     body_solid_center_local_y_cells: float
     cumulative_melted_mass_lattice: float
+    body_melted_fraction: float = 0.0
+    bodies: tuple[FallingMeltingSnapshot, ...] = ()
 
     def __getattr__(self, name: str) -> Any:
         # The common visualization writers consume CoupledSnapshot fields by
@@ -89,6 +89,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--water-level-m", type=float, default=0.030)
     parser.add_argument("--ice-size-m", type=float, default=0.008)
     parser.add_argument("--ice-angle-degrees", type=float, default=5.0)
+    parser.add_argument(
+        "--ice-centers-x-m",
+        type=float,
+        nargs="+",
+        default=None,
+        help="initial horizontal centers of independent ice blocks, in metres",
+    )
     parser.add_argument(
         "--drop-height-m",
         type=float,
@@ -114,8 +121,43 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_REFERENCE_VELOCITY_M_S,
         help="physical speed represented by the fixed reference speed 0.1 LU",
     )
+    parser.add_argument(
+        "--momentum-collision-model",
+        choices=("rm_mrt", "cm_mrt", "cm_hrr"),
+        default="cm_mrt",
+        help="pressure momentum collision: cm_mrt (default), rm_mrt, or experimental cm_hrr",
+    )
 
-    parser.add_argument("--end-time-s", type=float, default=10.0)
+    parser.add_argument(
+        "--hrr-kinetic-blend",
+        type=float,
+        default=0.0,
+        help="cm_hrr kinetic stress fraction in [0,1]; 0 reconstructs from velocity gradients",
+    )
+    parser.add_argument(
+        "--phase-momentum-coupling",
+        choices=("legacy", "consistent_flux"),
+        default="consistent_flux",
+        help="experimental conservative phase mass-flux momentum correction",
+    )
+    parser.add_argument(
+        "--exposed-node-refill",
+        choices=("equilibrium", "non_equilibrium"),
+        default="equilibrium",
+        help="extrapolate non-equilibrium stress into newly exposed fluid",
+    )
+    parser.add_argument(
+        "--cm-acoustic-relaxation-rate",
+        type=float,
+        default=None,
+        help=(
+            "CM-MRT trace/22 or CM-HRR trace/pressure-mode relaxation rate in (0, 2); "
+            "default 0.25 for cm_mrt adds acoustic damping without changing "
+            "shear viscosity; 1 restores the original collision and is used for rm_mrt"
+        ),
+    )
+
+    parser.add_argument("--end-time-s", type=float, default=5.0)
     parser.add_argument(
         "--output-interval-s",
         type=float,
@@ -148,19 +190,33 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--density-water", type=float, default=1000.0)
     parser.add_argument("--density-ice", type=float, default=917.0)
     parser.add_argument("--density-air", type=float, default=1.25)
-    parser.add_argument("--kinematic-viscosity-water", type=float, default=1.0e-6)
-    parser.add_argument("--kinematic-viscosity-air", type=float, default=1.5e-5)
-    parser.add_argument("--surface-tension", type=float, default=0.072)
+    parser.add_argument(
+        "--kinematic-viscosity-water",
+        type=float,
+        default=None,
+        help="constant water viscosity in m^2/s; default uses local-temperature IAPWS mu(T)/rho",
+    )
+    parser.add_argument(
+        "--kinematic-viscosity-air",
+        type=float,
+        default=None,
+        help="constant air viscosity in m^2/s; default uses Sutherland mu(T_air)/rho",
+    )
+    parser.add_argument("--surface-tension", type=float, default=0.0)
 
     parser.add_argument("--water-specific-heat", type=float, default=4186.0)
     parser.add_argument("--ice-specific-heat", type=float, default=2100.0)
-    parser.add_argument("--air-specific-heat", type=float, default=1005.0)
     parser.add_argument("--water-conductivity", type=float, default=0.60)
     parser.add_argument("--ice-conductivity", type=float, default=2.20)
-    parser.add_argument("--air-conductivity", type=float, default=0.026)
     parser.add_argument("--latent-heat", type=float, default=334000.0)
 
     parser.add_argument("--phase-warmup-steps", type=int, default=500)
+    parser.add_argument(
+        "--thermal-scheme",
+        choices=("enthalpy_fv", "enthalpy_d2q5"),
+        default="enthalpy_fv",
+        help="bulk heat solver: finite volume (default) or D2Q5 distributions",
+    )
     parser.add_argument(
         "--thermal-update-interval",
         type=int,
@@ -172,12 +228,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--interface-width", type=float, default=5.0)
     parser.add_argument("--mobility", type=float, default=0.1)
+    parser.add_argument(
+        "--phase-normal-epsilon",
+        type=float,
+        default=1.0e-3,
+        help=(
+            "phase compression normal regularization in lattice-gradient units; "
+            "default 1e-3 suppresses bulk phase spots; 0 restores the original algorithm"
+        ),
+    )
     parser.add_argument("--no-advection", action="store_true")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--no-plot",
         action="store_true",
-        help="disable final plot and velocity/vorticity/temperature sequences",
+        help="disable final plot and velocity/vorticity/temperature/phase sequences",
     )
     parser.add_argument(
         "--save-npz",
@@ -192,6 +257,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="show the default LBM-step progress bar",
     )
     parser.add_argument(
+        "--check-stability",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="check the full air/water LBM state at every LBM step",
+    )
+    parser.add_argument(
         "--quiet",
         action="store_true",
         help="suppress progress and run summaries",
@@ -199,8 +270,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = build_parser()
+def parse_args(argv: list[str] | None = None, *, parser=None) -> argparse.Namespace:
+    parser = parser or build_parser()
     args = parser.parse_args(argv)
     try:
         if args.resolution_x <= 0 or args.resolution_y <= 0:
@@ -332,10 +403,8 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         melting_temperature_c=args.melting_temperature_c,
         specific_heat_water_j_kg_k=args.water_specific_heat,
         specific_heat_ice_j_kg_k=args.ice_specific_heat,
-        specific_heat_air_j_kg_k=args.air_specific_heat,
         conductivity_water_w_m_k=args.water_conductivity,
         conductivity_ice_w_m_k=args.ice_conductivity,
-        conductivity_air_w_m_k=args.air_conductivity,
         latent_heat_j_kg=args.latent_heat,
     )
     thermal = ThermalConfig(
@@ -354,8 +423,29 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         thermal_expansion_water_1_k=args.thermal_expansion_water_1_k,
         buoyancy_reference_temperature_c=args.water_temperature_c,
         moving_body_scheme="body_ale",
+        scheme=args.thermal_scheme,
     )
     gravity = reporting._non_negative("gravity_m_s2", args.gravity_m_s2)
+    bodies = None
+    if args.ice_centers_x_m is not None:
+        from iceflow2d_v3.config import IceBodyConfig
+
+        bodies = tuple(
+            IceBodyConfig(
+                size_cells=(int(geometry["ice_width"]), int(geometry["ice_height"])),
+                center_cells=(
+                    float(x) / float(geometry["dx_m"]),
+                    float(geometry["ice_center_y_cells"]),
+                ),
+                angle_rad=float(geometry["ice_angle_rad"]),
+                velocity_lattice=(
+                    args.initial_horizontal_speed_lattice,
+                    args.initial_vertical_speed_lattice,
+                ),
+                temperature_c=args.ice_temperature_c,
+            )
+            for x in args.ice_centers_x_m
+        )
     config = create_iceflow_config(
         resolution=(int(args.resolution_x), int(args.resolution_y)),
         dx=float(geometry["dx_m"]),
@@ -367,10 +457,16 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         rho_ice=args.density_ice,
         viscosity_water=args.kinematic_viscosity_water,
         viscosity_air=args.kinematic_viscosity_air,
+        momentum_collision_model=args.momentum_collision_model,
+        cm_acoustic_relaxation_rate=args.cm_acoustic_relaxation_rate,
+        hrr_kinetic_blend=args.hrr_kinetic_blend,
+        phase_momentum_coupling=args.phase_momentum_coupling,
+        exposed_node_refill=args.exposed_node_refill,
         sigma=args.surface_tension,
         gravity=(0.0, -gravity),
         interface_width=args.interface_width,
         mobility=args.mobility,
+        phase_normal_epsilon=args.phase_normal_epsilon,
         phase_warmup_steps=args.phase_warmup_steps,
         boundary_cells=int(args.boundary_cells),
         thermal=thermal,
@@ -386,7 +482,7 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         ),
         ice_initial_angle=float(geometry["ice_angle_rad"]),
         ice_fixed=False,
-        air_interface_relaxation_time=0.8,
+        ice_bodies=bodies,
         output_dir=str(args.output_dir),
         show_gui=False,
         save_npz=False,
@@ -410,33 +506,59 @@ def _capture_snapshot(
         simulation, initial_solid_volume_cells=initial_solid_volume_cells
     )
     scales = simulation.scales
-    center = simulation.body_center[None]
-    velocity = simulation.body_velocity[None]
-    local_center = simulation.body_local_center_of_mass[None]
-    mass = float(simulation.body_mass_lattice[None])
-    inertia = float(simulation.body_inertia_lattice[None])
-    dx = simulation.config.dx
-    rho_water = simulation.config.rho_water
-    return FallingMeltingSnapshot(
-        coupled=coupled,
-        body_active=bool(simulation.body_active[None]),
-        body_center_x_m=float(center[0]) * dx,
-        body_center_y_m=float(center[1]) * dx,
-        body_velocity_x_m_s=float(velocity[0]) * scales.velocity_scale_m_s,
-        body_velocity_y_m_s=float(velocity[1]) * scales.velocity_scale_m_s,
-        body_angle_rad=float(simulation.body_angle[None]),
-        body_angular_velocity_rad_s=float(simulation.body_angular_velocity[None])
-        / scales.dt_s,
-        body_mass_lattice=mass,
-        body_mass_kg_m=mass * rho_water * dx**2,
-        body_inertia_lattice=inertia,
-        body_inertia_kg_m=inertia * rho_water * dx**4,
-        body_solid_center_local_x_cells=float(local_center[0]),
-        body_solid_center_local_y_cells=float(local_center[1]),
-        cumulative_melted_mass_lattice=float(
-            simulation.cumulative_melted_mass_lattice[None]
-        ),
-    )
+    count = getattr(simulation, "body_count", 1)
+    fields = {
+        name: np.asarray(getattr(simulation, name).to_numpy()).reshape(count, -1)
+        for name in (
+            "body_center",
+            "body_velocity",
+            "body_local_center_of_mass",
+            "body_mass_lattice",
+            "body_inertia_lattice",
+            "body_active",
+            "body_angle",
+            "body_angular_velocity",
+            "cumulative_melted_mass_lattice",
+        )
+    }
+    bodies = []
+    for b in range(count):
+        center = fields["body_center"][b]
+        velocity = fields["body_velocity"][b]
+        local_center = fields["body_local_center_of_mass"][b]
+        mass = float(fields["body_mass_lattice"][b, 0])
+        inertia = float(fields["body_inertia_lattice"][b, 0])
+        melted = float(fields["cumulative_melted_mass_lattice"][b, 0])
+        dx = simulation.config.dx
+        rho_water = simulation.config.rho_water
+        bodies.append(
+            FallingMeltingSnapshot(
+                coupled=coupled,
+                body_melted_fraction=max(0.0, melted / (mass + melted))
+                if mass + melted > 0
+                else 0.0,
+                body_active=bool(fields["body_active"][b, 0]),
+                body_center_x_m=float(center[0]) * dx,
+                body_center_y_m=float(center[1]) * dx,
+                body_velocity_x_m_s=float(velocity[0]) * scales.velocity_scale_m_s,
+                body_velocity_y_m_s=float(velocity[1]) * scales.velocity_scale_m_s,
+                body_angle_rad=float(fields["body_angle"][b, 0]),
+                body_angular_velocity_rad_s=float(fields["body_angular_velocity"][b, 0])
+                / scales.dt_s,
+                body_mass_lattice=mass,
+                body_mass_kg_m=mass * rho_water * dx**2,
+                body_inertia_lattice=inertia,
+                body_inertia_kg_m=inertia * rho_water * dx**4,
+                body_solid_center_local_x_cells=float(local_center[0]),
+                body_solid_center_local_y_cells=float(local_center[1]),
+                cumulative_melted_mass_lattice=float(
+                    fields["cumulative_melted_mass_lattice"][b, 0]
+                ),
+            )
+        )
+    from dataclasses import replace
+
+    return replace(bodies[0], bodies=tuple(bodies))
 
 
 MOTION_HISTORY_COLUMNS = (
@@ -454,6 +576,7 @@ MOTION_HISTORY_COLUMNS = (
     "body_solid_center_local_x_cells",
     "body_solid_center_local_y_cells",
     "cumulative_melted_mass_lattice",
+    "body_melted_fraction",
 )
 HISTORY_COLUMNS = reporting.HISTORY_COLUMNS + MOTION_HISTORY_COLUMNS
 
@@ -474,14 +597,35 @@ def _history_row(snapshot: FallingMeltingSnapshot) -> tuple[object, ...]:
         f"{snapshot.body_solid_center_local_x_cells:.17g}",
         f"{snapshot.body_solid_center_local_y_cells:.17g}",
         f"{snapshot.cumulative_melted_mass_lattice:.17g}",
+        f"{snapshot.body_melted_fraction:.17g}",
+    )
+
+
+def _history_rows(snapshot: FallingMeltingSnapshot):
+    if len(snapshot.bodies) > 1:
+        return [
+            (body_id, *_history_row(body))
+            for body_id, body in enumerate(snapshot.bodies)
+        ]
+    return [_history_row(snapshot)]
+
+
+def _history_columns(snapshot: FallingMeltingSnapshot):
+    return (
+        (("body_id",) + HISTORY_COLUMNS)
+        if len(snapshot.bodies) > 1
+        else HISTORY_COLUMNS
     )
 
 
 def write_history_csv(path: Path, snapshots: list[FallingMeltingSnapshot]) -> None:
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(HISTORY_COLUMNS)
-        writer.writerows(_history_row(snapshot) for snapshot in snapshots)
+        writer.writerow(
+            _history_columns(snapshots[0]) if snapshots else HISTORY_COLUMNS
+        )
+        for snapshot in snapshots:
+            writer.writerows(_history_rows(snapshot))
 
 
 def write_fields_npz(
@@ -492,7 +636,14 @@ def write_fields_npz(
     """Write the common fields plus synchronized moving-body time series."""
 
     arrays = reporting.snapshot_arrays(config, snapshots)
-    arrays.update(
+    body_count = len(config.bodies)
+    motion_shape = (len(snapshots), body_count)
+    if body_count > 1:
+        snapshots = [body for frame in snapshots for body in frame.bodies]
+    motion = dict(
+        body_melted_fraction=np.asarray(
+            [item.body_melted_fraction for item in snapshots], dtype=np.float64
+        ),
         body_active=np.asarray([item.body_active for item in snapshots], dtype=np.int8),
         body_center_m=np.asarray(
             [[item.body_center_x_m, item.body_center_y_m] for item in snapshots],
@@ -539,6 +690,13 @@ def write_fields_npz(
             dtype=np.float64,
         ),
     )
+    if body_count > 1:
+        motion = {
+            key: values.reshape(*motion_shape, *values.shape[1:])
+            for key, values in motion.items()
+        }
+    arrays.update(motion)
+    arrays["body_id"] = np.arange(body_count, dtype=np.int32)
     np.savez_compressed(path, **arrays)
 
 
@@ -558,12 +716,17 @@ def write_final_plot(
     temperature, _ = reporting._temperature_field_for_plot(
         config, snapshot, frame_index=0
     )
-    figure, axes = plt.subplots(1, 2, figsize=(10.0, 8.0), constrained_layout=True)
+    temperature_colormap = plt.get_cmap("inferno").copy()
+    temperature_colormap.set_bad("#aeb4ba")
+    rows, columns = (2, 1) if config.nx > config.ny else (1, 2)
+    figure, axes = plt.subplots(
+        rows, columns, figsize=(10.0, 8.0), constrained_layout=True
+    )
     image = axes[0].imshow(
         temperature,
         origin="lower",
         extent=extent,
-        cmap="inferno",
+        cmap=temperature_colormap,
         vmin=config.thermal.properties.melting_temperature_c,
         vmax=temperature_max_c,
         interpolation="nearest",
@@ -572,18 +735,19 @@ def write_final_plot(
     reporting._draw_flow_boundaries(
         axes[0], snapshot, extent, water_surface_color="white"
     )
-    figure.colorbar(image, ax=axes[0], label="temperature (degC)")
-    axes[0].set_title("Final temperature")
+    figure.colorbar(image, ax=axes[0], label="water temperature (degC)")
+    axes[0].set_title("Final water temperature")
 
-    fraction = np.ma.masked_where(
-        np.asarray(snapshot.phase_change_material) == 0,
-        np.asarray(snapshot.liquid_fraction),
-    )
+    # Use the same air/water field and mask as the phase animation. The thermal
+    # wet-cell threshold would draw near-zero phase tails as sharp air patches.
+    fraction = reporting._phase_field_for_plot(config, snapshot, frame_index=0)
+    phase_colormap = plt.get_cmap("Blues").copy()
+    phase_colormap.set_bad("#aeb4ba")
     phase_image = axes[1].imshow(
         fraction,
         origin="lower",
         extent=extent,
-        cmap="Blues_r",
+        cmap=phase_colormap,
         vmin=0.0,
         vmax=1.0,
         interpolation="nearest",
@@ -592,8 +756,8 @@ def write_final_plot(
     reporting._draw_flow_boundaries(
         axes[1], snapshot, extent, water_surface_color="black"
     )
-    figure.colorbar(phase_image, ax=axes[1], label="liquid fraction")
-    axes[1].set_title("Final phase state")
+    figure.colorbar(phase_image, ax=axes[1], label="water phase (0: air, 1: water)")
+    axes[1].set_title("Final air-water phase")
     for axis in axes:
         axis.set_xlabel("x (m)")
         axis.set_ylabel("y (m)")
@@ -601,7 +765,11 @@ def write_final_plot(
         "Coupled falling-ice melting, "
         f"t={snapshot.physical_time_s:.4f} s, "
         f"melted={100.0 * snapshot.melted_fraction:.2f}%, "
-        f"center=({snapshot.body_center_x_m:.4f}, {snapshot.body_center_y_m:.4f}) m"
+        + (
+            f"{len(snapshot.bodies)} independent ice blocks"
+            if len(snapshot.bodies) > 1
+            else f"center=({snapshot.body_center_x_m:.4f}, {snapshot.body_center_y_m:.4f}) m"
+        )
     )
     figure.savefig(path, dpi=170)
     plt.close(figure)
@@ -611,6 +779,7 @@ def _sequence_metadata(
     velocity: reporting.VelocitySequenceSummary | None,
     vorticity: reporting.VorticitySequenceSummary | None,
     temperature: reporting.TemperatureSequenceSummary | None,
+    phase: reporting.PhaseSequenceSummary | None = None,
 ) -> dict[str, Any]:
     return {
         "velocity": (
@@ -655,6 +824,20 @@ def _sequence_metadata(
                 "color_range": [temperature.color_min_c, temperature.color_max_c],
             }
         ),
+        "phase": (
+            None
+            if phase is None
+            else {
+                "directory": phase.frame_directory,
+                "pattern": phase.frame_pattern,
+                "frames": phase.frame_count,
+                "animation": phase.animation,
+                "field": "water_phase",
+                "units": "dimensionless",
+                "observed_range": [phase.observed_min, phase.observed_max],
+                "color_range": [phase.color_min, phase.color_max],
+            }
+        ),
     }
 
 
@@ -671,15 +854,36 @@ def write_metadata(
     velocity_sequence: reporting.VelocitySequenceSummary | None,
     vorticity_sequence: reporting.VorticitySequenceSummary | None,
     temperature_sequence: reporting.TemperatureSequenceSummary | None,
+    phase_sequence: reporting.PhaseSequenceSummary | None = None,
 ) -> None:
     sequences = _sequence_metadata(
-        velocity_sequence, vorticity_sequence, temperature_sequence
+        velocity_sequence, vorticity_sequence, temperature_sequence, phase_sequence
     )
     data = {
         "model": "iceflow2d_v3: falling ice with disappearing melt",
         "backend": "taichi-cuda",
         "hydrodynamics": "air-water phase-field D2Q9 LBM",
         "thermal_solver": "water sensible heat and material-frame ice melting",
+        "thermal_scheme": config.thermal.scheme,
+        "viscosity": {
+            "water_model": (
+                "iapws_local_temperature"
+                if config.viscosity_water is None
+                else "constant"
+            ),
+            "air_model": (
+                "sutherland_prescribed_temperature"
+                if config.viscosity_air is None
+                else "constant"
+            ),
+            "initial_water_m2_s": config.water_viscosity_at(
+                config.thermal.initial_water_temperature_c
+            ),
+            "air_m2_s": config.air_viscosity_at(
+                config.thermal.initial_air_temperature_c
+            ),
+            "interface_mixing": "linear kinematic viscosity in water phase fraction",
+        },
         "mechanics": "freely translating and rotating, thermally eroding rigid ice body",
         "moving_body_scheme": config.thermal.moving_body_scheme,
         "phase_change": "melted ice disappears without adding liquid, heat, or momentum sources",
@@ -687,6 +891,7 @@ def write_metadata(
             "liquid water remains liquid at 90 degC",
             "no evaporation, boiling, or water-vapour transport",
             "water-air thermal interface is adiabatic",
+            "cells exposed by motion or erosion inherit the surrounding fluid state",
             "local temperature reconstruction with no global mass or energy correction",
             "linear Boussinesq water buoyancy over the 0--90 degC range",
             "two-dimensional quantities are reported per unit out-of-plane depth",
@@ -697,6 +902,7 @@ def write_metadata(
             "water_temperature_c": float(args.water_temperature_c),
             "save_npz": bool(args.save_npz),
             "progress_enabled": bool(args.progress and not args.quiet),
+            "stability_check_enabled": bool(args.check_stability),
         },
         "geometry": {
             "domain_width_m": config.nx * config.dx,
@@ -706,7 +912,7 @@ def write_metadata(
             "ice_width_m": config.ice_width * config.dx,
             "ice_height_m": config.ice_height * config.dx,
             "drop_height_m": float(args.drop_height_m),
-            "ice_initial_angle_rad": config.ice_initial_angle,
+            "ice_initial_angle_rad": config.bodies[0].angle_rad,
         },
         "lattice_scaling": {
             "dx_m": scales.dx_m,
@@ -772,8 +978,49 @@ def write_metadata(
             "temperature_animation": (
                 None if temperature_sequence is None else temperature_sequence.animation
             ),
+            "phase_frames": (
+                None if phase_sequence is None else phase_sequence.frame_directory
+            ),
+            "phase_animation": (
+                None if phase_sequence is None else phase_sequence.animation
+            ),
         },
     }
+    data["body_count"] = len(config.bodies)
+    data["geometry"]["ice_bodies"] = [
+        {
+            "body_id": b,
+            "size_m": [n * config.dx for n in body.size_cells],
+            "center_m": [x * config.dx for x in body.center_cells],
+            "angle_rad": body.angle_rad,
+        }
+        for b, body in enumerate(config.bodies)
+    ]
+    if len(config.bodies) > 1:
+        data["mechanics"] = (
+            "independent eroding rigid bodies; frictionless inelastic raster contact"
+        )
+        data["contact"] = {
+            "restitution": 0.0,
+            "friction": 0.0,
+            "geometry": "current sharp solid cells",
+            "ice_ice_heat_transfer": "adiabatic",
+        }
+        data["results"] = {
+            "snapshots": snapshot_count,
+            "lbm_steps": final.lbm_steps,
+            "physical_time_s": final.physical_time_s,
+            "melted_fraction": final.melted_fraction,
+            "water_mean_temperature_c": final.water_mean_temperature_c,
+            "water_volume_current_cells": final.water_volume_current_cells,
+            "bodies": [
+                dict(
+                    body_id=b,
+                    **{name: getattr(body, name) for name in MOTION_HISTORY_COLUMNS},
+                )
+                for b, body in enumerate(final.bodies)
+            ],
+        }
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
@@ -834,6 +1081,7 @@ def _run_case(
             flush=True,
         )
     simulation = IceFlow2D(config)
+    simulation._thermal_stability_check_enabled = bool(args.check_stability)
     scales = LatticeScales.from_iceflow_config(config)
     initial_solid_volume = float(simulation.phase_change_solid_volume_cells())
     initial = _capture_snapshot(
@@ -848,9 +1096,11 @@ def _run_case(
     velocity_stream = None
     vorticity_stream = None
     temperature_stream = None
+    phase_stream = None
     velocity_sequence = None
     vorticity_sequence = None
     temperature_sequence = None
+    phase_sequence = None
     total_lbm_steps = targets[-1] if targets else 0
     progress_chunk = _progress_chunk_steps(total_lbm_steps)
     try:
@@ -877,6 +1127,11 @@ def _run_case(
                 temperature_max_c=limits.temperature_max_c,
                 scenario_label=SCENARIO_LABEL,
             )
+            phase_stream = reporting.PhaseSequenceStream(
+                output_dir,
+                config,
+                scenario_label=SCENARIO_LABEL,
+            )
 
         with (
             (output_dir / "history.csv").open(
@@ -890,7 +1145,7 @@ def _run_case(
             ) as progress,
         ):
             writer = csv.writer(stream)
-            writer.writerow(HISTORY_COLUMNS)
+            writer.writerow(_history_columns(initial))
             for frame_index, target in enumerate(targets):
                 if frame_index == 0:
                     snapshot = initial
@@ -905,7 +1160,7 @@ def _run_case(
                         simulation,
                         initial_solid_volume_cells=initial_solid_volume,
                     )
-                writer.writerow(_history_row(snapshot))
+                writer.writerows(_history_rows(snapshot))
                 stream.flush()
                 if retained is not None:
                     retained.append(snapshot)
@@ -919,6 +1174,8 @@ def _run_case(
                     vorticity_stream.append(snapshot)
                 if temperature_stream is not None:
                     temperature_stream.append(snapshot)
+                if phase_stream is not None:
+                    phase_stream.append(snapshot)
                 snapshot_count += 1
                 final = snapshot
                 output_status = (
@@ -934,7 +1191,7 @@ def _run_case(
                     print(
                         f"t={snapshot.physical_time_s:.4f} s | "
                         f"steps={snapshot.lbm_steps} | "
-                        f"y_body={snapshot.body_center_y_m:.5f} m | "
+                        f"bodies={len(config.bodies)} | "
                         f"melted={100.0 * snapshot.melted_fraction:6.2f}%",
                         flush=True,
                     )
@@ -947,8 +1204,12 @@ def _run_case(
                 if vorticity_stream is not None:
                     vorticity_sequence = vorticity_stream.close()
             finally:
-                if temperature_stream is not None:
-                    temperature_sequence = temperature_stream.close()
+                try:
+                    if temperature_stream is not None:
+                        temperature_sequence = temperature_stream.close()
+                finally:
+                    if phase_stream is not None:
+                        phase_sequence = phase_stream.close()
 
     if retained is not None:
         write_fields_npz(output_dir / "fields.npz", config, retained)
@@ -971,6 +1232,7 @@ def _run_case(
         velocity_sequence=velocity_sequence,
         vorticity_sequence=vorticity_sequence,
         temperature_sequence=temperature_sequence,
+        phase_sequence=phase_sequence,
     )
     if not args.quiet:
         print(
@@ -997,6 +1259,7 @@ def _run_case(
         "temperature_frames": (
             0 if temperature_sequence is None else temperature_sequence.frame_count
         ),
+        "phase_frames": 0 if phase_sequence is None else phase_sequence.frame_count,
     }
 
 

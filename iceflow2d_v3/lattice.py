@@ -2,7 +2,20 @@
 
 import taichi as ti
 
+from .viscosity import WATER_VISCOSITY_TERMS
+
 D2Q9_DIRECTION_COUNT = 9
+
+
+@ti.func
+def water_dynamic_viscosity_pa_s(temperature_c):
+    """Device form of IAPWS SR6-08(2011), Eq. (7), with shared coefficients."""
+
+    reduced_temperature = (temperature_c + 273.15) / 300.0
+    viscosity = 0.0
+    for coefficient, exponent in ti.static(WATER_VISCOSITY_TERMS):
+        viscosity += coefficient * reduced_temperature**exponent
+    return 1.0e-6 * viscosity
 
 
 @ti.func
