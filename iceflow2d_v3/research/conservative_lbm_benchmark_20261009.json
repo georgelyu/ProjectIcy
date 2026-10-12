@@ -1,0 +1,1565 @@
+{
+  "single": {
+    "legacy": {
+      "mode": "legacy",
+      "scenario": "single",
+      "grid": [
+        100,
+        200
+      ],
+      "preparation_steps": 512,
+      "timed_steps_per_repeat": 512,
+      "repeats": 5,
+      "seconds_per_step": [
+        0.0006071648925853879,
+        0.0006159881816358848,
+        0.0006161582304571311,
+        0.0006204687617241689,
+        0.0006211697929643378
+      ],
+      "median_seconds_per_step": 0.0006161582304571311,
+      "field_payload_bytes": 5435120,
+      "initial": {
+        "water_volume_cells": 10998.00167151293,
+        "ice_mass_water_equivalent_cells": 939.0079999999997,
+        "total_water_equivalent_cells": 11937.00967151293,
+        "projected_ice_volume_cells": null,
+        "phase_min": 5.650235431465461e-18,
+        "phase_max": 1.0
+      },
+      "prepared": {
+        "water_volume_cells": 10998.00003061576,
+        "ice_mass_water_equivalent_cells": 939.00172388355,
+        "total_water_equivalent_cells": 11937.00175449931,
+        "projected_ice_volume_cells": null,
+        "phase_min": 6.01838925917697e-11,
+        "phase_max": 1.0
+      },
+      "history": [
+        {
+          "step": 3072,
+          "water_volume_cells": 10998.910786752265,
+          "ice_mass_water_equivalent_cells": 938.7544419919406,
+          "total_water_equivalent_cells": 11937.665228744207,
+          "projected_ice_volume_cells": null,
+          "phase_min": 4.563413767755264e-06,
+          "phase_max": 0.9999914169311523
+        }
+      ],
+      "maximum_sampled_relative_mass_error": 5.491804474622164e-05
+    },
+    "conservative_lbm": {
+      "mode": "conservative_lbm",
+      "scenario": "single",
+      "grid": [
+        100,
+        200
+      ],
+      "preparation_steps": 512,
+      "timed_steps_per_repeat": 512,
+      "repeats": 5,
+      "seconds_per_step": [
+        0.0010384836249954787,
+        0.0010722274628847117,
+        0.0010918941035242824,
+        0.0011165963886696773,
+        0.0011305781523276437
+      ],
+      "median_seconds_per_step": 0.0010918941035242824,
+      "field_payload_bytes": 11671564,
+      "initial": {
+        "water_volume_cells": 10998.0,
+        "ice_mass_water_equivalent_cells": 939.0079999999997,
+        "total_water_equivalent_cells": 11937.008,
+        "projected_ice_volume_cells": 1024.0,
+        "phase_min": 5.871645740570463e-18,
+        "phase_max": 1.0
+      },
+      "prepared": {
+        "water_volume_cells": 10998.00622817147,
+        "ice_mass_water_equivalent_cells": 939.0017718285051,
+        "total_water_equivalent_cells": 11937.007999999976,
+        "projected_ice_volume_cells": 1023.9932081008782,
+        "phase_min": 6.052835878976923e-11,
+        "phase_max": 1.0
+      },
+      "history": [
+        {
+          "step": 3072,
+          "water_volume_cells": 10998.253724694165,
+          "ice_mass_water_equivalent_cells": 938.7542753058118,
+          "total_water_equivalent_cells": 11937.007999999976,
+          "projected_ice_volume_cells": 1023.7233100390536,
+          "phase_min": 4.438166788735867e-06,
+          "phase_max": 0.9999913219362497
+        }
+      ],
+      "source_sha256": {
+        "simulator.py": "e323fb0553c18cc08f6011e579902d6111469725328a325540f19638dfc1f4b5",
+        "config.py": "d5d538a71f3d3b9443e787d4de29bf589e3860da28a7a174b1f00ac8d25d701f",
+        "lattice.py": "b2a5d60ee935adefeeb13e30684dbea33bd3054bf02c6113a6261100950b94c5",
+        "conservative_phase.py": "8b77e9eabb825052047443635a2329e8d83a5f8da9a58582662ff0c75e833e40"
+      },
+      "maximum_sampled_relative_mass_error": 1.9984014443252818e-15
+    }
+  },
+  "four": {
+    "legacy": {
+      "mode": "legacy",
+      "scenario": "four",
+      "grid": [
+        450,
+        150
+      ],
+      "preparation_steps": 18000,
+      "timed_steps_per_repeat": 512,
+      "repeats": 5,
+      "seconds_per_step": [
+        0.0006893292909921911,
+        0.0006953235781281819,
+        0.0006637302871013162,
+        0.0006749457539001469,
+        0.0006786115253873959
+      ],
+      "median_seconds_per_step": 0.0006786115253873959,
+      "field_payload_bytes": 19149276,
+      "initial": {
+        "water_volume_cells": 31968.099265546793,
+        "ice_mass_water_equivalent_cells": 3301.1999999999994,
+        "total_water_equivalent_cells": 35269.29926554679,
+        "projected_ice_volume_cells": null,
+        "phase_min": 1.406383489666041e-07,
+        "phase_max": 0.9999998807907104
+      },
+      "prepared": {
+        "water_volume_cells": 32081.39415957802,
+        "ice_mass_water_equivalent_cells": 3190.8763094924693,
+        "total_water_equivalent_cells": 35272.27046907049,
+        "projected_ice_volume_cells": null,
+        "phase_min": 0.0005926366429775953,
+        "phase_max": 1.0
+      },
+      "history": [
+        {
+          "step": 20560,
+          "water_volume_cells": 32193.475097459217,
+          "ice_mass_water_equivalent_cells": 3147.9358052451953,
+          "total_water_equivalent_cells": 35341.41090270441,
+          "projected_ice_volume_cells": null,
+          "phase_min": 0.0006681255181320012,
+          "phase_max": 1.0
+        }
+      ],
+      "maximum_sampled_relative_mass_error": 0.0020446007904688646,
+      "source_sha256": {
+        "simulator.py": "6949c417e5ebbc58678f93c3644247aa4458da79583089ac7cbbbf6fae402866",
+        "config.py": "e27a4cf6c8a86f1d27e1b29f3159030856c764233caa2fde2e16dba787386fea",
+        "lattice.py": "d598ec6d1e4f0ffa4528a4b37f2a5dd0dd6af3a936f0d6147e3719a6a47d3b5f"
+      }
+    },
+    "conservative_lbm": {
+      "mode": "conservative_lbm",
+      "scenario": "four",
+      "grid": [
+        450,
+        150
+      ],
+      "preparation_steps": 18000,
+      "timed_steps_per_repeat": 512,
+      "repeats": 5,
+      "seconds_per_step": [
+        0.0017319026152335937,
+        0.001743863669929624,
+        0.001688198166021948,
+        0.0017594941288905375,
+        0.0017065554882833567
+      ],
+      "median_seconds_per_step": 0.0017319026152335937,
+      "field_payload_bytes": 40200876,
+      "initial": {
+        "water_volume_cells": 31968.000000000004,
+        "ice_mass_water_equivalent_cells": 3301.1999999999994,
+        "total_water_equivalent_cells": 35269.200000000004,
+        "projected_ice_volume_cells": 3600.0,
+        "phase_min": 1.4080548947089002e-07,
+        "phase_max": 0.9999988321214914
+      },
+      "prepared": {
+        "water_volume_cells": 32083.79032618046,
+        "ice_mass_water_equivalent_cells": 3185.409673818824,
+        "total_water_equivalent_cells": 35269.199999999284,
+        "projected_ice_volume_cells": 3473.729197185196,
+        "phase_min": 0.0005609471199986964,
+        "phase_max": 1.0
+      },
+      "history": [
+        {
+          "step": 20560,
+          "water_volume_cells": 32128.223142762756,
+          "ice_mass_water_equivalent_cells": 3140.976857236525,
+          "total_water_equivalent_cells": 35269.199999999284,
+          "projected_ice_volume_cells": 3425.274653474946,
+          "phase_min": 0.0006406225284136107,
+          "phase_max": 1.0
+        }
+      ],
+      "source_sha256": {
+        "simulator.py": "e323fb0553c18cc08f6011e579902d6111469725328a325540f19638dfc1f4b5",
+        "config.py": "d5d538a71f3d3b9443e787d4de29bf589e3860da28a7a174b1f00ac8d25d701f",
+        "lattice.py": "b2a5d60ee935adefeeb13e30684dbea33bd3054bf02c6113a6261100950b94c5",
+        "conservative_phase.py": "8b77e9eabb825052047443635a2329e8d83a5f8da9a58582662ff0c75e833e40"
+      },
+      "maximum_sampled_relative_mass_error": 2.042810365310288e-14
+    }
+  },
+  "four_5s_mass_audit": {
+    "mode": "conservative_lbm",
+    "scenario": "four",
+    "grid": [
+      450,
+      150
+    ],
+    "preparation_steps": 18000,
+    "timed_steps_per_repeat": 512,
+    "repeats": 5,
+    "field_payload_bytes": 40200876,
+    "initial": {
+      "water_volume_cells": 31968.000000000004,
+      "ice_mass_water_equivalent_cells": 3301.1999999999994,
+      "total_water_equivalent_cells": 35269.200000000004,
+      "projected_ice_volume_cells": 3600.0,
+      "phase_min": 1.4080548947089002e-07,
+      "phase_max": 0.9999988321214914
+    },
+    "prepared": {
+      "water_volume_cells": 32084.688302428138,
+      "ice_mass_water_equivalent_cells": 3184.5116975710466,
+      "total_water_equivalent_cells": 35269.19999999918,
+      "projected_ice_volume_cells": 3472.7499428255687,
+      "phase_min": 0.0005573352849649012,
+      "phase_max": 1.0
+    },
+    "history": [
+      {
+        "step": 20560,
+        "water_volume_cells": 32129.571358855363,
+        "ice_mass_water_equivalent_cells": 3139.628641143834,
+        "total_water_equivalent_cells": 35269.1999999992,
+        "projected_ice_volume_cells": 3423.8044069180305,
+        "phase_min": 0.0006425691474573109,
+        "phase_max": 1.0
+      },
+      {
+        "step": 24656,
+        "water_volume_cells": 32210.162470160405,
+        "ice_mass_water_equivalent_cells": 3059.0375298387703,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 3335.918789355256,
+        "phase_min": 0.0007598686814108533,
+        "phase_max": 1.0
+      },
+      {
+        "step": 28752,
+        "water_volume_cells": 32291.489505151658,
+        "ice_mass_water_equivalent_cells": 2977.7104948475317,
+        "total_water_equivalent_cells": 35269.19999999919,
+        "projected_ice_volume_cells": 3247.2306377835685,
+        "phase_min": 0.0008324620910516843,
+        "phase_max": 1.0
+      },
+      {
+        "step": 32848,
+        "water_volume_cells": 32370.121246657854,
+        "ice_mass_water_equivalent_cells": 2899.0787533413286,
+        "total_water_equivalent_cells": 35269.19999999918,
+        "projected_ice_volume_cells": 3161.4817375587013,
+        "phase_min": 0.0008756374129636637,
+        "phase_max": 1.0
+      },
+      {
+        "step": 36944,
+        "water_volume_cells": 32452.491675497688,
+        "ice_mass_water_equivalent_cells": 2816.708324501494,
+        "total_water_equivalent_cells": 35269.19999999918,
+        "projected_ice_volume_cells": 3071.655751910027,
+        "phase_min": 0.0009057329780340244,
+        "phase_max": 1.0
+      },
+      {
+        "step": 41040,
+        "water_volume_cells": 32537.384510937358,
+        "ice_mass_water_equivalent_cells": 2731.815489061809,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 2979.07905023098,
+        "phase_min": 0.0009046266333020622,
+        "phase_max": 1.0
+      },
+      {
+        "step": 45136,
+        "water_volume_cells": 32619.874462274794,
+        "ice_mass_water_equivalent_cells": 2649.3255377243636,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 2889.122723799742,
+        "phase_min": 0.0009148643189595986,
+        "phase_max": 1.0
+      },
+      {
+        "step": 49232,
+        "water_volume_cells": 32701.767254465616,
+        "ice_mass_water_equivalent_cells": 2567.4327455335606,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 2799.8176069068268,
+        "phase_min": 0.0009342303937693447,
+        "phase_max": 1.0
+      },
+      {
+        "step": 53328,
+        "water_volume_cells": 32782.29302704179,
+        "ice_mass_water_equivalent_cells": 2486.906972957373,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 2712.003242047299,
+        "phase_min": 0.000928265805361754,
+        "phase_max": 1.0
+      },
+      {
+        "step": 57424,
+        "water_volume_cells": 32862.21375028635,
+        "ice_mass_water_equivalent_cells": 2406.9862497128115,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 2624.8486910717684,
+        "phase_min": 0.0009349838782453032,
+        "phase_max": 1.0
+      },
+      {
+        "step": 61520,
+        "water_volume_cells": 32939.60783643244,
+        "ice_mass_water_equivalent_cells": 2329.592163566742,
+        "total_water_equivalent_cells": 35269.19999999918,
+        "projected_ice_volume_cells": 2540.449469538432,
+        "phase_min": 0.0009484726760787118,
+        "phase_max": 1.0
+      },
+      {
+        "step": 65616,
+        "water_volume_cells": 33014.99819889847,
+        "ice_mass_water_equivalent_cells": 2254.2018011006953,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 2458.235333806647,
+        "phase_min": 0.0009437738909902349,
+        "phase_max": 1.0
+      },
+      {
+        "step": 69712,
+        "water_volume_cells": 33088.29475711888,
+        "ice_mass_water_equivalent_cells": 2180.9052428802715,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 2378.3045178628918,
+        "phase_min": 0.0009468838841588528,
+        "phase_max": 1.0
+      },
+      {
+        "step": 73808,
+        "water_volume_cells": 33155.84521615885,
+        "ice_mass_water_equivalent_cells": 2113.354783840312,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 2304.6398951366546,
+        "phase_min": 0.0009296984333956454,
+        "phase_max": 1.0
+      },
+      {
+        "step": 77904,
+        "water_volume_cells": 33219.346658734896,
+        "ice_mass_water_equivalent_cells": 2049.8533412642587,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 2235.3907756425933,
+        "phase_min": 0.000939535973834428,
+        "phase_max": 1.0
+      },
+      {
+        "step": 82000,
+        "water_volume_cells": 33277.26740879472,
+        "ice_mass_water_equivalent_cells": 1991.9325912044442,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 2172.2274713243664,
+        "phase_min": 0.0009464773110014271,
+        "phase_max": 1.0
+      },
+      {
+        "step": 86096,
+        "water_volume_cells": 33329.9392123475,
+        "ice_mass_water_equivalent_cells": 1939.2607876516697,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 2114.788208998549,
+        "phase_min": 0.0009455197873687593,
+        "phase_max": 1.0
+      },
+      {
+        "step": 90192,
+        "water_volume_cells": 33384.0229834298,
+        "ice_mass_water_equivalent_cells": 1885.1770165693542,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 2055.809178374432,
+        "phase_min": 0.0009367602502688283,
+        "phase_max": 1.0
+      },
+      {
+        "step": 94288,
+        "water_volume_cells": 33438.81983364012,
+        "ice_mass_water_equivalent_cells": 1830.3801663590361,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1996.0525260185782,
+        "phase_min": 0.0009468655890469814,
+        "phase_max": 1.0
+      },
+      {
+        "step": 98384,
+        "water_volume_cells": 33491.99649908659,
+        "ice_mass_water_equivalent_cells": 1777.2035009125761,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 1938.062705466277,
+        "phase_min": 0.0009469405012863382,
+        "phase_max": 1.0
+      },
+      {
+        "step": 102480,
+        "water_volume_cells": 33542.84233225003,
+        "ice_mass_water_equivalent_cells": 1726.357667749121,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1882.614686749314,
+        "phase_min": 0.0009469334864644476,
+        "phase_max": 1.0
+      },
+      {
+        "step": 106576,
+        "water_volume_cells": 33590.723814621866,
+        "ice_mass_water_equivalent_cells": 1678.4761853772873,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1830.3993297462234,
+        "phase_min": 0.0009349802777066998,
+        "phase_max": 1.0
+      },
+      {
+        "step": 110672,
+        "water_volume_cells": 33636.64235723989,
+        "ice_mass_water_equivalent_cells": 1632.5576427592698,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 1780.32458316169,
+        "phase_min": 0.000947083696790403,
+        "phase_max": 1.0
+      },
+      {
+        "step": 114768,
+        "water_volume_cells": 33680.443500407724,
+        "ice_mass_water_equivalent_cells": 1588.7564995914272,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1732.5588872316541,
+        "phase_min": 0.0009439120113144406,
+        "phase_max": 1.0
+      },
+      {
+        "step": 118864,
+        "water_volume_cells": 33720.86275468575,
+        "ice_mass_water_equivalent_cells": 1548.337245313406,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 1688.48118354788,
+        "phase_min": 0.0009394747440597123,
+        "phase_max": 1.0
+      },
+      {
+        "step": 122960,
+        "water_volume_cells": 33758.93616836724,
+        "ice_mass_water_equivalent_cells": 1510.2638316319083,
+        "total_water_equivalent_cells": 35269.199999999146,
+        "projected_ice_volume_cells": 1646.9616484535532,
+        "phase_min": 0.0009466985075943081,
+        "phase_max": 1.0
+      },
+      {
+        "step": 127056,
+        "water_volume_cells": 33795.50290465855,
+        "ice_mass_water_equivalent_cells": 1473.6970953406187,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 1607.08516394833,
+        "phase_min": 0.0009331139572468436,
+        "phase_max": 1.0
+      },
+      {
+        "step": 131152,
+        "water_volume_cells": 33831.78988235398,
+        "ice_mass_water_equivalent_cells": 1437.41011764517,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1567.5137597002945,
+        "phase_min": 0.0009414973953169592,
+        "phase_max": 1.0
+      },
+      {
+        "step": 135248,
+        "water_volume_cells": 33868.23432748009,
+        "ice_mass_water_equivalent_cells": 1400.9656725190848,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 1527.7706352443672,
+        "phase_min": 0.0009472688317129065,
+        "phase_max": 1.0
+      },
+      {
+        "step": 139344,
+        "water_volume_cells": 33903.950080306815,
+        "ice_mass_water_equivalent_cells": 1365.2499196923407,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1488.8221588793244,
+        "phase_min": 0.0009472054690360234,
+        "phase_max": 1.0
+      },
+      {
+        "step": 143440,
+        "water_volume_cells": 33936.94958601889,
+        "ice_mass_water_equivalent_cells": 1332.250413980268,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 1452.8357840569988,
+        "phase_min": 0.0009470448534878648,
+        "phase_max": 1.0
+      },
+      {
+        "step": 147536,
+        "water_volume_cells": 33969.444292587665,
+        "ice_mass_water_equivalent_cells": 1299.7557074115002,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 1417.3998990310797,
+        "phase_min": 0.0009455636442720766,
+        "phase_max": 1.0
+      },
+      {
+        "step": 151632,
+        "water_volume_cells": 34000.58602212428,
+        "ice_mass_water_equivalent_cells": 1268.6139778748761,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1383.4394524262552,
+        "phase_min": 0.000937563687263776,
+        "phase_max": 1.0
+      },
+      {
+        "step": 155728,
+        "water_volume_cells": 34031.08245018544,
+        "ice_mass_water_equivalent_cells": 1238.1175498137375,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 1350.182715173105,
+        "phase_min": 0.0009462931083514051,
+        "phase_max": 1.0
+      },
+      {
+        "step": 159824,
+        "water_volume_cells": 34063.378401138034,
+        "ice_mass_water_equivalent_cells": 1205.8215988611394,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 1314.9635756391922,
+        "phase_min": 0.0009479378269117002,
+        "phase_max": 1.0
+      },
+      {
+        "step": 163920,
+        "water_volume_cells": 34094.894211029496,
+        "ice_mass_water_equivalent_cells": 1174.3057889696745,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 1280.595189716112,
+        "phase_min": 0.0009478169004961525,
+        "phase_max": 1.0
+      },
+      {
+        "step": 168016,
+        "water_volume_cells": 34124.37924374689,
+        "ice_mass_water_equivalent_cells": 1144.8207562522864,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 1248.4413917691231,
+        "phase_min": 0.000945722674732509,
+        "phase_max": 1.0
+      },
+      {
+        "step": 172112,
+        "water_volume_cells": 34153.114148560824,
+        "ice_mass_water_equivalent_cells": 1116.0858514383444,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 1217.1056177081182,
+        "phase_min": 0.000946817334030188,
+        "phase_max": 1.0
+      },
+      {
+        "step": 176208,
+        "water_volume_cells": 34180.887065665316,
+        "ice_mass_water_equivalent_cells": 1088.312934333855,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 1186.818903308457,
+        "phase_min": 0.0009474920871963401,
+        "phase_max": 1.0
+      },
+      {
+        "step": 180304,
+        "water_volume_cells": 34208.91560354647,
+        "ice_mass_water_equivalent_cells": 1060.2843964527067,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 1156.2534312461357,
+        "phase_min": 0.000947502508186633,
+        "phase_max": 1.0
+      },
+      {
+        "step": 184400,
+        "water_volume_cells": 34237.446066572185,
+        "ice_mass_water_equivalent_cells": 1031.7539334269902,
+        "total_water_equivalent_cells": 35269.199999999175,
+        "projected_ice_volume_cells": 1125.1406035190732,
+        "phase_min": 0.0009468004598186461,
+        "phase_max": 1.0
+      },
+      {
+        "step": 188496,
+        "water_volume_cells": 34264.83019438307,
+        "ice_mass_water_equivalent_cells": 1004.3698056160823,
+        "total_water_equivalent_cells": 35269.199999999146,
+        "projected_ice_volume_cells": 1095.277868719828,
+        "phase_min": 0.0009477488011708625,
+        "phase_max": 1.0
+      },
+      {
+        "step": 192592,
+        "water_volume_cells": 34289.63309099159,
+        "ice_mass_water_equivalent_cells": 979.5669090075676,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 1068.2299989177397,
+        "phase_min": 0.0009473736212796055,
+        "phase_max": 1.0
+      },
+      {
+        "step": 196688,
+        "water_volume_cells": 34313.88304532972,
+        "ice_mass_water_equivalent_cells": 955.3169546694301,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 1041.785119595889,
+        "phase_min": 0.0009476774112937415,
+        "phase_max": 1.0
+      },
+      {
+        "step": 200784,
+        "water_volume_cells": 34338.78201020315,
+        "ice_mass_water_equivalent_cells": 930.41798979601,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 1014.6324861461396,
+        "phase_min": 0.0009475882753559996,
+        "phase_max": 1.0
+      },
+      {
+        "step": 204880,
+        "water_volume_cells": 34363.023966477784,
+        "ice_mass_water_equivalent_cells": 906.1760335213686,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 988.1963288128336,
+        "phase_min": 0.0009476418791547327,
+        "phase_max": 1.0
+      },
+      {
+        "step": 208976,
+        "water_volume_cells": 34386.862174619346,
+        "ice_mass_water_equivalent_cells": 882.3378253798038,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 962.2004638820108,
+        "phase_min": 0.0009477925314951131,
+        "phase_max": 1.0
+      },
+      {
+        "step": 213072,
+        "water_volume_cells": 34411.84592674389,
+        "ice_mass_water_equivalent_cells": 857.3540732552735,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 934.9553688716178,
+        "phase_min": 0.000947997433375465,
+        "phase_max": 1.0
+      },
+      {
+        "step": 217168,
+        "water_volume_cells": 34435.64535125351,
+        "ice_mass_water_equivalent_cells": 833.5546487456486,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 909.0017979778065,
+        "phase_min": 0.0009473722986515845,
+        "phase_max": 1.0
+      },
+      {
+        "step": 221264,
+        "water_volume_cells": 34457.69725595566,
+        "ice_mass_water_equivalent_cells": 811.5027440434953,
+        "total_water_equivalent_cells": 35269.19999999915,
+        "projected_ice_volume_cells": 884.953919349504,
+        "phase_min": 0.0009478336042758452,
+        "phase_max": 1.0
+      },
+      {
+        "step": 225360,
+        "water_volume_cells": 34479.34562332909,
+        "ice_mass_water_equivalent_cells": 789.8543766700743,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 861.3461032389031,
+        "phase_min": 0.0009476241403700693,
+        "phase_max": 1.0
+      },
+      {
+        "step": 229456,
+        "water_volume_cells": 34501.1765007057,
+        "ice_mass_water_equivalent_cells": 768.0234992934672,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 837.5392576809895,
+        "phase_min": 0.0009474594508884617,
+        "phase_max": 1.0
+      },
+      {
+        "step": 233552,
+        "water_volume_cells": 34523.45233330463,
+        "ice_mass_water_equivalent_cells": 745.7476666945303,
+        "total_water_equivalent_cells": 35269.19999999916,
+        "projected_ice_volume_cells": 813.2471828729883,
+        "phase_min": 0.0009439501238577147,
+        "phase_max": 1.0
+      },
+      {
+        "step": 237648,
+        "water_volume_cells": 34546.38756992821,
+        "ice_mass_water_equivalent_cells": 722.8124300709585,
+        "total_water_equivalent_cells": 35269.19999999917,
+        "projected_ice_volume_cells": 788.2360197066068,
+        "phase_min": 0.0009467763038569291,
+        "phase_max": 1.0
+      },
+      {
+        "step": 241744,
+        "water_volume_cells": 34568.4988366416,
+        "ice_mass_water_equivalent_cells": 700.7011633575474,
+        "total_water_equivalent_cells": 35269.199999999146,
+        "projected_ice_volume_cells": 764.1234060605752,
+        "phase_min": 0.0009480719118965932,
+        "phase_max": 1.0
+      },
+      {
+        "step": 245840,
+        "water_volume_cells": 34588.773360783845,
+        "ice_mass_water_equivalent_cells": 680.4266392153021,
+        "total_water_equivalent_cells": 35269.199999999146,
+        "projected_ice_volume_cells": 742.0137832227939,
+        "phase_min": 0.0009450348333569017,
+        "phase_max": 1.0
+      },
+      {
+        "step": 249936,
+        "water_volume_cells": 34609.46413287889,
+        "ice_mass_water_equivalent_cells": 659.7358671202423,
+        "total_water_equivalent_cells": 35269.19999999914,
+        "projected_ice_volume_cells": 719.4502367723471,
+        "phase_min": 0.0009477543690974268,
+        "phase_max": 1.0
+      },
+      {
+        "step": 254032,
+        "water_volume_cells": 34630.27930172809,
+        "ice_mass_water_equivalent_cells": 638.9206982710543,
+        "total_water_equivalent_cells": 35269.199999999146,
+        "projected_ice_volume_cells": 696.751034101477,
+        "phase_min": 0.0009476656115094807,
+        "phase_max": 1.0
+      },
+      {
+        "step": 258128,
+        "water_volume_cells": 34652.16585353969,
+        "ice_mass_water_equivalent_cells": 617.0341464594508,
+        "total_water_equivalent_cells": 35269.199999999146,
+        "projected_ice_volume_cells": 672.8834748739921,
+        "phase_min": 0.0009476928708846823,
+        "phase_max": 1.0
+      },
+      {
+        "step": 262224,
+        "water_volume_cells": 34674.24284791808,
+        "ice_mass_water_equivalent_cells": 594.9571520810587,
+        "total_water_equivalent_cells": 35269.19999999914,
+        "projected_ice_volume_cells": 648.8082356391043,
+        "phase_min": 0.0009474827445716053,
+        "phase_max": 1.0
+      },
+      {
+        "step": 266320,
+        "water_volume_cells": 34696.11146725596,
+        "ice_mass_water_equivalent_cells": 573.0885327431766,
+        "total_water_equivalent_cells": 35269.19999999914,
+        "projected_ice_volume_cells": 624.9602319991021,
+        "phase_min": 0.0009479303654171668,
+        "phase_max": 1.0
+      },
+      {
+        "step": 270416,
+        "water_volume_cells": 34716.5154421529,
+        "ice_mass_water_equivalent_cells": 552.6845578462328,
+        "total_water_equivalent_cells": 35269.19999999913,
+        "projected_ice_volume_cells": 602.7094414898941,
+        "phase_min": 0.0009479560240816933,
+        "phase_max": 1.0
+      },
+      {
+        "step": 274512,
+        "water_volume_cells": 34736.27565776679,
+        "ice_mass_water_equivalent_cells": 532.9243422323292,
+        "total_water_equivalent_cells": 35269.19999999912,
+        "projected_ice_volume_cells": 581.1606785521583,
+        "phase_min": 0.0009477848971965865,
+        "phase_max": 1.0
+      },
+      {
+        "step": 278608,
+        "water_volume_cells": 34756.80173640211,
+        "ice_mass_water_equivalent_cells": 512.398263597031,
+        "total_water_equivalent_cells": 35269.19999999914,
+        "projected_ice_volume_cells": 558.7767323849847,
+        "phase_min": 0.0009477125687209333,
+        "phase_max": 1.0
+      },
+      {
+        "step": 282704,
+        "water_volume_cells": 34777.03324943425,
+        "ice_mass_water_equivalent_cells": 492.16675056487486,
+        "total_water_equivalent_cells": 35269.199999999124,
+        "projected_ice_volume_cells": 536.7140137021536,
+        "phase_min": 0.0009477580088952233,
+        "phase_max": 1.0
+      },
+      {
+        "step": 286800,
+        "water_volume_cells": 34796.943612680465,
+        "ice_mass_water_equivalent_cells": 472.25638731866746,
+        "total_water_equivalent_cells": 35269.19999999913,
+        "projected_ice_volume_cells": 515.001512888405,
+        "phase_min": 0.0009478779221336732,
+        "phase_max": 1.0
+      },
+      {
+        "step": 290896,
+        "water_volume_cells": 34816.49307023534,
+        "ice_mass_water_equivalent_cells": 452.7069297637876,
+        "total_water_equivalent_cells": 35269.199999999124,
+        "projected_ice_volume_cells": 493.6825842571294,
+        "phase_min": 0.0009479165178105922,
+        "phase_max": 1.0
+      },
+      {
+        "step": 294992,
+        "water_volume_cells": 34835.68798875306,
+        "ice_mass_water_equivalent_cells": 433.51201124605706,
+        "total_water_equivalent_cells": 35269.19999999912,
+        "projected_ice_volume_cells": 472.7502848921015,
+        "phase_min": 0.0009480811596387208,
+        "phase_max": 1.0
+      },
+      {
+        "step": 299088,
+        "water_volume_cells": 34853.68612652315,
+        "ice_mass_water_equivalent_cells": 415.51387347596403,
+        "total_water_equivalent_cells": 35269.19999999912,
+        "projected_ice_volume_cells": 453.12308994107315,
+        "phase_min": 0.0009480336931102353,
+        "phase_max": 1.0
+      },
+      {
+        "step": 303184,
+        "water_volume_cells": 34870.676171491694,
+        "ice_mass_water_equivalent_cells": 398.5238285074162,
+        "total_water_equivalent_cells": 35269.19999999911,
+        "projected_ice_volume_cells": 434.59523283251497,
+        "phase_min": 0.0009478985058177637,
+        "phase_max": 1.0
+      },
+      {
+        "step": 307280,
+        "water_volume_cells": 34887.69912981362,
+        "ice_mass_water_equivalent_cells": 381.50087018547447,
+        "total_water_equivalent_cells": 35269.199999999095,
+        "projected_ice_volume_cells": 416.03148329931787,
+        "phase_min": 0.0009477314571068997,
+        "phase_max": 1.0
+      },
+      {
+        "step": 311376,
+        "water_volume_cells": 34905.091256967105,
+        "ice_mass_water_equivalent_cells": 364.10874303200075,
+        "total_water_equivalent_cells": 35269.19999999911,
+        "projected_ice_volume_cells": 397.0651505256279,
+        "phase_min": 0.0009477171707641242,
+        "phase_max": 1.0
+      },
+      {
+        "step": 315472,
+        "water_volume_cells": 34922.807003982496,
+        "ice_mass_water_equivalent_cells": 346.39299601660736,
+        "total_water_equivalent_cells": 35269.1999999991,
+        "projected_ice_volume_cells": 377.74590623403196,
+        "phase_min": 0.000945912948876873,
+        "phase_max": 1.0
+      },
+      {
+        "step": 319568,
+        "water_volume_cells": 34941.01416871842,
+        "ice_mass_water_equivalent_cells": 328.18583128068127,
+        "total_water_equivalent_cells": 35269.1999999991,
+        "projected_ice_volume_cells": 357.89076475537763,
+        "phase_min": 0.0009480181152849833,
+        "phase_max": 1.0
+      },
+      {
+        "step": 323664,
+        "water_volume_cells": 34958.78627561749,
+        "ice_mass_water_equivalent_cells": 310.41372438160516,
+        "total_water_equivalent_cells": 35269.199999999095,
+        "projected_ice_volume_cells": 338.5100593038224,
+        "phase_min": 0.0009481046118691007,
+        "phase_max": 1.0
+      },
+      {
+        "step": 327760,
+        "water_volume_cells": 34975.49373058278,
+        "ice_mass_water_equivalent_cells": 293.70626941631326,
+        "total_water_equivalent_cells": 35269.19999999909,
+        "projected_ice_volume_cells": 320.29037013774615,
+        "phase_min": 0.0009480397303360656,
+        "phase_max": 1.0
+      },
+      {
+        "step": 331856,
+        "water_volume_cells": 34991.80387270893,
+        "ice_mass_water_equivalent_cells": 277.3961272901612,
+        "total_water_equivalent_cells": 35269.19999999909,
+        "projected_ice_volume_cells": 302.5039556054102,
+        "phase_min": 0.0009479387764241688,
+        "phase_max": 1.0
+      },
+      {
+        "step": 335952,
+        "water_volume_cells": 35007.98037005461,
+        "ice_mass_water_equivalent_cells": 261.2196299444871,
+        "total_water_equivalent_cells": 35269.199999999095,
+        "projected_ice_volume_cells": 284.86328238221057,
+        "phase_min": 0.000947767367955459,
+        "phase_max": 1.0
+      },
+      {
+        "step": 340048,
+        "water_volume_cells": 35023.89608378679,
+        "ice_mass_water_equivalent_cells": 245.30391621229813,
+        "total_water_equivalent_cells": 35269.19999999909,
+        "projected_ice_volume_cells": 267.50699695997616,
+        "phase_min": 0.0009477613834803214,
+        "phase_max": 1.0
+      },
+      {
+        "step": 344144,
+        "water_volume_cells": 35039.704851845556,
+        "ice_mass_water_equivalent_cells": 229.49514815352362,
+        "total_water_equivalent_cells": 35269.19999999908,
+        "projected_ice_volume_cells": 250.26733713579455,
+        "phase_min": 0.0009478746028377663,
+        "phase_max": 1.0
+      },
+      {
+        "step": 348240,
+        "water_volume_cells": 35055.02048796042,
+        "ice_mass_water_equivalent_cells": 214.17951203866895,
+        "total_water_equivalent_cells": 35269.19999999909,
+        "projected_ice_volume_cells": 233.5654438807731,
+        "phase_min": 0.0009480033087112384,
+        "phase_max": 1.0
+      },
+      {
+        "step": 352336,
+        "water_volume_cells": 35069.24475412801,
+        "ice_mass_water_equivalent_cells": 199.955245871079,
+        "total_water_equivalent_cells": 35269.199999999095,
+        "projected_ice_volume_cells": 218.05370323999887,
+        "phase_min": 0.000947928626463297,
+        "phase_max": 1.0
+      },
+      {
+        "step": 356432,
+        "water_volume_cells": 35083.63273448844,
+        "ice_mass_water_equivalent_cells": 185.5672655106391,
+        "total_water_equivalent_cells": 35269.19999999908,
+        "projected_ice_volume_cells": 202.36343021879946,
+        "phase_min": 0.0009478432431006946,
+        "phase_max": 1.0
+      },
+      {
+        "step": 360528,
+        "water_volume_cells": 35097.69993985987,
+        "ice_mass_water_equivalent_cells": 171.50006013920992,
+        "total_water_equivalent_cells": 35269.19999999908,
+        "projected_ice_volume_cells": 187.02296634592142,
+        "phase_min": 0.0009477837203104424,
+        "phase_max": 1.0
+      },
+      {
+        "step": 364624,
+        "water_volume_cells": 35111.31911176173,
+        "ice_mass_water_equivalent_cells": 157.8808882373582,
+        "total_water_equivalent_cells": 35269.19999999909,
+        "projected_ice_volume_cells": 172.1710885903579,
+        "phase_min": 0.0009478458897302768,
+        "phase_max": 1.0
+      },
+      {
+        "step": 368720,
+        "water_volume_cells": 35124.916702398725,
+        "ice_mass_water_equivalent_cells": 144.28329760035447,
+        "total_water_equivalent_cells": 35269.19999999908,
+        "projected_ice_volume_cells": 157.3427454747595,
+        "phase_min": 0.0009473599841053268,
+        "phase_max": 1.0
+      },
+      {
+        "step": 372816,
+        "water_volume_cells": 35137.80573742076,
+        "ice_mass_water_equivalent_cells": 131.39426257832213,
+        "total_water_equivalent_cells": 35269.19999999908,
+        "projected_ice_volume_cells": 143.28709114320841,
+        "phase_min": 0.0009478165206871217,
+        "phase_max": 1.0
+      },
+      {
+        "step": 376912,
+        "water_volume_cells": 35150.45344796062,
+        "ice_mass_water_equivalent_cells": 118.74655203845131,
+        "total_water_equivalent_cells": 35269.19999999907,
+        "projected_ice_volume_cells": 129.4946041858793,
+        "phase_min": 0.0009478750084724033,
+        "phase_max": 1.0
+      },
+      {
+        "step": 381008,
+        "water_volume_cells": 35163.24300330292,
+        "ice_mass_water_equivalent_cells": 105.9569966961466,
+        "total_water_equivalent_cells": 35269.19999999907,
+        "projected_ice_volume_cells": 115.54743369263535,
+        "phase_min": 0.0009479508490568402,
+        "phase_max": 1.0
+      },
+      {
+        "step": 385104,
+        "water_volume_cells": 35175.68308495714,
+        "ice_mass_water_equivalent_cells": 93.51691504193242,
+        "total_water_equivalent_cells": 35269.19999999907,
+        "projected_ice_volume_cells": 101.98136863896664,
+        "phase_min": 0.0009478260063571066,
+        "phase_max": 1.0
+      },
+      {
+        "step": 389200,
+        "water_volume_cells": 35187.93344678794,
+        "ice_mass_water_equivalent_cells": 81.26655321112631,
+        "total_water_equivalent_cells": 35269.199999999066,
+        "projected_ice_volume_cells": 88.62219543198071,
+        "phase_min": 0.0009477381073321591,
+        "phase_max": 1.0
+      },
+      {
+        "step": 393296,
+        "water_volume_cells": 35199.82543272968,
+        "ice_mass_water_equivalent_cells": 69.37456726939664,
+        "total_water_equivalent_cells": 35269.19999999908,
+        "projected_ice_volume_cells": 75.65383562638674,
+        "phase_min": 0.0009477693957688894,
+        "phase_max": 1.0
+      },
+      {
+        "step": 397392,
+        "water_volume_cells": 35211.5841921943,
+        "ice_mass_water_equivalent_cells": 57.61580780477033,
+        "total_water_equivalent_cells": 35269.19999999907,
+        "projected_ice_volume_cells": 62.83076096485313,
+        "phase_min": 0.0009476152778382582,
+        "phase_max": 1.0
+      },
+      {
+        "step": 401488,
+        "water_volume_cells": 35222.34901939948,
+        "ice_mass_water_equivalent_cells": 46.850980599584894,
+        "total_water_equivalent_cells": 35269.199999999066,
+        "projected_ice_volume_cells": 51.09158189703914,
+        "phase_min": 0.0009479411956800755,
+        "phase_max": 1.0
+      },
+      {
+        "step": 405584,
+        "water_volume_cells": 35232.73067060079,
+        "ice_mass_water_equivalent_cells": 36.46932939826955,
+        "total_water_equivalent_cells": 35269.19999999906,
+        "projected_ice_volume_cells": 39.77026106681521,
+        "phase_min": 0.0009479244227787855,
+        "phase_max": 1.0
+      },
+      {
+        "step": 409680,
+        "water_volume_cells": 35242.12961660171,
+        "ice_mass_water_equivalent_cells": 27.070383397337796,
+        "total_water_equivalent_cells": 35269.19999999905,
+        "projected_ice_volume_cells": 29.52059258161156,
+        "phase_min": 0.0009479009960142572,
+        "phase_max": 1.0
+      },
+      {
+        "step": 413776,
+        "water_volume_cells": 35249.786639384205,
+        "ice_mass_water_equivalent_cells": 19.413360614850575,
+        "total_water_equivalent_cells": 35269.19999999906,
+        "projected_ice_volume_cells": 21.170513211396482,
+        "phase_min": 0.0009478390197670541,
+        "phase_max": 1.0
+      },
+      {
+        "step": 417872,
+        "water_volume_cells": 35255.71129527283,
+        "ice_mass_water_equivalent_cells": 13.488704726222046,
+        "total_water_equivalent_cells": 35269.19999999905,
+        "projected_ice_volume_cells": 14.709601664364289,
+        "phase_min": 0.000947717262073349,
+        "phase_max": 1.0
+      },
+      {
+        "step": 421968,
+        "water_volume_cells": 35260.29494999622,
+        "ice_mass_water_equivalent_cells": 8.90505000283545,
+        "total_water_equivalent_cells": 35269.19999999906,
+        "projected_ice_volume_cells": 9.711068705382168,
+        "phase_min": 0.0009477529106276797,
+        "phase_max": 1.0
+      },
+      {
+        "step": 426064,
+        "water_volume_cells": 35263.6286421763,
+        "ice_mass_water_equivalent_cells": 5.571357822733838,
+        "total_water_equivalent_cells": 35269.19999999904,
+        "projected_ice_volume_cells": 6.075635575500369,
+        "phase_min": 0.0009478673192444399,
+        "phase_max": 1.0
+      },
+      {
+        "step": 430160,
+        "water_volume_cells": 35265.78951078926,
+        "ice_mass_water_equivalent_cells": 3.4104892097728254,
+        "total_water_equivalent_cells": 35269.19999999904,
+        "projected_ice_volume_cells": 3.7191812538416853,
+        "phase_min": 0.0009478553357422494,
+        "phase_max": 1.0
+      },
+      {
+        "step": 434256,
+        "water_volume_cells": 35267.15859691668,
+        "ice_mass_water_equivalent_cells": 2.0414030823492437,
+        "total_water_equivalent_cells": 35269.19999999903,
+        "projected_ice_volume_cells": 2.2261756623219675,
+        "phase_min": 0.0009478424500213147,
+        "phase_max": 1.0
+      },
+      {
+        "step": 438352,
+        "water_volume_cells": 35268.00687574088,
+        "ice_mass_water_equivalent_cells": 1.1931242581421848,
+        "total_water_equivalent_cells": 35269.19999999902,
+        "projected_ice_volume_cells": 1.3011169663491657,
+        "phase_min": 0.0009477824433798811,
+        "phase_max": 1.0
+      },
+      {
+        "step": 442448,
+        "water_volume_cells": 35268.53019709765,
+        "ice_mass_water_equivalent_cells": 0.6698029013789571,
+        "total_water_equivalent_cells": 35269.19999999903,
+        "projected_ice_volume_cells": 0.7304284638810874,
+        "phase_min": 0.0009477257782219818,
+        "phase_max": 1.0
+      },
+      {
+        "step": 446544,
+        "water_volume_cells": 35268.83878084865,
+        "ice_mass_water_equivalent_cells": 0.36121915038294716,
+        "total_water_equivalent_cells": 35269.19999999904,
+        "projected_ice_volume_cells": 0.3939140135037592,
+        "phase_min": 0.0009445805009399982,
+        "phase_max": 1.0
+      },
+      {
+        "step": 450640,
+        "water_volume_cells": 35269.01060362379,
+        "ice_mass_water_equivalent_cells": 0.18939637524051614,
+        "total_water_equivalent_cells": 35269.19999999903,
+        "projected_ice_volume_cells": 0.20653912239969044,
+        "phase_min": 0.0009473766413105322,
+        "phase_max": 1.0
+      },
+      {
+        "step": 454736,
+        "water_volume_cells": 35269.10261818065,
+        "ice_mass_water_equivalent_cells": 0.09738181837221518,
+        "total_water_equivalent_cells": 35269.19999999902,
+        "projected_ice_volume_cells": 0.10619609418998384,
+        "phase_min": 0.0009480163163044632,
+        "phase_max": 1.0
+      },
+      {
+        "step": 458832,
+        "water_volume_cells": 35269.15059499363,
+        "ice_mass_water_equivalent_cells": 0.0494050053752021,
+        "total_water_equivalent_cells": 35269.19999999901,
+        "projected_ice_volume_cells": 0.05387677794460424,
+        "phase_min": 0.0009480027539194703,
+        "phase_max": 1.0
+      },
+      {
+        "step": 462928,
+        "water_volume_cells": 35269.17512868455,
+        "ice_mass_water_equivalent_cells": 0.024871314458600642,
+        "total_water_equivalent_cells": 35269.19999999901,
+        "projected_ice_volume_cells": 0.027122480325627737,
+        "phase_min": 0.0009479037063084685,
+        "phase_max": 1.0
+      },
+      {
+        "step": 467024,
+        "water_volume_cells": 35269.187519120576,
+        "ice_mass_water_equivalent_cells": 0.012480878436703407,
+        "total_water_equivalent_cells": 35269.199999999015,
+        "projected_ice_volume_cells": 0.013610554456601314,
+        "phase_min": 0.0009477700706139582,
+        "phase_max": 0.9999971240758896
+      },
+      {
+        "step": 471120,
+        "water_volume_cells": 35269.19373689888,
+        "ice_mass_water_equivalent_cells": 0.006263100131612022,
+        "total_water_equivalent_cells": 35269.199999999015,
+        "projected_ice_volume_cells": 0.006829989238399152,
+        "phase_min": 0.0009477085742202031,
+        "phase_max": 0.9999523255974054
+      },
+      {
+        "step": 475216,
+        "water_volume_cells": 35269.196852492794,
+        "ice_mass_water_equivalent_cells": 0.0031475062269196645,
+        "total_water_equivalent_cells": 35269.19999999902,
+        "projected_ice_volume_cells": 0.0034323950129985436,
+        "phase_min": 0.0009477749727904007,
+        "phase_max": 0.9999010879546404
+      },
+      {
+        "step": 479312,
+        "water_volume_cells": 35269.19841868112,
+        "ice_mass_water_equivalent_cells": 0.0015813179012365349,
+        "total_water_equivalent_cells": 35269.199999999015,
+        "projected_ice_volume_cells": 0.0017244470024389696,
+        "phase_min": 0.0009478842704066916,
+        "phase_max": 0.9998553264886141
+      },
+      {
+        "step": 483408,
+        "water_volume_cells": 35269.19920893172,
+        "ice_mass_water_equivalent_cells": 0.0007910672935773111,
+        "total_water_equivalent_cells": 35269.199999999015,
+        "projected_ice_volume_cells": 0.0008626688043373076,
+        "phase_min": 0.0009479368446574223,
+        "phase_max": 0.9998223166912794
+      },
+      {
+        "step": 487504,
+        "water_volume_cells": 35269.19960632772,
+        "ice_mass_water_equivalent_cells": 0.0003936712884626751,
+        "total_water_equivalent_cells": 35269.19999999901,
+        "projected_ice_volume_cells": 0.00042930347705853327,
+        "phase_min": 0.0009479238879959008,
+        "phase_max": 0.9997982028871775
+      },
+      {
+        "step": 491600,
+        "water_volume_cells": 35269.19980446769,
+        "ice_mass_water_equivalent_cells": 0.0001955313052701165,
+        "total_water_equivalent_cells": 35269.19999999899,
+        "projected_ice_volume_cells": 0.0002132293405344782,
+        "phase_min": 0.0009478755610854274,
+        "phase_max": 0.9997712355107069
+      },
+      {
+        "step": 495696,
+        "water_volume_cells": 35269.1999028307,
+        "ice_mass_water_equivalent_cells": 9.716831335576999e-05,
+        "total_water_equivalent_cells": 35269.19999999901,
+        "projected_ice_volume_cells": 0.00010596326429200652,
+        "phase_min": 0.0009478328603091792,
+        "phase_max": 0.9997373931109905
+      },
+      {
+        "step": 499792,
+        "water_volume_cells": 35269.199951661525,
+        "ice_mass_water_equivalent_cells": 4.833747241972033e-05,
+        "total_water_equivalent_cells": 35269.199999999,
+        "projected_ice_volume_cells": 5.2712619868833515e-05,
+        "phase_min": 0.000947839765192955,
+        "phase_max": 0.9997042026370764
+      },
+      {
+        "step": 503888,
+        "water_volume_cells": 35269.19997591821,
+        "ice_mass_water_equivalent_cells": 2.4080793401439762e-05,
+        "total_water_equivalent_cells": 35269.199999999,
+        "projected_ice_volume_cells": 2.6260407198952853e-05,
+        "phase_min": 0.0009478829043456495,
+        "phase_max": 0.999677462503314
+      },
+      {
+        "step": 507984,
+        "water_volume_cells": 35269.19998797755,
+        "ice_mass_water_equivalent_cells": 1.202145322142281e-05,
+        "total_water_equivalent_cells": 35269.199999999,
+        "projected_ice_volume_cells": 1.3109545497734798e-05,
+        "phase_min": 0.0009479130104392676,
+        "phase_max": 0.9996567238122225
+      },
+      {
+        "step": 512080,
+        "water_volume_cells": 35269.19999398518,
+        "ice_mass_water_equivalent_cells": 6.013822542291154e-06,
+        "total_water_equivalent_cells": 35269.199999999,
+        "projected_ice_volume_cells": 6.5581489010808664e-06,
+        "phase_min": 0.00094789217391565,
+        "phase_max": 0.9996377229690552
+      },
+      {
+        "step": 516176,
+        "water_volume_cells": 35269.19999698753,
+        "ice_mass_water_equivalent_cells": 3.011466648195704e-06,
+        "total_water_equivalent_cells": 35269.199999999,
+        "projected_ice_volume_cells": 3.284042146342098e-06,
+        "phase_min": 0.0009478216644294003,
+        "phase_max": 0.9996474292129278
+      },
+      {
+        "step": 520272,
+        "water_volume_cells": 35269.19999849079,
+        "ice_mass_water_equivalent_cells": 1.5081955077824479e-06,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 1.6447061153570862e-06,
+        "phase_min": 0.0009477279355434144,
+        "phase_max": 0.9996444005519152
+      },
+      {
+        "step": 524368,
+        "water_volume_cells": 35269.19999924298,
+        "ice_mass_water_equivalent_cells": 7.560052521484047e-07,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 8.244332084497324e-07,
+        "phase_min": 0.0009477106314972185,
+        "phase_max": 0.9996142853051424
+      },
+      {
+        "step": 528464,
+        "water_volume_cells": 35269.19999961927,
+        "ice_mass_water_equivalent_cells": 3.797173343351759e-07,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 4.140865150874328e-07,
+        "phase_min": 0.0009478066832326727,
+        "phase_max": 0.9995838087052107
+      },
+      {
+        "step": 532560,
+        "water_volume_cells": 35269.19999980806,
+        "ice_mass_water_equivalent_cells": 1.9093566533575268e-07,
+        "total_water_equivalent_cells": 35269.19999999899,
+        "projected_ice_volume_cells": 2.0821773755262014e-07,
+        "phase_min": 0.000947925195849282,
+        "phase_max": 0.9995881095528603
+      },
+      {
+        "step": 536656,
+        "water_volume_cells": 35269.19999990306,
+        "ice_mass_water_equivalent_cells": 9.594399835382254e-08,
+        "total_water_equivalent_cells": 35269.199999999,
+        "projected_ice_volume_cells": 1.0462813342837793e-07,
+        "phase_min": 0.0009479804003586902,
+        "phase_max": 0.9996034260839224
+      },
+      {
+        "step": 540752,
+        "water_volume_cells": 35269.19999995078,
+        "ice_mass_water_equivalent_cells": 4.8200248419771835e-08,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 5.256297537597802e-08,
+        "phase_min": 0.0009479598676063029,
+        "phase_max": 0.999641103670001
+      },
+      {
+        "step": 544848,
+        "water_volume_cells": 35269.19999997474,
+        "ice_mass_water_equivalent_cells": 2.425128333188204e-08,
+        "total_water_equivalent_cells": 35269.19999999899,
+        "projected_ice_volume_cells": 2.6446328606196333e-08,
+        "phase_min": 0.0009478888779068508,
+        "phase_max": 0.9996567908674479
+      },
+      {
+        "step": 548944,
+        "water_volume_cells": 35269.19999998677,
+        "ice_mass_water_equivalent_cells": 1.220872792437261e-08,
+        "total_water_equivalent_cells": 35269.19999999898,
+        "projected_ice_volume_cells": 1.3313770909893796e-08,
+        "phase_min": 0.0009477921440503702,
+        "phase_max": 0.999635424464941
+      },
+      {
+        "step": 553040,
+        "water_volume_cells": 35269.19999999286,
+        "ice_mass_water_equivalent_cells": 6.127920048189492e-09,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 6.682573662147756e-09,
+        "phase_min": 0.0009477211197901193,
+        "phase_max": 0.9995930641889572
+      },
+      {
+        "step": 557136,
+        "water_volume_cells": 35269.19999999592,
+        "ice_mass_water_equivalent_cells": 3.0644161698565794e-09,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 3.3417842637476327e-09,
+        "phase_min": 0.000947744453786188,
+        "phase_max": 0.9995636697858572
+      },
+      {
+        "step": 561232,
+        "water_volume_cells": 35269.19999999744,
+        "ice_mass_water_equivalent_cells": 1.529932913823357e-09,
+        "total_water_equivalent_cells": 35269.19999999897,
+        "projected_ice_volume_cells": 1.6684110292512072e-09,
+        "phase_min": 0.0009478315942925543,
+        "phase_max": 0.9995692577213049
+      },
+      {
+        "step": 565328,
+        "water_volume_cells": 35269.199999998214,
+        "ice_mass_water_equivalent_cells": 7.637536898138319e-10,
+        "total_water_equivalent_cells": 35269.19999999898,
+        "projected_ice_volume_cells": 8.328829768962179e-10,
+        "phase_min": 0.0009478973071037468,
+        "phase_max": 0.999601561576128
+      },
+      {
+        "step": 569424,
+        "water_volume_cells": 35269.19999999859,
+        "ice_mass_water_equivalent_cells": 3.815504331709014e-10,
+        "total_water_equivalent_cells": 35269.19999999897,
+        "projected_ice_volume_cells": 4.1608553235648996e-10,
+        "phase_min": 0.0009478922121144275,
+        "phase_max": 0.9996289741247892
+      },
+      {
+        "step": 573520,
+        "water_volume_cells": 35269.19999999879,
+        "ice_mass_water_equivalent_cells": 1.9094963037440457e-10,
+        "total_water_equivalent_cells": 35269.19999999898,
+        "projected_ice_volume_cells": 2.0823296660240409e-10,
+        "phase_min": 0.0009478369675872524,
+        "phase_max": 0.9996248912066221
+      },
+      {
+        "step": 577616,
+        "water_volume_cells": 35269.19999999887,
+        "ice_mass_water_equivalent_cells": 9.566664100299598e-11,
+        "total_water_equivalent_cells": 35269.199999998964,
+        "projected_ice_volume_cells": 1.0432567175899233e-10,
+        "phase_min": 0.0009478004240901351,
+        "phase_max": 0.9995924010872841
+      },
+      {
+        "step": 581712,
+        "water_volume_cells": 35269.19999999892,
+        "ice_mass_water_equivalent_cells": 4.79101578336961e-11,
+        "total_water_equivalent_cells": 35269.19999999897,
+        "projected_ice_volume_cells": 5.224662795386707e-11,
+        "phase_min": 0.0009478344883046953,
+        "phase_max": 0.9995590969920158
+      },
+      {
+        "step": 585808,
+        "water_volume_cells": 35269.19999999894,
+        "ice_mass_water_equivalent_cells": 2.3985857148632965e-11,
+        "total_water_equivalent_cells": 35269.199999998964,
+        "projected_ice_volume_cells": 2.6156878024681532e-11,
+        "phase_min": 0.0009478964849205364,
+        "phase_max": 0.9995495583862066
+      },
+      {
+        "step": 589904,
+        "water_volume_cells": 35269.19999999895,
+        "ice_mass_water_equivalent_cells": 1.2009025704511316e-11,
+        "total_water_equivalent_cells": 35269.199999998964,
+        "projected_ice_volume_cells": 1.3095993134690637e-11,
+        "phase_min": 0.0009479162991721092,
+        "phase_max": 0.9995700586587191
+      },
+      {
+        "step": 594000,
+        "water_volume_cells": 35269.19999999896,
+        "ice_mass_water_equivalent_cells": 6.012712401506216e-12,
+        "total_water_equivalent_cells": 35269.199999998964,
+        "projected_ice_volume_cells": 6.556938278632732e-12,
+        "phase_min": 0.0009478653674688099,
+        "phase_max": 0.9996042270213366
+      },
+      {
+        "step": 598096,
+        "water_volume_cells": 35269.19999999897,
+        "ice_mass_water_equivalent_cells": 3.009300570747136e-12,
+        "total_water_equivalent_cells": 35269.19999999897,
+        "projected_ice_volume_cells": 3.281680011719886e-12,
+        "phase_min": 0.0009477583072094854,
+        "phase_max": 0.9996228963136673
+      },
+      {
+        "step": 600000,
+        "water_volume_cells": 35269.199999998986,
+        "ice_mass_water_equivalent_cells": 2.180914013637339e-12,
+        "total_water_equivalent_cells": 35269.199999998986,
+        "projected_ice_volume_cells": 2.3783140824834664e-12,
+        "phase_min": 0.0009477021186268099,
+        "phase_max": 0.9996199384331703
+      }
+    ],
+    "source_sha256": {
+      "simulator.py": "e323fb0553c18cc08f6011e579902d6111469725328a325540f19638dfc1f4b5",
+      "config.py": "d5d538a71f3d3b9443e787d4de29bf589e3860da28a7a174b1f00ac8d25d701f",
+      "lattice.py": "b2a5d60ee935adefeeb13e30684dbea33bd3054bf02c6113a6261100950b94c5",
+      "conservative_phase.py": "8b77e9eabb825052047443635a2329e8d83a5f8da9a58582662ff0c75e833e40"
+    },
+    "maximum_sampled_relative_mass_error": 2.9531932455029164e-14
+  },
+  "environment": {
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "driver": "570.211.01",
+    "taichi": "1.7.4",
+    "python": "3.10.20",
+    "conda_environment": "icy",
+    "baseline_commit": "457ac81fa1b1f333c9164d281536b3dcc03f7232",
+    "timing_excludes": [
+      "initialization",
+      "JIT compilation",
+      "output",
+      "mass audit"
+    ],
+    "field_payload_note": "Counted field payload; excludes runtime reservations and compilation caches."
+  },
+  "current_source_sha256": {
+    "simulator.py": "e323fb0553c18cc08f6011e579902d6111469725328a325540f19638dfc1f4b5",
+    "conservative_phase.py": "8b77e9eabb825052047443635a2329e8d83a5f8da9a58582662ff0c75e833e40",
+    "config.py": "d5d538a71f3d3b9443e787d4de29bf589e3860da28a7a174b1f00ac8d25d701f",
+    "lattice.py": "b2a5d60ee935adefeeb13e30684dbea33bd3054bf02c6113a6261100950b94c5",
+    "stability_options.py": "c5f2167f3cf87e45ea06495a7a51ab0ab9fad9f5c5cbd5a68683e2e3971d5089",
+    "reporting.py": "41e2b61df60fb67aafb51dd381326d111bf9b20c1dfa974ee142cc38361eb78f",
+    "examples/coupled_falling_ice_melting_2d.py": "042ebf08a3f22619989fd65a90ee05fa963ee5140d7f30f9e4e2c4a57ec48da9",
+    "benchmarks/benchmark_conservative_lbm.py": "49b175dc695e2c2c1bd535568954ebd56ef59524261f25cd1e17e1a7a6d62fe0",
+    "test_conservative_phase.py": "d2584403112e4c9ce5b2f1b189bea1184124730d5212387afcde5dfd36d04574"
+  }
+}

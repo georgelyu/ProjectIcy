@@ -67,6 +67,9 @@ def _falling_config(**overrides):
         ice_initial_angle=math.radians(5.0),
         ice_fixed=False,
         rigid_boundary_scheme="unified",
+        # These fixtures assert the historical disappearing-ice contracts.
+        # The conservative production default has separate mass/geometry tests.
+        water_mass_conservation="legacy",
         thermal=_thermal_config(),
     )
     values.update(overrides)

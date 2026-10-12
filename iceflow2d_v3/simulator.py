@@ -44,6 +44,7 @@ from .thermal_d2q5 import D2Q5Thermal2D
 from .body_state import BodyField
 from .contact import BodyContacts
 from .stability_options import StabilityOptions, pressure_preserving_stress_population
+from .conservative_phase import ConservativePhaseLBM
 
 _MAX_D2Q9_LATTICE_VELOCITY_L1 = 16.0
 
@@ -236,6 +237,11 @@ class MovingBodyThermal2D:
         self.body_solid_mass = ti.field(ti.f64, shape=body_shape)
         self.body_sensible_energy = ti.field(ti.f64, shape=body_shape)
         self._body_heat_delta = ti.field(ti.f64, shape=body_shape)
+        self.melted_mass = ti.field(ti.f64, shape=body_shape)
+        self.melted_sensible_energy = ti.field(ti.f64, shape=body_shape)
+        self.conservative_phase = None
+        self._conservative_phase_enabled = False
+        self.last_thermal_substep_s = 0.0
 
         self.water_volume_m2 = ti.field(ti.f64, shape=world_shape)
         self.water_sensible_energy = ti.field(ti.f64, shape=world_shape)
@@ -382,6 +388,7 @@ class MovingBodyThermal2D:
         )
         self.synchronize_water_aperture(water_phase, wall_mask, solid_mask)
         sub_dt = dt / substeps
+        self.last_thermal_substep_s = sub_dt
         for _ in range(substeps):
             self._compute_water_advection_flux_x(
                 velocity, water_phase, wall_mask, solid_mask
@@ -411,6 +418,7 @@ class MovingBodyThermal2D:
         dt = _positive("time_step_s", time_step_s)
         substeps = self.required_diffusion_substeps(dt)
         sub_dt = dt / substeps
+        self.last_thermal_substep_s = sub_dt
         for _ in range(substeps):
             if self._d2q5 is None:
                 self._accumulate_body_conduction(sub_dt)
@@ -449,10 +457,20 @@ class MovingBodyThermal2D:
         wet neighborhood; a disconnected cell starts at the melting point.
         No global volume or energy correction is applied.
         """
+        if self.conservative_phase is not None:
+            self._synchronize_conservative_volume()
+            if self._d2q5 is not None:
+                self._d2q5.synchronize()
+            return
         self._build_phase_aperture_targets(water_phase, wall_mask, solid_mask)
         self._apply_phase_aperture_transfer(water_phase, wall_mask, solid_mask)
         if self._d2q5 is not None:
             self._d2q5.synchronize()
+
+    @ti.kernel
+    def _synchronize_conservative_volume(self):
+        for i, j in self.water_volume_m2:
+            self.water_volume_m2[i, j] = self.conservative_phase.cell_area[None] * self.conservative_phase.volume(i, j)
 
     @ti.kernel
     def _initialize_body_state(self, cell_mass: ti.f64):
@@ -492,6 +510,8 @@ class MovingBodyThermal2D:
                 and phase > ti.static(self._water_phase_cutoff)
             ):
                 volume = area * ti.cast(phase, ti.f64)
+            if ti.static(self._conservative_phase_enabled):
+                volume = self.conservative_phase.cell_area[None] * self.conservative_phase.volume(i, j)
             self.water_volume_m2[i, j] = volume
             self.water_sensible_energy[i, j] = (
                 rho_cp * volume * (initial_temperature - melting)
@@ -1059,16 +1079,21 @@ class MovingBodyThermal2D:
         latent = ti.cast(ti.static(self._latent_heat_j_kg), ti.f64)
         for i, j in self.body_solid_mass:
             mass = self.body_solid_mass[i, j]
+            old_mass = mass
             sensible = self.body_sensible_energy[i, j] + self._body_heat_delta[i, j]
+            extra_heat = ti.max(0.0, sensible - mass * latent)
             if sensible > 0.0:
                 mass = ti.max(0.0, mass - sensible / latent)
                 sensible = 0.0
             # Discard sub-grid residue so an eroded cell can disappear completely.
-            if mass <= ti.static(1.0e-6 * self._initial_body_cell_mass):
-                mass = 0.0
-                sensible = 0.0
+            if ti.static(not self._conservative_phase_enabled):
+                if mass <= ti.static(1.0e-6 * self._initial_body_cell_mass):
+                    mass = 0.0
+                    sensible = 0.0
             self.body_solid_mass[i, j] = mass
             self.body_sensible_energy[i, j] = sensible
+            self.melted_mass[i, j] = old_mass - mass
+            self.melted_sensible_energy[i, j] = extra_heat
 
     @ti.func
     def _body_fraction_at(self, i, j):
@@ -1094,7 +1119,10 @@ class MovingBodyThermal2D:
     def _water_temperature_at(self, i, j):
         temperature = ti.cast(ti.static(self.config.initial_air_temperature_c), ti.f64)
         volume = self.water_volume_m2[i, j]
-        if volume > 1.0e-30:
+        minimum = ti.cast(1e-30, ti.f64)
+        if ti.static(self._conservative_phase_enabled):
+            minimum = self.conservative_phase.cell_area[None] * 1e-12
+        if volume > minimum:
             temperature = self._melting_temperature_c + self.water_sensible_energy[
                 i, j
             ] / (self._water_density_kg_m3 * self._water_specific_heat * volume)
@@ -1146,6 +1174,8 @@ class MovingBodyThermal2D:
             and phase > self._water_phase_cutoff
         ):
             volume = self._cell_area * ti.cast(phase, ti.f64)
+        if ti.static(self._conservative_phase_enabled):
+            volume = self.conservative_phase.cell_area[None] * self.conservative_phase.volume(i, j)
         return volume
 
     def _body_fraction_numpy(self):
@@ -1176,7 +1206,7 @@ class MovingBodyThermal2D:
         temperature = np.full(
             volume.shape, self.config.initial_air_temperature_c, dtype=np.float64
         )
-        wet = volume > 1.0e-30
+        wet = volume > (self._cell_area * 1e-12 if self._conservative_phase_enabled else 1e-30)
         temperature[wet] = self._melting_temperature_c + sensible[wet] / (
             self._water_density_kg_m3 * self._water_specific_heat * volume[wet]
         )
@@ -1188,7 +1218,7 @@ class MovingBodyThermal2D:
         water_energy = self.water_sensible_energy.to_numpy()
         mass = self.body_solid_mass.to_numpy()
         body_energy = self.body_sensible_energy.to_numpy()
-        wet = volume > 1.0e-30
+        wet = volume > (self._cell_area * 1e-12 if self._conservative_phase_enabled else 1e-30)
         temperature = np.full(
             volume.shape, self.config.initial_air_temperature_c, dtype=np.float64
         )
@@ -1281,6 +1311,8 @@ class IceFlow2D(StabilityOptions):
             raise ValueError("IceFlow2D supports only the linear buoyancy model")
         ensure_taichi_cuda()
         self.config = config
+        self._conservative_phase_enabled = config.water_mass_conservation == "conservative_lbm"
+        self._phase_dtype = ti.f64 if self._conservative_phase_enabled else ti.f32
         self.body_count = len(config.bodies)
         self.nx = int(config.nx)
         self.ny = int(config.ny)
@@ -1344,9 +1376,9 @@ class IceFlow2D(StabilityOptions):
         # Allen--Cahn phase distribution.
         self.momentum_populations = self._allocate_populations()
         self.momentum_stream_buffer = self._allocate_populations()
-        self.phase_populations = self._allocate_populations()
-        self.phase_stream_buffer = self._allocate_populations()
-        self.water_phase = ti.field(ti.f32, shape=shape_xy)
+        self.phase_populations = self._allocate_populations(self._phase_dtype)
+        self.phase_stream_buffer = self._allocate_populations(self._phase_dtype)
+        self.water_phase = ti.field(self._phase_dtype, shape=shape_xy)
         self.momentum_velocity_lattice = ti.Vector.field(2, ti.f32, shape=shape_xy)
         # Retained across streaming because pressure reconstruction uses the
         # half-force velocity at the next time level.
@@ -1479,6 +1511,10 @@ class IceFlow2D(StabilityOptions):
         self.thermal.body_angle = self.body_angle
         self._moving_body_fraction = self.thermal.world_body_solid_fraction
         self._body_fractions = self.thermal.body_world_fraction
+        if self._conservative_phase_enabled:
+            self.conservative_phase = ConservativePhaseLBM(self)
+            self.thermal.conservative_phase = self.conservative_phase
+            self.thermal._conservative_phase_enabled = True
         self.temperature = _DerivedField(
             None,
             lambda: self.sample_thermal_fields()["temperature_c"],
@@ -1521,6 +1557,10 @@ class IceFlow2D(StabilityOptions):
         self._solve_contact_and_rasterize()
         self._initialize_moving_body_geometry()
         self._initialize_fluid()
+        if self._conservative_phase_enabled:
+            self.conservative_phase.update_capacity()
+            self.conservative_phase.project_melting(0.0)
+            self.conservative_phase.initialize()
         if config.phase_warmup_steps > 0:
             self._warm_start_phase(config.phase_warmup_steps)
         self._update_streamed_macroscopic_fields()
@@ -1550,10 +1590,20 @@ class IceFlow2D(StabilityOptions):
         self._collide_momentum()
         if self.config.phase_momentum_coupling == "legacy":
             self._collide_phase()
+            if self._conservative_phase_enabled:
+                self.conservative_phase.prepare_transport()
+        if self._conservative_phase_enabled:
+            self.conservative_phase.begin_fluid(1 if self.config.thermal.advection_enabled else 0)
         self._stream()
+        if self._conservative_phase_enabled:
+            self.conservative_phase.limit_stream()
+            self.conservative_phase.finish_energy()
         self._update_streamed_macroscopic_fields()
         self._update_pressure()
-        self._bound_water_phase()
+        if self._conservative_phase_enabled:
+            self.conservative_phase.repair_bounds()
+        else:
+            self._bound_water_phase()
 
     def _advance_body(self):
         self._integrate_rigid_ice()
@@ -1563,7 +1613,18 @@ class IceFlow2D(StabilityOptions):
         """Commit geometry and reconstruct exposed ambient fluid in one place."""
         self._solve_contact_and_rasterize(resolve_contact=resolve_contact)
         self._update_solid_mask()
+        if self._conservative_phase_enabled:
+            self.conservative_phase.cache_momentum_phase()
         self._refill_changed_nodes()
+        if self._conservative_phase_enabled:
+            thermal_steps = 0.0 if resolve_contact else self.thermal.last_thermal_substep_s / self._time_step_s
+            self.conservative_phase.update_capacity()
+            if thermal_steps > 0:
+                self.conservative_phase.project_melting(thermal_steps)
+            self.conservative_phase.remap()
+            self._synchronize_conservative_momentum()
+            if self.thermal._d2q5 is not None:
+                self.thermal._d2q5.synchronize()
 
     def _advance_thermal(self):
         self._advance_moving_thermal_fast(target_step=self.steps + 1)
@@ -1582,6 +1643,10 @@ class IceFlow2D(StabilityOptions):
     def _advance_moving_thermal_fast(self, *, target_step):
         """Remap the moving aperture and advect water/energy at every LBM step."""
 
+        if getattr(self, "_conservative_phase_enabled", False):
+            if self._thermal_stability_check_enabled:
+                self._check_thermal_advection_stability(target_step=target_step)
+            return
         self._measure_water_outflow_rate()
         maximum_velocity_l1 = float(self.maximum_water_outflow_rate_lattice[None])
         if self._thermal_stability_check_enabled:
@@ -1609,17 +1674,47 @@ class IceFlow2D(StabilityOptions):
 
     def _refresh_eroded_body(self):
         """Finish each erosion substep before any further heat exchange."""
+        if self._conservative_phase_enabled:
+            self.conservative_phase.cache_momentum_phase()
         self._update_moving_body_mass_properties()
         self._refresh_fluid_domain(resolve_contact=False)
         self.thermal.synchronize_water_aperture(
             self.water_phase, self.wall_mask, self.solid_mask
         )
 
+    @ti.kernel
+    def _synchronize_conservative_momentum(self):
+        for i, j in self.water_phase:
+            if self._is_fluid_cell(i, j):
+                before = ti.cast(self.conservative_phase.momentum_phase[i, j], ti.f32)
+                after = ti.cast(self.water_phase[i, j], ti.f32)
+                if before != after:
+                    old_density = mixture_density(before, self._water_density_lattice, self._air_density_lattice)
+                    new_density = mixture_density(after, self._water_density_lattice, self._air_density_lattice)
+                    pressure = self.pressure_lattice[i, j] - self.hydrostatic_reference_pressure[i, j]
+                    velocity = self.momentum_velocity_lattice[i, j]
+                    for q in ti.static(range(9)):
+                        self.momentum_populations[i, j, q] += momentum_equilibrium(q, pressure, new_density, velocity) - momentum_equilibrium(q, pressure, old_density, velocity)
+
     # Geometry and initialization
 
     @ti.func
     def _is_fluid_cell(self, i, j):
         return self.wall_mask[i, j] == 0 and self.solid_mask[i, j] == 0
+
+    @ti.func
+    def _is_phase_cell(self, i, j):
+        active = self._is_fluid_cell(i, j)
+        if ti.static(self._conservative_phase_enabled):
+            active = self.conservative_phase.cell(i, j)
+        return active
+
+    @ti.func
+    def _phase_velocity_at(self, i, j):
+        velocity = self.momentum_velocity_lattice[i, j] + 0.5 * self.fluid_acceleration_lattice[i, j]
+        if self.solid_mask[i, j] != 0:
+            velocity = self._body_velocity_at(self._cell_point(i, j), self.solid_body_id[i, j])
+        return velocity
 
     @ti.kernel
     def _measure_water_outflow_rate(self):
@@ -1833,7 +1928,7 @@ class IceFlow2D(StabilityOptions):
     def _ice_phase_ghost(self, fi, fj, si, sj, sample_i, sample_j):
         mirror = self._ice_mirror_sample(fi, fj, si, sj, sample_i, sample_j)
         base = ti.cast(ti.floor(ti.Vector([mirror.x, mirror.y])), ti.i32)
-        center = self.water_phase[fi, fj]
+        center = ti.cast(self.water_phase[fi, fj], ti.f32)
         difference, weight = 0.0, 0.0
         for di, dj in ti.static(ti.ndrange(2, 2)):
             i, j = base.x + di, base.y + dj
@@ -1843,7 +1938,7 @@ class IceFlow2D(StabilityOptions):
             if inside_grid(index.x, index.y, self.nx, self.ny):
                 if self._is_fluid_cell(index.x, index.y):
                     # Interpolate differences to preserve pure phases exactly.
-                    difference += w * (self.water_phase[index.x, index.y] - center)
+                    difference += w * (ti.cast(self.water_phase[index.x, index.y], ti.f32) - center)
                     weight += w
         value = center
         if weight > 1.0e-10:
@@ -1852,12 +1947,12 @@ class IceFlow2D(StabilityOptions):
 
     @ti.func
     def _phase_neighbor(self, i, j, step_x, step_y, distance):
-        value = self.water_phase[i, j]
+        value = ti.cast(self.water_phase[i, j], ti.f32)
         first = self._phase_sample_inside_walls(i + step_x, j + step_y)
         ni1, nj1 = first.x, first.y
         if inside_grid(ni1, nj1, self.nx, self.ny):
             if self._is_fluid_cell(ni1, nj1):
-                value = self.water_phase[ni1, nj1]
+                value = ti.cast(self.water_phase[ni1, nj1], ti.f32)
                 if distance == 2:
                     second = self._phase_sample_inside_walls(
                         i + 2 * step_x, j + 2 * step_y
@@ -1865,7 +1960,7 @@ class IceFlow2D(StabilityOptions):
                     ni2, nj2 = second.x, second.y
                     if inside_grid(ni2, nj2, self.nx, self.ny):
                         if self._is_fluid_cell(ni2, nj2):
-                            value = self.water_phase[ni2, nj2]
+                            value = ti.cast(self.water_phase[ni2, nj2], ti.f32)
                         elif self.solid_mask[ni2, nj2] != 0:
                             value = self._ice_phase_ghost(ni1, nj1, ni2, nj2, ni2, nj2)
             elif self.solid_mask[ni1, nj1] != 0:
@@ -2078,7 +2173,7 @@ class IceFlow2D(StabilityOptions):
             # at the newly exposed cell, so rigid motion cannot advect a
             # hydrostatic gauge value with the body.
             if self._is_fluid_cell(i, j):
-                water_phase = self.water_phase[i, j]
+                water_phase = ti.cast(self.water_phase[i, j], ti.f32)
                 material_density = mixture_density(water_phase, rho_water, rho_air)
                 self.momentum_velocity_lattice[i, j] = rest
                 self.pressure_lattice[i, j] = hydrostatic_pressure
@@ -2088,15 +2183,21 @@ class IceFlow2D(StabilityOptions):
                     self.momentum_populations[i, j, q] = momentum_equilibrium(
                         q, 0.0, material_density, rest
                     )
-                    self.phase_populations[i, j, q] = phase_equilibrium(
-                        q, water_phase, rest
-                    )
+                    if ti.static(not self._conservative_phase_enabled):
+                        self.phase_populations[i, j, q] = phase_equilibrium(q, water_phase, rest)
             else:
                 boundary_velocity = ti.Vector([0.0, 0.0])
                 if self.solid_mask[i, j] == 1:
                     boundary_velocity = self._body_velocity_at(point)
                 self.momentum_velocity_lattice[i, j] = boundary_velocity
                 self.pressure_lattice[i, j] = self.hydrostatic_reference_pressure[i, j]
+            if ti.static(self._conservative_phase_enabled):
+                phi = self.water_phase[i, j]
+                capacity = self.conservative_phase.capacity[i, j]
+                for q in ti.static(range(9)):
+                    self.phase_populations[i, j, q] = capacity * phase_equilibrium(q, phi, rest)
+                self.conservative_phase.close_moment(i, j, capacity * phi)
+                self.water_phase[i, j] = capacity * phi
 
     def _initialize_moving_body_geometry(self):
         self._update_solid_mask()
@@ -2139,6 +2240,8 @@ class IceFlow2D(StabilityOptions):
                 mass = self.thermal.body_solid_mass[i, j] / ti.cast(
                     ti.static(self.config.rho_water * self.config.dx**2), ti.f64
                 )
+                if ti.static(self._conservative_phase_enabled):
+                    mass = self.thermal.body_solid_mass[i, j] / self.conservative_phase.water_cell_mass[None]
                 fraction = ti.cast(self.thermal.body_solid_fraction[i, j], ti.f64)
                 local = ti.Vector(
                     [
@@ -2200,7 +2303,7 @@ class IceFlow2D(StabilityOptions):
         """Read only persistent fluid, never other cells being filled by this launch."""
         state = ti.Vector(
             [
-                ti.min(1.0, ti.max(0.0, self.water_phase[i, j])),
+                ti.min(1.0, ti.max(0.0, ti.cast(self.water_phase[i, j], ti.f32))),
                 self.pressure_lattice[i, j] - self.hydrostatic_reference_pressure[i, j],
                 self._body_velocity_at(
                     self._cell_point(i, j), ti.max(self.previous_body_id[i, j], 0)
@@ -2228,7 +2331,7 @@ class IceFlow2D(StabilityOptions):
                         velocity = self.momentum_velocity_lattice[ni, nj]
                         total += ti.Vector(
                             [
-                                ti.min(1.0, ti.max(0.0, self.water_phase[ni, nj])),
+                                ti.min(1.0, ti.max(0.0, ti.cast(self.water_phase[ni, nj], ti.f32))),
                                 self.pressure_lattice[ni, nj]
                                 - self.hydrostatic_reference_pressure[ni, nj],
                                 velocity.x,
@@ -2256,16 +2359,30 @@ class IceFlow2D(StabilityOptions):
                 self.wall_mask[i, j] == 0
                 and self.previous_body_id[i, j] != self.solid_body_id[i, j]
             ):
+                old_volume = ti.cast(0.0, ti.f64)
+                old_energy = ti.cast(0.0, ti.f64)
+                if ti.static(self._conservative_phase_enabled):
+                    if self.previous_solid_mask[i, j] == 0:
+                        old_volume = self.conservative_phase.volume(i, j)
+                        old_energy = self.thermal.water_sensible_energy[i, j]
+                new_volume = ti.cast(0.0, ti.f64)
                 if self.solid_mask[i, j] == 1:
                     self.momentum_velocity_lattice[i, j] = self._body_velocity_at(
                         self._cell_point(i, j), self.solid_body_id[i, j]
                     )
+                    if ti.static(self._conservative_phase_enabled):
+                        self.water_phase[i, j] = 0.0
+                        for q in ti.static(range(9)):
+                            self.phase_populations[i, j, q] = 0.0
                 else:
                     state = self._extrapolate_exposed_fluid(i, j)
                     phase, dynamic_pressure = state[0], state[1]
                     velocity = ti.Vector([state[2], state[3]])
                     density = mixture_density(phase, rho_water, rho_air)
                     self.water_phase[i, j] = phase
+                    new_volume = ti.cast(phase, ti.f64)
+                    if ti.static(self._conservative_phase_enabled):
+                        self.conservative_phase.momentum_phase[i, j] = phase
                     self.momentum_velocity_lattice[i, j] = velocity
                     self.pressure_lattice[i, j] = (
                         dynamic_pressure + self.hydrostatic_reference_pressure[i, j]
@@ -2285,9 +2402,12 @@ class IceFlow2D(StabilityOptions):
                                     q, stress, velocity
                                 )
                             )
-                        self.phase_populations[i, j, q] = phase_equilibrium(
-                            q, phase, velocity
-                        )
+                        self.phase_populations[i, j, q] = phase_equilibrium(q, phase, velocity)
+                if ti.static(self._conservative_phase_enabled):
+                    self.conservative_phase.close_moment(i, j, new_volume)
+                    self.conservative_phase.event_volume[i, j] += old_volume - new_volume
+                    self.conservative_phase.event_heat[i, j] += old_energy
+                    self.thermal.water_sensible_energy[i, j] = 0.0
                 self.fluid_acceleration_lattice[i, j] = ti.Vector([0.0, 0.0])
 
     # ------------------------------------------------------------------
@@ -2308,7 +2428,7 @@ class IceFlow2D(StabilityOptions):
             stress = ti.Vector.zero(ti.f32, 3)
             if ti.static(self._surface_tension_lattice > 0.0):
                 if self._is_fluid_cell(i, j):
-                    phi = self.water_phase[i, j]
+                    phi = ti.cast(self.water_phase[i, j], ti.f32)
                     gradient = ti.Vector.zero(ti.f32, 2)
                     for q in range(1, D2Q9_DIRECTION_COUNT):
                         direction = lattice_direction(q)
@@ -2335,7 +2455,7 @@ class IceFlow2D(StabilityOptions):
     @ti.func
     def _phase_central_gradient(self, i, j):
         gradient = ti.Vector.zero(ti.f32, 2)
-        phi = self.water_phase[i, j]
+        phi = ti.cast(self.water_phase[i, j], ti.f32)
         for q in range(1, D2Q9_DIRECTION_COUNT):
             direction = lattice_direction(q)
             neighbor = self._phase_neighbor(i, j, direction.x, direction.y, 1)
@@ -2438,12 +2558,17 @@ class IceFlow2D(StabilityOptions):
     def _fluid_kinematic_viscosity_lattice(self, i, j):
         """Molecular viscosity only, independent of ice proximity and strain rate."""
 
-        phi = ti.min(1.0, ti.max(0.0, self.water_phase[i, j]))
+        phi = ti.min(1.0, ti.max(0.0, ti.cast(self.water_phase[i, j], ti.f32)))
         nu_water = ti.cast(ti.static(self._water_viscosity_lattice), ti.f32)
         if ti.static(self._temperature_dependent_water_viscosity):
             # Dry diffuse tails have no transported water temperature. Retain
             # the initial water value there, rather than using the air temperature.
-            if phi > 0.0 and self.thermal.water_volume_m2[i, j] > 1.0e-30:
+            temperature_resolved = phi > 0.0
+            if ti.static(self._conservative_phase_enabled):
+                # Mass in diffuse tails is retained, while thermophysical
+                # reconstruction uses the same resolved wet region as heat.
+                temperature_resolved = phi > ti.static(self.config.water_phase_cutoff)
+            if temperature_resolved and self.thermal.water_volume_m2[i, j] > 1.0e-30:
                 temperature = ti.cast(self.thermal._water_temperature_at(i, j), ti.f32)
                 nu_water = water_dynamic_viscosity_pa_s(temperature) * ti.static(
                     self._viscosity_to_lattice / self.config.rho_water
@@ -2457,7 +2582,7 @@ class IceFlow2D(StabilityOptions):
         )
         rho_water = ti.static(self._water_density_lattice)
         rho_air = ti.static(self._air_density_lattice)
-        water_phase = self.water_phase[i, j]
+        water_phase = ti.cast(self.water_phase[i, j], ti.f32)
         bounded_phi = ti.min(1.0, ti.max(0.0, water_phase))
         density = mixture_density(bounded_phi, rho_water, rho_air)
 
@@ -2471,18 +2596,16 @@ class IceFlow2D(StabilityOptions):
         reference_temperature = ti.static(
             float(self.config.thermal.buoyancy_reference_temperature_c)
         )
-        temperature = ti.cast(self.thermal._water_temperature_at(i, j), ti.f32)
-        expansion = ti.static(float(self.config.thermal.thermal_expansion_water_1_k))
-        density_anomaly_ratio = -expansion * (temperature - reference_temperature)
-
         # The thermal field deliberately treats the water/air interface as
         # adiabatic and uses the air temperature for dry thermal cells. A smooth
         # water-side gate prevents that unrelated air value from forcing the
         # diffuse layer.
         water_weight = ti.min(1.0, ti.max(0.0, 2.0 * bounded_phi - 1.0))
-        gravity_force_density += (
-            water_weight * rho_water * density_anomaly_ratio * gravity
-        )
+        if water_weight > 0:
+            temperature = ti.cast(self.thermal._water_temperature_at(i, j), ti.f32)
+            expansion = ti.static(float(self.config.thermal.thermal_expansion_water_1_k))
+            density_anomaly_ratio = -expansion * (temperature - reference_temperature)
+            gravity_force_density += water_weight * rho_water * density_anomaly_ratio * gravity
         force = (gravity_force_density + self._capillary_force_density(i, j)) / density
 
         return ti.Vector(
@@ -2506,6 +2629,8 @@ class IceFlow2D(StabilityOptions):
             # measure its actual time-centered mass flux, then apply the full
             # conservative momentum-flux divergence through the force operator.
             self._collide_phase()
+            if self._conservative_phase_enabled:
+                self.conservative_phase.prepare_transport()
             self._measure_phase_mass_flux()
         self._collide_momentum_kernel()
 
@@ -2524,7 +2649,7 @@ class IceFlow2D(StabilityOptions):
                     )
                     force += self._phase_flux_force_density(i, j) / rho_for_flux
                 self.fluid_acceleration_lattice[i, j] = force
-                water_phase = self.water_phase[i, j]
+                water_phase = ti.cast(self.water_phase[i, j], ti.f32)
                 velocity = self.momentum_velocity_lattice[i, j] + 0.5 * force
                 moment_frame_velocity = ti.Vector.zero(ti.f32, 2)
                 if ti.static(self.config.momentum_collision_model != "rm_mrt"):
@@ -2778,12 +2903,17 @@ class IceFlow2D(StabilityOptions):
         interface_width = ti.static(self.config.interface_width)
         phase_relaxation_rate = ti.static(1.0 / (3.0 * self.config.mobility + 0.5))
         for i, j in self.water_phase:
-            if self._is_fluid_cell(i, j):
-                water_phase = self.water_phase[i, j]
+            if self._is_phase_cell(i, j):
+                capacity = ti.cast(1.0, self._phase_dtype)
+                if ti.static(self._conservative_phase_enabled):
+                    capacity = self.conservative_phase.capacity[i, j]
+                water_phase = ti.cast(self.water_phase[i, j], ti.f32)
                 velocity = (
                     self.momentum_velocity_lattice[i, j]
                     + 0.5 * self.fluid_acceleration_lattice[i, j]
                 )
+                if ti.static(self._conservative_phase_enabled):
+                    velocity = self._phase_velocity_at(i, j)
                 grad_phi = ti.Vector([0.0, 0.0])
                 alpha = ti.static(1.0 / 3.0)
                 for direction_index in range(D2Q9_DIRECTION_COUNT):
@@ -2822,24 +2952,25 @@ class IceFlow2D(StabilityOptions):
                     )
                 compression = 4.0 * water_phase * (1.0 - water_phase) / interface_width
 
-                phase_raw_moment_10 = 0.0
-                phase_raw_moment_01 = 0.0
-                phase_equilibrium_moment_10 = 0.0
-                phase_equilibrium_moment_01 = 0.0
-                phase_equilibrium_moment_20 = 0.0
-                phase_equilibrium_moment_02 = 0.0
-                phase_equilibrium_moment_11 = 0.0
-                phase_equilibrium_moment_21 = 0.0
-                phase_equilibrium_moment_12 = 0.0
-                phase_equilibrium_moment_22 = 0.0
-                phase_force_moment_10 = 0.0
-                phase_force_moment_01 = 0.0
-                phase_force_moment_20 = 0.0
-                phase_force_moment_02 = 0.0
-                phase_force_moment_11 = 0.0
-                phase_force_moment_21 = 0.0
-                phase_force_moment_12 = 0.0
-                phase_force_moment_22 = 0.0
+                phase_volume = ti.cast(0.0, ti.f64)
+                phase_raw_moment_10 = ti.cast(0.0, ti.f32)
+                phase_raw_moment_01 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_10 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_01 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_20 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_02 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_11 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_21 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_12 = ti.cast(0.0, ti.f32)
+                phase_equilibrium_moment_22 = ti.cast(0.0, ti.f32)
+                phase_force_moment_10 = ti.cast(0.0, ti.f32)
+                phase_force_moment_01 = ti.cast(0.0, ti.f32)
+                phase_force_moment_20 = ti.cast(0.0, ti.f32)
+                phase_force_moment_02 = ti.cast(0.0, ti.f32)
+                phase_force_moment_11 = ti.cast(0.0, ti.f32)
+                phase_force_moment_21 = ti.cast(0.0, ti.f32)
+                phase_force_moment_12 = ti.cast(0.0, ti.f32)
+                phase_force_moment_22 = ti.cast(0.0, ti.f32)
                 for q in range(D2Q9_DIRECTION_COUNT):
                     cx = ti.cast(lattice_direction(q).x, ti.f32)
                     cy = ti.cast(lattice_direction(q).y, ti.f32)
@@ -2847,7 +2978,9 @@ class IceFlow2D(StabilityOptions):
                     ry = cy - velocity.y
                     rx2 = rx * rx
                     ry2 = ry * ry
-                    h_value = self.phase_populations[i, j, q]
+                    if ti.static(self._conservative_phase_enabled):
+                        phase_volume += self.phase_populations[i, j, q]
+                    h_value = ti.cast(self.phase_populations[i, j, q] / capacity, ti.f32)
                     h_equilibrium = phase_equilibrium(q, water_phase, velocity)
                     phase_force = (
                         lattice_weight(q)
@@ -2908,7 +3041,7 @@ class IceFlow2D(StabilityOptions):
                 )
                 for q in range(D2Q9_DIRECTION_COUNT):
                     self.phase_stream_buffer[i, j, q] = (
-                        reconstruct_central_moment_population(
+                        capacity * reconstruct_central_moment_population(
                             lattice_direction(q).x,
                             lattice_direction(q).y,
                             velocity.x,
@@ -2930,9 +3063,10 @@ class IceFlow2D(StabilityOptions):
                 outgoing_sum = ti.cast(0.0, ti.f64)
                 for q in range(1, D2Q9_DIRECTION_COUNT):
                     outgoing_sum += ti.cast(self.phase_stream_buffer[i, j, q], ti.f64)
-                self.phase_stream_buffer[i, j, 0] = ti.cast(
-                    ti.cast(water_phase, ti.f64) - outgoing_sum, ti.f32
-                )
+                zero = capacity * self.water_phase[i, j]
+                if ti.static(self._conservative_phase_enabled):
+                    zero = phase_volume
+                self.phase_stream_buffer[i, j, 0] = ti.cast(zero - outgoing_sum, self._phase_dtype)
 
     @ti.kernel
     def _stream(self):
@@ -2968,12 +3102,15 @@ class IceFlow2D(StabilityOptions):
                                 self._cell_point(i, j) + fraction * direction_float,
                                 self.solid_body_id[neighbor_i, neighbor_j],
                             )
+                            before_phase = outgoing_phase
                             outgoing_phase -= (
                                 6.0
                                 * lattice_weight(q)
                                 * self.water_phase[i, j]
                                 * direction_float.dot(boundary_velocity)
                             )
+                            if ti.static(self._conservative_phase_enabled):
+                                self.conservative_phase.record_wall(i, j, before_phase, outgoing_phase)
                         self.phase_populations[i, j, opposite] = outgoing_phase
 
     @ti.kernel
@@ -2998,15 +3135,13 @@ class IceFlow2D(StabilityOptions):
                             self._cell_point(i, j) + eta * direction_f,
                             self.solid_body_id[ni, nj],
                         )
-                        self.phase_populations[i, j, opposite_direction_index(q)] = (
-                            outgoing
-                            - (
-                                6.0
-                                * lattice_weight(q)
-                                * self.water_phase[i, j]
-                                * direction_f.dot(boundary_velocity)
-                            )
+                        reflected = outgoing - (
+                            6.0 * lattice_weight(q) * self.water_phase[i, j]
+                            * direction_f.dot(boundary_velocity)
                         )
+                        if ti.static(self._conservative_phase_enabled):
+                            self.conservative_phase.record_wall(i, j, outgoing, reflected)
+                        self.phase_populations[i, j, opposite_direction_index(q)] = reflected
                     else:
                         self.phase_populations[i, j, opposite_direction_index(q)] = (
                             outgoing
@@ -3026,7 +3161,7 @@ class IceFlow2D(StabilityOptions):
                         ti.cast(lattice_direction(q), ti.f32)
                         * self.momentum_populations[i, j, q]
                     )
-                self.water_phase[i, j] = ti.cast(water_phase, ti.f32)
+                self.water_phase[i, j] = ti.cast(water_phase, self._phase_dtype)
                 density = mixture_density(
                     ti.cast(water_phase, ti.f32), rho_water, rho_air
                 )
@@ -3051,7 +3186,7 @@ class IceFlow2D(StabilityOptions):
                 water_phase = ti.cast(0.0, ti.f64)
                 for q in range(D2Q9_DIRECTION_COUNT):
                     water_phase += ti.cast(self.phase_populations[i, j, q], ti.f64)
-                self.water_phase[i, j] = ti.cast(water_phase, ti.f32)
+                self.water_phase[i, j] = ti.cast(water_phase, self._phase_dtype)
             else:
                 if self.wall_mask[i, j] == 1:
                     self.water_phase[i, j] = 0.0
@@ -3059,8 +3194,16 @@ class IceFlow2D(StabilityOptions):
     def _warm_start_phase(self, steps):
         for _ in range(int(steps)):
             self._collide_phase()
+            if self._conservative_phase_enabled:
+                self.conservative_phase.prepare_transport()
+                self.conservative_phase.begin_fluid(0)
             self._stream_phase_only()
+            if self._conservative_phase_enabled:
+                self.conservative_phase.limit_stream()
             self._update_streamed_phase()
+            if self._conservative_phase_enabled:
+                self.conservative_phase.finish_energy()
+                self.conservative_phase.repair_bounds()
 
     @ti.kernel
     def _update_pressure(self):
@@ -3072,7 +3215,7 @@ class IceFlow2D(StabilityOptions):
                 for q in range(D2Q9_DIRECTION_COUNT):
                     if q != 0:
                         moving_distribution_sum += self.momentum_populations[i, j, q]
-                water_phase = self.water_phase[i, j]
+                water_phase = ti.cast(self.water_phase[i, j], ti.f32)
                 material_density = mixture_density(water_phase, rho_water, rho_air)
                 velocity = (
                     self.momentum_velocity_lattice[i, j]
@@ -3116,6 +3259,22 @@ class IceFlow2D(StabilityOptions):
         if ti.static(reduce_support):
             for b, i, j in self._body_fractions:
                 self._reduce_moving_body_contact_extrema(b, i, j)
+            if ti.static(self._conservative_phase_enabled):
+                # Thresholded raster support can omit eroded material tiles.
+                # Their real mass must also stay inside the container.
+                for a, j in self.thermal.body_solid_mass:
+                    b = self.thermal.material_body_id[a, j]
+                    if b >= 0 and self.thermal.body_solid_mass[a, j] > 0:
+                        angle = ti.cast(self.body_angle[b], ti.f64)
+                        c, sn = ti.cos(angle), ti.sin(angle)
+                        x = a - self.thermal.material_offset[b] + 0.5 - 0.5 * self.thermal.material_size[b].x
+                        y = j + 0.5 - 0.5 * self.thermal.material_size[b].y
+                        rx, ry = c * x - sn * y, sn * x + c * y
+                        extent = 0.5 * (ti.abs(c) + ti.abs(sn)) + 2e-4
+                        ti.atomic_min(self._body_contact_support_extrema[b, 0], ti.cast(rx - extent, ti.f32))
+                        ti.atomic_max(self._body_contact_support_extrema[b, 1], ti.cast(rx + extent, ti.f32))
+                        ti.atomic_min(self._body_contact_support_extrema[b, 2], ti.cast(ry - extent, ti.f32))
+                        ti.atomic_max(self._body_contact_support_extrema[b, 3], ti.cast(ry + extent, ti.f32))
             for b in range(self.body_count):
                 self._finalize_moving_body_contact_support(b)
 
@@ -3340,8 +3499,13 @@ class IceFlow2D(StabilityOptions):
     def phase_change_geometry_volume_cells(self):
         return float(self._reduce_phase_change_geometry_volume())
 
-    @ti.kernel
     def _bound_water_phase(self):
+        if self._conservative_phase_enabled:
+            return
+        self._bound_water_phase_legacy()
+
+    @ti.kernel
+    def _bound_water_phase_legacy(self):
         """Repair only out-of-range phase values and their phase populations."""
 
         for i, j in self.water_phase:
@@ -3581,6 +3745,8 @@ class IceFlow2D(StabilityOptions):
                 direction_float = ti.cast(direction, ti.f32)
                 boundary_point = self._cell_point(i, j) + fraction * direction_float
                 boundary_velocity = self._body_velocity_at(boundary_point, b)
+                if ti.static(self._conservative_phase_enabled):
+                    boundary_velocity += self.conservative_phase.boundary_offset(i, j, neighbor_i, neighbor_j, b)
                 opposite = opposite_direction_index(q)
                 nonequilibrium = self.momentum_populations[
                     i, j, q
@@ -3658,9 +3824,9 @@ class IceFlow2D(StabilityOptions):
                 ti.atomic_add(self.hydrodynamic_torque[0], torque_sum)
         return prepared
 
-    def _allocate_populations(self):
+    def _allocate_populations(self, dtype=ti.f32):
         """Keep (i,j,q) indexing with q-major physical storage for coalesced loads."""
-        populations = ti.field(ti.f32)
+        populations = ti.field(dtype)
         ti.root.dense(ti.k, D2Q9_DIRECTION_COUNT).dense(
             ti.ij, (self.nx, self.ny)
         ).place(populations)

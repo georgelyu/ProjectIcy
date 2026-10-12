@@ -435,6 +435,9 @@ class IceFlowConfig:
     hrr_kinetic_blend: float = 0.0
     phase_momentum_coupling: Literal["legacy", "consistent_flux"] = "legacy"
     exposed_node_refill: Literal["equilibrium", "non_equilibrium"] = "equilibrium"
+    # Extensive phase populations, bounded link transport, and conservative
+    # geometry/melt transfers. Legacy is retained for reproducible comparisons.
+    water_mass_conservation: Literal["conservative_lbm", "legacy"] = "conservative_lbm"
 
     # Falling-ice geometry in lattice-cell coordinates.
     water_width_fraction: float = 0.9875
@@ -574,6 +577,8 @@ class IceFlowConfig:
             raise ValueError("sigma must be non-negative")
         _positive("interface_width", self.interface_width)
         _positive("mobility", self.mobility)
+        if self.water_mass_conservation not in ("conservative_lbm", "legacy"):
+            raise ValueError("water_mass_conservation must be conservative_lbm or legacy")
         _non_negative("phase_normal_epsilon", self.phase_normal_epsilon)
         if len(self.gravity) != 2:
             raise ValueError("gravity must contain exactly two components")

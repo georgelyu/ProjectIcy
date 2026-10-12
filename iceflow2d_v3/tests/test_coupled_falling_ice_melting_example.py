@@ -355,7 +355,8 @@ class CoupledFallingMeltingExampleTests(unittest.TestCase):
             self.assertEqual(metadata["config"]["cm_acoustic_relaxation_rate"], 0.25)
             self.assertTrue(removed.isdisjoint(metadata["results"]))
             self.assertNotIn("closed_bath_reference", metadata)
-            self.assertIn("disappears", metadata["phase_change"])
+            self.assertEqual(metadata["water_mass_conservation"], "conservative_lbm")
+            self.assertIn("transfers to liquid water", metadata["phase_change"])
             self.assertEqual(metadata["results"]["water_mean_temperature_c"], 35.0)
             self.assertEqual(
                 metadata["viscosity"]["water_model"], "iapws_local_temperature"

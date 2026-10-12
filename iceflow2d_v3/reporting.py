@@ -48,6 +48,9 @@ class CoupledSnapshot:
     water_volume_current_cells: float
     water_mean_temperature_c: float
     solid_body_id: np.ndarray | None = None
+    water_volume_cells: np.ndarray | None = None
+    fluid_capacity: np.ndarray | None = None
+    water_sensible_energy_j_m: np.ndarray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,12 +250,22 @@ def _capture_snapshot(
         & (phase > simulation.config.water_phase_cutoff)
     )
     water = np.where(wet, np.clip(phase, 0.0, 1.0), 0.0)
+    capacity = None
+    water_energy = None
+    if simulation.config.water_mass_conservation == "conservative_lbm" and hasattr(simulation, "conservative_phase"):
+        capacity = scalar_host(simulation.conservative_phase.capacity, np.float64)
+        water = scalar_host(simulation.thermal.water_volume_m2, np.float64) / simulation.config.dx**2
+        water_energy = scalar_host(simulation.thermal.water_sensible_energy, np.float64)
     current = float(water.sum(dtype=np.float64))
     mean_temperature = float(simulation.config.thermal.properties.melting_temperature_c)
     if current > 0.0:
         mean_temperature = float(
             np.sum(water * thermal_fields["temperature_c"]) / current
         )
+        if water_energy is not None:
+            mean_temperature = simulation.config.thermal.properties.melting_temperature_c + float(water_energy.sum(dtype=np.float64)) / (
+                simulation.config.rho_water * simulation.config.thermal.properties.specific_heat_water_j_kg_k * current * simulation.config.dx**2
+            )
     return CoupledSnapshot(
         physical_time_s=float(simulation.physical_time_s),
         thermal_time_s=float(simulation.thermal.time_s),
@@ -280,6 +293,9 @@ def _capture_snapshot(
         equivalent_uniform_melt_depth_m=0.5 * (initial_side - equivalent_side),
         water_volume_current_cells=current,
         water_mean_temperature_c=mean_temperature,
+        water_volume_cells=water,
+        fluid_capacity=capacity,
+        water_sensible_energy_j_m=water_energy,
     )
 
 
@@ -334,6 +350,18 @@ def snapshot_arrays(
         liquid_fraction=np.stack([item.liquid_fraction for item in snapshots]),
         enthalpy_j_m3=np.stack([item.enthalpy_j_m3 for item in snapshots]),
         water_phase=np.stack([item.water_phase for item in snapshots]),
+        water_volume_cells=np.stack([
+            item.water_volume_cells if item.water_volume_cells is not None else np.where(item.solid == 0, np.clip(item.water_phase, 0, 1), 0)
+            for item in snapshots
+        ]),
+        fluid_capacity=np.stack([
+            item.fluid_capacity if item.fluid_capacity is not None else (item.solid == 0).astype(np.float64)
+            for item in snapshots
+        ]),
+        water_sensible_energy_j_m=np.stack([
+            item.water_sensible_energy_j_m if item.water_sensible_energy_j_m is not None else np.where(item.solid == 0, item.enthalpy_j_m3 * config.dx**2, 0)
+            for item in snapshots
+        ]),
         solid=np.stack([item.solid for item in snapshots]),
         solid_body_id=np.stack(
             [

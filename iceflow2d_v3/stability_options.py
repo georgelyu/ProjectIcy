@@ -80,12 +80,15 @@ class StabilityOptions:
                     flux += (
                         ti.cast(lattice_direction(q), ti.f32)
                         * 0.5
-                        * (
+                        * ti.cast((
                             self.phase_populations[i, j, q]
                             + self.phase_stream_buffer[i, j, q]
-                        )
+                        ), ti.f32)
                     )
-                flux -= self.water_phase[i, j] * self.stability_velocity[i, j]
+                flux -= ti.cast(self.water_phase[i, j], ti.f32) * self.stability_velocity[i, j]
+                if ti.static(self._conservative_phase_enabled):
+                    for q in ti.static(range(1, 9)):
+                        flux += ti.cast(0.5 * (self.conservative_phase.flux(i, j, q) - self.conservative_phase.raw_flux(i, j, q)) * ti.cast(lattice_direction(q), ti.f64), ti.f32)
                 flux *= ti.static(
                     self._water_density_lattice - self._air_density_lattice
                 )

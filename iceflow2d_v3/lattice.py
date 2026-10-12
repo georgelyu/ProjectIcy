@@ -124,7 +124,9 @@ def inside_grid(i, j, nx, ny):
 
 @ti.func
 def mixture_density(water_phase, water_density, air_density):
-    water_fraction = ti.min(1.0, ti.max(0.0, water_phase))
+    # Pressure/momentum populations remain f32 even when the conserved phase
+    # zero moment is f64. This conversion does not change the water inventory.
+    water_fraction = ti.min(1.0, ti.max(0.0, ti.cast(water_phase, ti.f32)))
     return water_density * water_fraction + air_density * (1.0 - water_fraction)
 
 

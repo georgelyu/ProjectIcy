@@ -2,7 +2,8 @@
 
 All four container walls are adiabatic. The ice starts in the insulated air
 cap, falls through the free surface, and exchanges heat and boundary forces
-with the hot water. Melted ice disappears without adding liquid. Water remains a liquid at 90 degC;
+with the hot water. By default, melted material mass becomes liquid water.
+Water remains a liquid at 90 degC;
 evaporation, boiling, and vapour transport are outside this model.
 
 Configuration and scheduling helpers do not import the CUDA simulator.  The
@@ -145,6 +146,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("equilibrium", "non_equilibrium"),
         default="equilibrium",
         help="extrapolate non-equilibrium stress into newly exposed fluid",
+    )
+    parser.add_argument(
+        "--water-mass-conservation", choices=("conservative_lbm", "legacy"),
+        default="conservative_lbm", help="bounded conservative phase LBM, or historical nonconservative path",
     )
     parser.add_argument(
         "--cm-acoustic-relaxation-rate",
@@ -462,6 +467,7 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         hrr_kinetic_blend=args.hrr_kinetic_blend,
         phase_momentum_coupling=args.phase_momentum_coupling,
         exposed_node_refill=args.exposed_node_refill,
+        water_mass_conservation=args.water_mass_conservation,
         sigma=args.surface_tension,
         gravity=(0.0, -gravity),
         interface_width=args.interface_width,
@@ -859,8 +865,11 @@ def write_metadata(
     sequences = _sequence_metadata(
         velocity_sequence, vorticity_sequence, temperature_sequence, phase_sequence
     )
+    conservative = config.water_mass_conservation == "conservative_lbm"
     data = {
-        "model": "iceflow2d_v3: falling ice with disappearing melt",
+        "model": ("iceflow2d_v3: falling ice with conservative melting" if conservative
+                  else "iceflow2d_v3: falling ice with disappearing melt"),
+        "water_mass_conservation": config.water_mass_conservation,
         "backend": "taichi-cuda",
         "hydrodynamics": "air-water phase-field D2Q9 LBM",
         "thermal_solver": "water sensible heat and material-frame ice melting",
@@ -886,13 +895,16 @@ def write_metadata(
         },
         "mechanics": "freely translating and rotating, thermally eroding rigid ice body",
         "moving_body_scheme": config.thermal.moving_body_scheme,
-        "phase_change": "melted ice disappears without adding liquid, heat, or momentum sources",
+        "phase_change": ("actual melted ice mass transfers to liquid water with its remaining sensible heat"
+                         if conservative else "melted ice disappears without adding liquid, heat, or momentum sources"),
         "assumptions": [
             "liquid water remains liquid at 90 degC",
             "no evaporation, boiling, or water-vapour transport",
             "water-air thermal interface is adiabatic",
-            "cells exposed by motion or erosion inherit the surrounding fluid state",
-            "local temperature reconstruction with no global mass or energy correction",
+            ("exposed-node refill and bounds changes close through conservative event transfers"
+             if conservative else "cells exposed by motion or erosion inherit the surrounding fluid state"),
+            ("water mass and sensible heat share accepted phase fluxes; no whole-domain water-mass sum is a solver input"
+             if conservative else "local temperature reconstruction with no global mass or energy correction"),
             "linear Boussinesq water buoyancy over the 0--90 degC range",
             "two-dimensional quantities are reported per unit out-of-plane depth",
         ],
