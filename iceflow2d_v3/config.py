@@ -434,14 +434,24 @@ class IceFlowConfig:
     # HRR's finite-wavelength truncation damping is measured in the benchmark.
     hrr_kinetic_blend: float = 0.0
     phase_momentum_coupling: Literal["legacy", "consistent_flux"] = "legacy"
+    phase_momentum_flux_model: Literal["collision_moment", "accepted_links"] = "collision_moment"
     exposed_node_refill: Literal["equilibrium", "non_equilibrium"] = "equilibrium"
     # Extensive phase populations, bounded link transport, and conservative
     # geometry/melt transfers. Legacy is retained for reproducible comparisons.
     water_mass_conservation: Literal["conservative_lbm", "legacy"] = "conservative_lbm"
+    # Optional gas collision dissipation. It changes the effective gas and
+    # mixed-interface viscosity, while pure-water molecular viscosity is kept.
+    # Zero leaves the existing examples' molecular model unchanged.
+    air_viscosity_floor_lattice: float = 0.0
+    momentum_phase_gradient: Literal["wall_ghost", "open_links_air"] = "wall_ghost"
+    phase_momentum_water_cutoff: float = 0.0
 
     # Falling-ice geometry in lattice-cell coordinates.
     water_width_fraction: float = 0.9875
     water_height_fraction: float = 0.60125
+    # A released left-hand column uses an air reference and a local water
+    # hydrostatic pressure, rather than the horizontal-pool rest solution.
+    initial_water_geometry: Literal["horizontal_pool", "dam_break"] = "horizontal_pool"
     ice_width_fraction: float = 0.3225
     ice_height_fraction: float = 0.16125
     ice_base_y_cells: float = 254.6672141068609
@@ -455,6 +465,9 @@ class IceFlowConfig:
     # precedence over those inputs, and may have different sizes and temperatures.
     ice_bodies: tuple[IceBodyConfig, ...] | None = None
     body_contact_iterations: int = 32
+    close_subgrid_wall_gaps: bool = False
+    subgrid_wall_gap_cells: int = 4
+    preserve_contact_fluid_gap: bool = False
     # Kept in serialized metadata for compatibility; alternate values are no
     # longer accepted by the specialized solver.
     ice_fixed: bool = False
@@ -491,6 +504,14 @@ class IceFlowConfig:
                 )
         if self.rigid_boundary_scheme != "unified":
             raise ValueError("rigid_boundary_scheme must be 'unified'")
+        if self.initial_water_geometry not in ("horizontal_pool", "dam_break"):
+            raise ValueError("initial_water_geometry must be horizontal_pool or dam_break")
+        if not isinstance(self.close_subgrid_wall_gaps, bool):
+            raise ValueError("close_subgrid_wall_gaps must be a boolean")
+        if isinstance(self.subgrid_wall_gap_cells, bool) or not isinstance(self.subgrid_wall_gap_cells, int) or not 1 <= self.subgrid_wall_gap_cells <= 16:
+            raise ValueError("subgrid_wall_gap_cells must be an integer in [1,16]")
+        if not isinstance(self.preserve_contact_fluid_gap, bool):
+            raise ValueError("preserve_contact_fluid_gap must be a boolean")
         if self.momentum_collision_model not in ("rm_mrt", "cm_mrt", "cm_hrr"):
             raise ValueError(
                 "momentum_collision_model must be 'rm_mrt', 'cm_mrt' or 'cm_hrr'"
@@ -517,6 +538,10 @@ class IceFlowConfig:
             raise ValueError(
                 "phase_momentum_coupling must be 'legacy' or 'consistent_flux'"
             )
+        if self.phase_momentum_flux_model not in ("collision_moment", "accepted_links"):
+            raise ValueError("phase_momentum_flux_model must be collision_moment or accepted_links")
+        if self.phase_momentum_flux_model == "accepted_links" and self.water_mass_conservation != "conservative_lbm":
+            raise ValueError("accepted_links requires conservative_lbm water transport")
         if self.exposed_node_refill not in ("equilibrium", "non_equilibrium"):
             raise ValueError(
                 "exposed_node_refill must be 'equilibrium' or 'non_equilibrium'"
@@ -579,6 +604,11 @@ class IceFlowConfig:
         _positive("mobility", self.mobility)
         if self.water_mass_conservation not in ("conservative_lbm", "legacy"):
             raise ValueError("water_mass_conservation must be conservative_lbm or legacy")
+        _non_negative("air_viscosity_floor_lattice", self.air_viscosity_floor_lattice)
+        if self.momentum_phase_gradient not in ("wall_ghost", "open_links_air"):
+            raise ValueError("momentum_phase_gradient must be wall_ghost or open_links_air")
+        if not 0 <= self.phase_momentum_water_cutoff <= 0.05:
+            raise ValueError("phase_momentum_water_cutoff must be in [0,0.05]")
         _non_negative("phase_normal_epsilon", self.phase_normal_epsilon)
         if len(self.gravity) != 2:
             raise ValueError("gravity must contain exactly two components")
@@ -635,7 +665,10 @@ class IceFlowConfig:
                 "ice rectangle must be at least two cells in each direction"
             )
         if self.well_balanced_hydrostatics:
-            if self.water_width != nx - self.boundary_cells:
+            if (
+                self.initial_water_geometry == "horizontal_pool"
+                and self.water_width != nx - self.boundary_cells
+            ):
                 raise ValueError(
                     "hydrostatic reference requires a full-width horizontal pool"
                 )

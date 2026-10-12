@@ -76,7 +76,7 @@ class FallingMeltingSnapshot:
         return getattr(self.coupled, name)
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, include_falling_geometry: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Taichi CUDA air-water LBM with a freely falling and melting ice "
@@ -87,7 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--domain-height-m", type=float, default=0.050)
     parser.add_argument("--resolution-x", type=int, default=100)
     parser.add_argument("--resolution-y", type=int, default=200)
-    parser.add_argument("--water-level-m", type=float, default=0.030)
+    if include_falling_geometry:
+        parser.add_argument("--water-level-m", type=float, default=0.030)
     parser.add_argument("--ice-size-m", type=float, default=0.008)
     parser.add_argument("--ice-angle-degrees", type=float, default=5.0)
     parser.add_argument(
@@ -97,12 +98,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="initial horizontal centers of independent ice blocks, in metres",
     )
-    parser.add_argument(
-        "--drop-height-m",
-        type=float,
-        default=0.0015,
-        help="air gap between the water surface and the lowest rotated ice corner",
-    )
+    if include_falling_geometry:
+        parser.add_argument(
+            "--drop-height-m",
+            type=float,
+            default=0.0015,
+            help="air gap between the water surface and the lowest rotated ice corner",
+        )
     parser.add_argument("--boundary-cells", type=int, default=DEFAULT_BOUNDARY_CELLS)
     parser.add_argument(
         "--initial-horizontal-speed-lattice",
@@ -147,10 +149,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="equilibrium",
         help="extrapolate non-equilibrium stress into newly exposed fluid",
     )
+    parser.add_argument("--phase-momentum-flux-model", choices=("collision_moment", "accepted_links"), default="collision_moment")
     parser.add_argument(
         "--water-mass-conservation", choices=("conservative_lbm", "legacy"),
         default="conservative_lbm", help="bounded conservative phase LBM, or historical nonconservative path",
     )
+    parser.add_argument("--air-viscosity-floor-lattice", type=float, default=0.0,
+                        help="minimum effective gas collision viscosity in lattice units; 0 keeps the molecular value")
+    parser.add_argument("--momentum-phase-gradient", choices=("wall_ghost", "open_links_air"), default="wall_ghost")
+    parser.add_argument("--phase-momentum-water-cutoff", type=float, default=0.0)
     parser.add_argument(
         "--cm-acoustic-relaxation-rate",
         type=float,
@@ -275,7 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_args(argv: list[str] | None = None, *, parser=None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None, *, parser=None, geometry_builder=None) -> argparse.Namespace:
     parser = parser or build_parser()
     args = parser.parse_args(argv)
     try:
@@ -297,7 +304,7 @@ def parse_args(argv: list[str] | None = None, *, parser=None) -> argparse.Namesp
             "vorticity_visualization_max_s_1",
             args.vorticity_visualization_max_s_1,
         )
-        derive_geometry(args)
+        (geometry_builder or derive_geometry)(args)
     except ValueError as exc:
         parser.error(str(exc))
     return args
@@ -398,12 +405,12 @@ def derive_geometry(args: argparse.Namespace) -> dict[str, float | int]:
     }
 
 
-def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
+def create_config(args: argparse.Namespace | None = None, *, geometry_builder=None) -> IceFlowConfig:
     """Build the moving ``body_ale`` thermal configuration without CUDA."""
 
     if args is None:
         args = parse_args([])
-    geometry = derive_geometry(args)
+    geometry = (geometry_builder or derive_geometry)(args)
     properties = PhaseChangeProperties(
         melting_temperature_c=args.melting_temperature_c,
         specific_heat_water_j_kg_k=args.water_specific_heat,
@@ -466,8 +473,12 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         cm_acoustic_relaxation_rate=args.cm_acoustic_relaxation_rate,
         hrr_kinetic_blend=args.hrr_kinetic_blend,
         phase_momentum_coupling=args.phase_momentum_coupling,
+        phase_momentum_flux_model=args.phase_momentum_flux_model,
         exposed_node_refill=args.exposed_node_refill,
         water_mass_conservation=args.water_mass_conservation,
+        air_viscosity_floor_lattice=args.air_viscosity_floor_lattice,
+        momentum_phase_gradient=args.momentum_phase_gradient,
+        phase_momentum_water_cutoff=args.phase_momentum_water_cutoff,
         sigma=args.surface_tension,
         gravity=(0.0, -gravity),
         interface_width=args.interface_width,
@@ -479,6 +490,7 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         well_balanced_hydrostatics=True,
         water_width_fraction=float(geometry["water_width_fraction"]),
         water_height_fraction=float(geometry["water_height_fraction"]),
+        initial_water_geometry=getattr(args, "initial_water_geometry", "horizontal_pool"),
         ice_width_fraction=float(geometry["ice_width_fraction"]),
         ice_height_fraction=float(geometry["ice_height_fraction"]),
         ice_base_y_cells=float(geometry["ice_base_y_cells"]),
@@ -489,6 +501,11 @@ def create_config(args: argparse.Namespace | None = None) -> IceFlowConfig:
         ice_initial_angle=float(geometry["ice_angle_rad"]),
         ice_fixed=False,
         ice_bodies=bodies,
+        linear_damping=getattr(args, "linear_damping", 1.0),
+        angular_damping=getattr(args, "angular_damping", 0.9990),
+        close_subgrid_wall_gaps=getattr(args, "close_subgrid_wall_gaps", False),
+        subgrid_wall_gap_cells=getattr(args, "subgrid_wall_gap_cells", 4),
+        preserve_contact_fluid_gap=getattr(args, "preserve_contact_fluid_gap", False),
         output_dir=str(args.output_dir),
         show_gui=False,
         save_npz=False,
@@ -861,6 +878,7 @@ def write_metadata(
     vorticity_sequence: reporting.VorticitySequenceSummary | None,
     temperature_sequence: reporting.TemperatureSequenceSummary | None,
     phase_sequence: reporting.PhaseSequenceSummary | None = None,
+    final_plot_name: str = "coupled_falling_ice_melting_2d.png",
 ) -> None:
     sequences = _sequence_metadata(
         velocity_sequence, vorticity_sequence, temperature_sequence, phase_sequence
@@ -891,6 +909,11 @@ def write_metadata(
             "air_m2_s": config.air_viscosity_at(
                 config.thermal.initial_air_temperature_c
             ),
+            "air_viscosity_floor_lattice": config.air_viscosity_floor_lattice,
+            "effective_air_m2_s": max(
+                config.air_viscosity_at(config.thermal.initial_air_temperature_c),
+                config.air_viscosity_floor_lattice * scales.dx_m**2 / scales.dt_s,
+            ),
             "interface_mixing": "linear kinematic viscosity in water phase fraction",
         },
         "mechanics": "freely translating and rotating, thermally eroding rigid ice body",
@@ -915,6 +938,7 @@ def write_metadata(
             "save_npz": bool(args.save_npz),
             "progress_enabled": bool(args.progress and not args.quiet),
             "stability_check_enabled": bool(args.check_stability),
+            "stop_when_all_ice_melted": bool(getattr(args, "stop_when_all_ice_melted", False)),
         },
         "geometry": {
             "domain_width_m": config.nx * config.dx,
@@ -967,7 +991,7 @@ def write_metadata(
         "outputs": {
             "history": "history.csv",
             "fields": "fields.npz" if args.save_npz else None,
-            "plot": None if args.no_plot else "coupled_falling_ice_melting_2d.png",
+            "plot": None if args.no_plot else final_plot_name,
             "velocity_frames": (
                 None if velocity_sequence is None else velocity_sequence.frame_directory
             ),
@@ -999,6 +1023,15 @@ def write_metadata(
         },
     }
     data["body_count"] = len(config.bodies)
+    if config.initial_water_geometry == "dam_break":
+        data["model"] = "iceflow2d_v3: hot-water dam break with freely moving melting ice"
+        data["geometry"].update({
+            "initial_water_geometry": "dam_break",
+            "water_column_width_m": (config.water_width - config.boundary_cells) * config.dx,
+            "water_column_height_m": (config.water_height - config.boundary_cells) * config.dx,
+            "water_column_left_m": config.boundary_cells * config.dx,
+            "initial_pressure": "ambient-air hydrostatic reference plus column-integrated water excess pressure",
+        })
     data["geometry"]["ice_bodies"] = [
         {
             "body_id": b,
@@ -1074,10 +1107,26 @@ def _advance_simulation_to_target(
         current = updated
 
 
+def _integer_stop_after_melt(time_s: float, remaining_mass: float, dt_s: float, end_step: int) -> int | None:
+    """Finish at the next integer second only after actual ice mass is zero.
+
+    No displayed-percentage threshold or mass deletion is used. The tiny time
+    tolerance handles binary rounding of an already integral physical time.
+    """
+    if remaining_mass != 0.0:
+        return None
+    integer_second = math.ceil(time_s - 1e-12)
+    return min(end_step, int(round(integer_second / dt_s)))
+
+
 def _run_case(
     args: argparse.Namespace,
     config: IceFlowConfig,
     targets: list[int],
+    *,
+    scenario_label: str = SCENARIO_LABEL,
+    final_plot_name: str = "coupled_falling_ice_melting_2d.png",
+    stop_when_all_ice_melted: bool = False,
 ) -> dict[str, Any]:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1122,7 +1171,7 @@ def _run_case(
                 config,
                 scales,
                 display_max_m_s=limits.velocity_max_m_s,
-                scenario_label=SCENARIO_LABEL,
+                scenario_label=scenario_label,
             )
             vorticity_stream = reporting.VorticitySequenceStream(
                 output_dir,
@@ -1130,19 +1179,19 @@ def _run_case(
                 scales,
                 display_abs_max_s_1=limits.vorticity_abs_max_s_1,
                 velocity_display_max_m_s=limits.velocity_max_m_s,
-                scenario_label=SCENARIO_LABEL,
+                scenario_label=scenario_label,
             )
             temperature_stream = reporting.TemperatureSequenceStream(
                 output_dir,
                 config,
                 temperature_min_c=limits.temperature_min_c,
                 temperature_max_c=limits.temperature_max_c,
-                scenario_label=SCENARIO_LABEL,
+                scenario_label=scenario_label,
             )
             phase_stream = reporting.PhaseSequenceStream(
                 output_dir,
                 config,
-                scenario_label=SCENARIO_LABEL,
+                scenario_label=scenario_label,
             )
 
         with (
@@ -1152,7 +1201,7 @@ def _run_case(
             reporting._TerminalProgress(
                 total_lbm_steps,
                 enabled=show_progress,
-                label="Coupled falling-ice melting",
+                label=scenario_label,
                 unit="LBM steps",
             ) as progress,
         ):
@@ -1172,6 +1221,13 @@ def _run_case(
                         simulation,
                         initial_solid_volume_cells=initial_solid_volume,
                     )
+                if stop_when_all_ice_melted:
+                    remaining = sum(body.body_mass_lattice for body in (snapshot.bodies or (snapshot,)))
+                    stop = _integer_stop_after_melt(snapshot.physical_time_s, remaining, scales.dt_s, total_lbm_steps)
+                    if stop is not None and stop < targets[-1]:
+                        # Truncating the iterator's schedule lets the normal
+                        # GIF/NPZ/metadata finalization path run to completion.
+                        targets[:] = [step for step in targets if step <= stop]
                 writer.writerows(_history_rows(snapshot))
                 stream.flush()
                 if retained is not None:
@@ -1207,6 +1263,33 @@ def _run_case(
                         f"melted={100.0 * snapshot.melted_fraction:6.2f}%",
                         flush=True,
                     )
+    except Exception as exc:
+        # Keep the actual failed state for reproducible instability diagnosis.
+        # Saving only the failed frame avoids retaining a full trajectory here.
+        failure = {
+            "error": str(exc), "completed_lbm_steps": int(simulation.steps),
+            "physical_time_s": float(simulation.physical_time_s),
+            "config": config.to_dict(),
+        }
+        (output_dir / "failure.json").write_text(json.dumps(failure, indent=2), encoding="utf-8")
+        failure_arrays = {
+            name: getattr(simulation, name).to_numpy()
+            for name in ("water_phase", "solid_mask", "wall_mask", "solid_body_id",
+                         "physical_velocity_lattice", "pressure_lattice",
+                         "momentum_populations", "phase_populations", "body_center",
+                         "body_velocity", "body_angle", "body_mass_lattice")
+        }
+        if config.water_mass_conservation == "conservative_lbm":
+            failure_arrays.update({
+                "conservative_"+name: getattr(simulation.conservative_phase, name).to_numpy()
+                for name in ("capacity", "previous_capacity", "pending", "pending_heat",
+                             "spare", "available", "delta", "heat_delta", "parent")
+            })
+        if config.close_subgrid_wall_gaps:
+            failure_arrays["subgrid_wall_gap"] = simulation.subgrid_wall_gap.to_numpy()
+            failure_arrays["previous_subgrid_wall_gap"] = simulation.previous_subgrid_wall_gap.to_numpy()
+        np.savez_compressed(output_dir / "failure_state.npz", **failure_arrays)
+        raise
     finally:
         try:
             if velocity_stream is not None:
@@ -1227,7 +1310,7 @@ def _run_case(
         write_fields_npz(output_dir / "fields.npz", config, retained)
     if not args.no_plot:
         write_final_plot(
-            output_dir / "coupled_falling_ice_melting_2d.png",
+            output_dir / final_plot_name,
             config,
             final,
             temperature_max_c=limits.temperature_max_c,
@@ -1245,10 +1328,11 @@ def _run_case(
         vorticity_sequence=vorticity_sequence,
         temperature_sequence=temperature_sequence,
         phase_sequence=phase_sequence,
+        final_plot_name=final_plot_name,
     )
     if not args.quiet:
         print(
-            "Coupled falling-ice melting example complete "
+            f"{scenario_label} example complete "
             f"(T_inf={args.water_temperature_c:g} degC)"
         )
         print(

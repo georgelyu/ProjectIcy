@@ -40,9 +40,17 @@ class BodyContacts:
         return solid
 
     @ti.func
-    def _run_length(self, b, i, j, di, dj):
+    def _contact_occupied(self, b, i, j, padded: ti.template()):
+        solid = self._occupied(b, i, j)
+        if ti.static(padded and self.s.config.preserve_contact_fluid_gap):
+            for di, dj in ti.static(((-1, 0), (1, 0), (0, -1), (0, 1))):
+                solid = solid or self._occupied(b, i+di, j+dj)
+        return solid
+
+    @ti.func
+    def _run_length(self, b, i, j, di, dj, padded: ti.template()):
         length = 0
-        while self._occupied(b, i + length * di, j + length * dj):
+        while self._contact_occupied(b, i + length * di, j + length * dj, padded):
             length += 1
         return length
 
@@ -64,13 +72,14 @@ class BodyContacts:
                     self.s.body_reference_origin[a],
                     self.s.body_reference_origin[b],
                 )
+                padding = ti.static(1 if self.s.config.preserve_contact_fluid_gap else 0)
                 lo_x = ti.max(
                     0,
                     ti.cast(
                         ti.round(
                             ti.max(
                                 oa.x + self.s._body_contact_support_extrema[a, 0],
-                                ob.x + self.s._body_contact_support_extrema[b, 0],
+                                ob.x + self.s._body_contact_support_extrema[b, 0] - padding,
                             )
                         ),
                         ti.i32,
@@ -82,7 +91,7 @@ class BodyContacts:
                         ti.round(
                             ti.min(
                                 oa.x + self.s._body_contact_support_extrema[a, 1],
-                                ob.x + self.s._body_contact_support_extrema[b, 1],
+                                ob.x + self.s._body_contact_support_extrema[b, 1] + padding,
                             )
                         ),
                         ti.i32,
@@ -94,7 +103,7 @@ class BodyContacts:
                         ti.round(
                             ti.max(
                                 oa.y + self.s._body_contact_support_extrema[a, 2],
-                                ob.y + self.s._body_contact_support_extrema[b, 2],
+                                ob.y + self.s._body_contact_support_extrema[b, 2] - padding,
                             )
                         ),
                         ti.i32,
@@ -106,7 +115,7 @@ class BodyContacts:
                         ti.round(
                             ti.min(
                                 oa.y + self.s._body_contact_support_extrema[a, 3],
-                                ob.y + self.s._body_contact_support_extrema[b, 3],
+                                ob.y + self.s._body_contact_support_extrema[b, 3] + padding,
                             )
                         ),
                         ti.i32,
@@ -116,14 +125,14 @@ class BodyContacts:
                 point = ti.Vector.zero(ti.f64, 2)
                 overlaps = 0
                 for i, j in ti.ndrange((lo_x, hi_x), (lo_y, hi_y)):
-                    if self._occupied(a, i, j) and self._occupied(b, i, j):
+                    if self._occupied(a, i, j) and self._contact_occupied(b, i, j, True):
                         # Translation needed to separate the two contiguous
                         # occupied runs through this witness cell in each axis.
                         for d in ti.static(range(4)):
                             di, dj = ti.static(((-1, 0), (1, 0), (0, -1), (0, 1))[d])
                             distance = (
-                                self._run_length(a, i, j, -di, -dj)
-                                + self._run_length(b, i, j, di, dj)
+                                self._run_length(a, i, j, -di, -dj, False)
+                                + self._run_length(b, i, j, di, dj, True)
                                 - 1
                             )
                             depths[d] = ti.max(depths[d], distance)

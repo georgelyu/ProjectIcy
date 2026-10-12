@@ -21,6 +21,16 @@ from .lattice import (
 @ti.data_oriented
 class StabilityOptions:
     @ti.func
+    def _accepted_nonadvective_phase_flux(self, i, j, q):
+        d = lattice_direction(q)
+        ni, nj = i+d.x, j+d.y
+        actual = self.conservative_phase.flux(i, j, q)
+        carrier = (ti.cast(self.water_phase[i, j], ti.f64)*ti.cast(self.stability_velocity[i, j], ti.f64)
+                   + ti.cast(self.water_phase[ni, nj], ti.f64)*ti.cast(self.stability_velocity[ni, nj], ti.f64))
+        advective = 3.0*ti.cast(lattice_weight(q), ti.f64)*ti.cast(d, ti.f64).dot(carrier)
+        return actual-advective
+
+    @ti.func
     def _stability_neighbor(self, i, j, di, dj):
         # Periodic verification fixtures override this one addressing primitive.
         return ti.Vector([i + di, j + dj])
@@ -76,19 +86,26 @@ class StabilityOptions:
         for i, j in self.water_phase:
             flux = ti.Vector.zero(ti.f32, 2)
             if self._is_fluid_cell(i, j):
-                for q in range(9):
-                    flux += (
-                        ti.cast(lattice_direction(q), ti.f32)
-                        * 0.5
-                        * ti.cast((
-                            self.phase_populations[i, j, q]
-                            + self.phase_stream_buffer[i, j, q]
-                        ), ti.f32)
-                    )
-                flux -= ti.cast(self.water_phase[i, j], ti.f32) * self.stability_velocity[i, j]
-                if ti.static(self._conservative_phase_enabled):
+                if ti.static(self.config.phase_momentum_flux_model == "accepted_links"):
                     for q in ti.static(range(1, 9)):
-                        flux += ti.cast(0.5 * (self.conservative_phase.flux(i, j, q) - self.conservative_phase.raw_flux(i, j, q)) * ti.cast(lattice_direction(q), ti.f64), ti.f32)
+                        d = lattice_direction(q)
+                        ni, nj = i+d.x, j+d.y
+                        if inside_grid(ni, nj, self.nx, self.ny) and self._is_fluid_cell(ni, nj):
+                            flux += ti.cast(0.5*ti.cast(d, ti.f64)*self._accepted_nonadvective_phase_flux(i, j, q), ti.f32)
+                else:
+                    for q in range(9):
+                        flux += (
+                            ti.cast(lattice_direction(q), ti.f32)
+                            * 0.5
+                            * ti.cast((
+                                self.phase_populations[i, j, q]
+                                + self.phase_stream_buffer[i, j, q]
+                            ), ti.f32)
+                        )
+                    flux -= ti.cast(self.water_phase[i, j], ti.f32) * self.stability_velocity[i, j]
+                    if ti.static(self._conservative_phase_enabled):
+                        for q in ti.static(range(1, 9)):
+                            flux += ti.cast(0.5 * (self.conservative_phase.flux(i, j, q) - self.conservative_phase.raw_flux(i, j, q)) * ti.cast(lattice_direction(q), ti.f64), ti.f32)
                 flux *= ti.static(
                     self._water_density_lattice - self._air_density_lattice
                 )
@@ -103,25 +120,37 @@ class StabilityOptions:
         existing force projection AND half-force velocity/pressure recovery.
         """
         force = ti.Vector.zero(ti.f32, 2)
-        for axis, sign in ti.static(ti.ndrange(2, 2)):
-            direction = 2 * sign - 1
-            di, dj = 0, 0
-            if ti.static(axis == 0):
-                di = direction
-            else:
-                dj = direction
-            index = self._stability_neighbor(i, j, di, dj)
-            if inside_grid(index.x, index.y, self.nx, self.ny):
-                if self._is_fluid_cell(index.x, index.y):
-                    face_mass = 0.5 * (
-                        self.phase_mass_flux[i, j][axis]
-                        + self.phase_mass_flux[index.x, index.y][axis]
-                    )
-                    face_velocity = 0.5 * (
-                        self.stability_velocity[i, j]
-                        + self.stability_velocity[index.x, index.y]
-                    )
-                    force -= direction * face_mass * face_velocity
+        if ti.static(self.config.phase_momentum_flux_model == "accepted_links"):
+            for q in ti.static(range(1, 9)):
+                d = lattice_direction(q)
+                ni, nj = i+d.x, j+d.y
+                if inside_grid(ni, nj, self.nx, self.ny) and self._is_fluid_cell(ni, nj):
+                    eligible = (self.water_phase[i, j] >= self.config.phase_momentum_water_cutoff
+                                and self.water_phase[ni, nj] >= self.config.phase_momentum_water_cutoff)
+                    face_velocity = 0.5*(self.stability_velocity[i, j]+self.stability_velocity[ni, nj])
+                    mass = self._accepted_nonadvective_phase_flux(i, j, q)*(self._water_density_lattice-self._air_density_lattice)
+                    if eligible:
+                        force -= ti.cast(ti.cast(face_velocity, ti.f64)*mass, ti.f32)
+        else:
+            for axis, sign in ti.static(ti.ndrange(2, 2)):
+                direction = 2 * sign - 1
+                di, dj = 0, 0
+                if ti.static(axis == 0):
+                    di = direction
+                else:
+                    dj = direction
+                index = self._stability_neighbor(i, j, di, dj)
+                if inside_grid(index.x, index.y, self.nx, self.ny):
+                    if self._is_fluid_cell(index.x, index.y):
+                        face_mass = 0.5 * (
+                            self.phase_mass_flux[i, j][axis]
+                            + self.phase_mass_flux[index.x, index.y][axis]
+                        )
+                        face_velocity = 0.5 * (
+                            self.stability_velocity[i, j]
+                            + self.stability_velocity[index.x, index.y]
+                        )
+                        force -= direction * face_mass * face_velocity
         return force
 
     @ti.func

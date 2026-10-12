@@ -112,6 +112,11 @@ class ConservativePhaseLBM:
         result = False
         if 0 <= i < self.nx and 0 <= j < self.ny:
             result = self.capacity[i, j] > 0 or self.previous_capacity[i, j] > 0
+            if ti.static(self.s.config.close_subgrid_wall_gaps):
+                # Numerical gap closure excludes fluid dynamics, not a real
+                # material barrier. Geometry events can traverse the original
+                # subgrid channel to a resolved recipient without losing water.
+                result = result or self.s.subgrid_wall_gap[i, j] != 0 or self.s.previous_subgrid_wall_gap[i, j] != 0
         return result
 
     @ti.func
@@ -683,6 +688,35 @@ class ConservativePhaseLBM:
             self.melt_volume[i, j] = 0.0
             self.melt_heat[i, j] = 0.0
 
+    @ti.kernel
+    def relocate_closed_gap_events(self):
+        for i, j in self.pending:
+            if self.capacity[i, j] == 0 and self.pending[i, j] > 1e-13:
+                remaining = self.pending[i, j]
+                specific = self.pending_heat[i, j] / remaining
+                attempts = 0
+                while remaining > 1e-13 and attempts < 16:
+                    radius, nearest, distance = 1, -1, 2147483647
+                    while nearest < 0 and radius < ti.static(max(self.nx, self.ny)):
+                        for di, dj in ti.ndrange((-radius, radius+1), (-radius, radius+1)):
+                            ni, nj = i+di, j+dj
+                            if ti.max(ti.abs(di), ti.abs(dj)) == radius and self.cell(ni, nj):
+                                squared = di*di + dj*dj
+                                if self.spare[ni, nj] > 1e-13 and squared < distance:
+                                    if self.open_l_path(i, j, ni, nj):
+                                        nearest, distance = ni*self.ny+nj, squared
+                        radius += 1
+                    if nearest < 0:
+                        break
+                    ni, nj = nearest // self.ny, nearest % self.ny
+                    accepted = self.reserve(self.spare, ni, nj, remaining)
+                    ti.atomic_add(self.delta[ni, nj], accepted)
+                    ti.atomic_add(self.heat_delta[ni, nj], accepted*specific)
+                    remaining -= accepted
+                    attempts += 1
+                self.pending[i, j] = remaining
+                self.pending_heat[i, j] = remaining*specific
+
     def remap(self, geometry=True):
         self.prepare_transaction()
         status = int(self.events[None])
@@ -710,6 +744,8 @@ class ConservativePhaseLBM:
             self.distribute_fallback_pool()
             self.fill_requests()
             self.repair_negative_tails()
+            if self.s.config.close_subgrid_wall_gaps:
+                self.relocate_closed_gap_events()
         self.commit_transaction()
         if self.unresolved[None]:
             raise RuntimeError("conservative phase transfer has insufficient capacity in a connected fluid region")

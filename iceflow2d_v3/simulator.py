@@ -1511,6 +1511,9 @@ class IceFlow2D(StabilityOptions):
         self.thermal.body_angle = self.body_angle
         self._moving_body_fraction = self.thermal.world_body_solid_fraction
         self._body_fractions = self.thermal.body_world_fraction
+        if config.close_subgrid_wall_gaps:
+            self.subgrid_wall_gap = ti.field(ti.i8, shape=shape_xy)
+            self.previous_subgrid_wall_gap = ti.field(ti.i8, shape=shape_xy)
         if self._conservative_phase_enabled:
             self.conservative_phase = ConservativePhaseLBM(self)
             self.thermal.conservative_phase = self.conservative_phase
@@ -1571,6 +1574,8 @@ class IceFlow2D(StabilityOptions):
         self._update_moving_body_mass_properties(initialize=True)
         self._build_hydrostatic_reference()
         self._initialize_hydrostatic_equilibrium()
+        if config.initial_water_geometry == "dam_break":
+            self._initialize_dam_break_pressure()
 
     def step(self, num_steps=1):
         """Advance flow, rigid motion, and heat in their coupling order."""
@@ -2054,10 +2059,44 @@ class IceFlow2D(StabilityOptions):
     def _commit_moving_body_raster(self):
         """Clip the accepted coverage in place; contact has finished reading it."""
         for i, j in self._moving_body_fraction:
+            if ti.static(self.config.close_subgrid_wall_gaps):
+                self.previous_subgrid_wall_gap[i, j] = self.subgrid_wall_gap[i, j]
+                self.subgrid_wall_gap[i, j] = ti.cast(0, ti.i8)
             if self.wall_mask[i, j] != 0:
                 self._moving_body_fraction[i, j] = 0.0
                 for b in range(self.body_count):
                     self._body_fractions[b, i, j] = 0.0
+            elif ti.static(self.config.close_subgrid_wall_gaps):
+                # Wall gaps narrower than the configured resolution are
+                # below the diffuse interface width. Close their aperture;
+                # conservative geometry remapping transfers all displaced
+                # liquid/heat. Material ice mass is never changed here.
+                # Probe analytic material coverage to avoid in-place races.
+                radius = ti.static(self.config.subgrid_wall_gap_cells)
+                lower = ti.static(self.config.boundary_cells)
+                distances = ti.Vector([i-lower+1, j-lower+1, self.nx-lower-i, self.ny-lower-j])
+                near_wall = False
+                for q in ti.static(range(4)):
+                    near_wall = near_wall or 1 <= distances[q] <= radius
+                if near_wall:
+                    for b in range(self.body_count):
+                        fraction = self._body_fractions[b, i, j]
+                        if fraction < self.config.thermal.solid_liquid_threshold:
+                            close_gap = False
+                            for q in ti.static(range(1, 5)):
+                                distance = distances[q-1]
+                                if 1 <= distance <= radius:
+                                    d = lattice_direction(q)
+                                    for steps in ti.static(range(1, radius+1)):
+                                        if steps <= radius+1-distance and not close_gap:
+                                            neighbor = self._cell_point(i+steps*d.x, j+steps*d.y)
+                                            covered = self._sample_body_fraction(self._body_local_coordinates(neighbor, b), b)
+                                            close_gap = close_gap or covered >= self.config.thermal.solid_liquid_threshold
+                            if close_gap:
+                                self.subgrid_wall_gap[i, j] = ti.cast(1, ti.i8)
+                                effective = self.config.thermal.solid_liquid_threshold + 1e-4
+                                self._body_fractions[b, i, j] = effective
+                                self._moving_body_fraction[i, j] = ti.max(self._moving_body_fraction[i, j], effective)
 
     def _initialize_body(self):
         specs = self.config.bodies
@@ -2134,6 +2173,11 @@ class IceFlow2D(StabilityOptions):
             out=phase_profile,
             where=row_count > 0,
         )
+        if self.config.initial_water_geometry == "dam_break":
+            # A row-averaged water column would impose a water-sized reference
+            # force on dry air. Use the ambient-air hydrostatic gauge instead;
+            # the water excess pressure is initialized independently below.
+            phase_profile.fill(0.0)
         density = (
             self._air_density_lattice
             + (self._water_density_lattice - self._air_density_lattice) * phase_profile
@@ -2157,6 +2201,41 @@ class IceFlow2D(StabilityOptions):
             )
         self.reference_density_by_row.from_numpy(density.astype(np.float32))
         self.reference_pressure_by_row.from_numpy(pressure.astype(np.float32))
+
+    def _initialize_dam_break_pressure(self):
+        """Integrate the actual initial column density above each cell centre.
+
+        p = p_air + p_excess, with d(p_excess)/dy = (rho-rho_air)*g_y.
+        Each column uses its warmed-up phase, so the vertical free face retains
+        the pressure jump released by removing the gate. No horizontal-pool
+        equilibrium is imposed on the downstream air.
+        """
+        phase = np.clip(self.water_phase.to_numpy().astype(np.float64), 0.0, 1.0)
+        excess = (self._water_density_lattice - self._air_density_lattice) * phase
+        dynamic = -self._gravity_lattice[1] * (
+            np.cumsum(excess[:, ::-1], axis=1)[:, ::-1] - 0.5 * excess
+        )
+        reference = self.reference_pressure_by_row.to_numpy()[None, :]
+        self.pressure_lattice.from_numpy((reference + dynamic).astype(np.float32))
+        self._initialize_dam_break_populations()
+
+    @ti.kernel
+    def _initialize_dam_break_populations(self):
+        rest = ti.Vector([0.0, 0.0])
+        for i, j in self.water_phase:
+            if self._is_fluid_cell(i, j):
+                density = mixture_density(
+                    ti.cast(self.water_phase[i, j], ti.f32),
+                    ti.static(self._water_density_lattice),
+                    ti.static(self._air_density_lattice),
+                )
+                dynamic = self.pressure_lattice[i, j] - self.hydrostatic_reference_pressure[i, j]
+                self.momentum_velocity_lattice[i, j] = rest
+                self.fluid_acceleration_lattice[i, j] = rest
+                for q in ti.static(range(9)):
+                    self.momentum_populations[i, j, q] = momentum_equilibrium(
+                        q, dynamic, density, rest
+                    )
 
     @ti.kernel
     def _initialize_hydrostatic_equilibrium(self):
@@ -2465,6 +2544,26 @@ class IceFlow2D(StabilityOptions):
         return gradient
 
     @ti.func
+    def _momentum_phase_gradient(self, i, j):
+        gradient = ti.Vector.zero(ti.f32, 2)
+        center = ti.cast(self.water_phase[i, j], ti.f32)
+        if ti.static(self.config.momentum_phase_gradient == "open_links_air"):
+            if center < 0.05:
+                for q in ti.static(range(1, 9)):
+                    d = lattice_direction(q)
+                    ni, nj = i+d.x, j+d.y
+                    if inside_grid(ni, nj, self.nx, self.ny) and self._is_fluid_cell(ni, nj):
+                        gradient += 3.0*lattice_weight(q)*ti.cast(d, ti.f32)*(ti.cast(self.water_phase[ni, nj], ti.f32)-center)
+            else:
+                gradient = self._phase_central_gradient(i, j)
+        else:
+            gradient = self._phase_central_gradient(i, j)
+        if ti.static(self.config.phase_momentum_water_cutoff > 0):
+            if center < self.config.phase_momentum_water_cutoff:
+                gradient = ti.Vector.zero(ti.f32, 2)
+        return gradient
+
+    @ti.func
     def _capillary_traction(self, stress, direction):
         return ti.Vector(
             [
@@ -2556,7 +2655,7 @@ class IceFlow2D(StabilityOptions):
 
     @ti.func
     def _fluid_kinematic_viscosity_lattice(self, i, j):
-        """Molecular viscosity only, independent of ice proximity and strain rate."""
+        """Molecular water viscosity and the explicitly configured gas floor."""
 
         phi = ti.min(1.0, ti.max(0.0, ti.cast(self.water_phase[i, j], ti.f32)))
         nu_water = ti.cast(ti.static(self._water_viscosity_lattice), ti.f32)
@@ -2573,7 +2672,8 @@ class IceFlow2D(StabilityOptions):
                 nu_water = water_dynamic_viscosity_pa_s(temperature) * ti.static(
                     self._viscosity_to_lattice / self.config.rho_water
                 )
-        return phi * nu_water + (1.0 - phi) * ti.static(self._air_viscosity_lattice)
+        nu_air = ti.static(max(self._air_viscosity_lattice, self.config.air_viscosity_floor_lattice))
+        return phi * nu_water + (1.0 - phi) * nu_air
 
     @ti.func
     def _fluid_force_and_gradient(self, i, j):
@@ -2586,7 +2686,7 @@ class IceFlow2D(StabilityOptions):
         bounded_phi = ti.min(1.0, ti.max(0.0, water_phase))
         density = mixture_density(bounded_phi, rho_water, rho_air)
 
-        source_gradient = self._phase_central_gradient(i, j)
+        source_gradient = self._momentum_phase_gradient(i, j)
 
         # Assemble gravity sources as force densities.  The frozen
         # hydrostatic reference removes only the base far-field load; the
@@ -3221,7 +3321,7 @@ class IceFlow2D(StabilityOptions):
                     self.momentum_velocity_lattice[i, j]
                     + 0.5 * self.fluid_acceleration_lattice[i, j]
                 )
-                grad_phi = self._phase_central_gradient(i, j)
+                grad_phi = self._momentum_phase_gradient(i, j)
                 grad_rho = (rho_water - rho_air) * grad_phi
                 s0 = -1.5 * lattice_weight(0) * velocity.dot(velocity)
                 dynamic_pressure = 0.6 * (
