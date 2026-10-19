@@ -1,0 +1,118 @@
+{
+  "description": "Analytic local stencil examples; no simulation accuracy claim.",
+  "lattice_spacing": 1,
+  "center_phase": 0.4,
+  "exact_gradient_on_connected_side": [
+    0.12,
+    0.08
+  ],
+  "separated_neighbor_offset": [
+    1,
+    1
+  ],
+  "separated_neighbor_phase": 0.9,
+  "ice_slab_coverage": "max(0, 1 - abs((xi_1 + xi_2 - 1) / sqrt(2)))",
+  "solid_threshold": 0.5,
+  "cases": [
+    {
+      "case": "truncated",
+      "accepted_offsets": [
+        [
+          0,
+          1
+        ],
+        [
+          -1,
+          0
+        ],
+        [
+          0,
+          -1
+        ],
+        [
+          -1,
+          1
+        ],
+        [
+          -1,
+          -1
+        ]
+      ],
+      "normal_matrix": [
+        [
+          0.16666666666666669,
+          0.0
+        ],
+        [
+          0.0,
+          0.2777777777777778
+        ]
+      ],
+      "right_hand_side": [
+        0.02,
+        0.022222222222222227
+      ],
+      "connected_gradient": [
+        0.12,
+        0.08000000000000002
+      ],
+      "control": "3 b on accepted donors",
+      "control_gradient": [
+        0.06,
+        0.06666666666666668
+      ],
+      "control_relative_error_percent": 42.61735932972991,
+      "connected_relative_error_percent_exact_arithmetic": 0
+    },
+    {
+      "case": "separated",
+      "accepted_offsets": [
+        [
+          -1,
+          0
+        ],
+        [
+          0,
+          -1
+        ],
+        [
+          -1,
+          1
+        ],
+        [
+          -1,
+          -1
+        ],
+        [
+          1,
+          -1
+        ]
+      ],
+      "normal_matrix": [
+        [
+          0.19444444444444448,
+          -0.027777777777777776
+        ],
+        [
+          -0.027777777777777776,
+          0.19444444444444448
+        ]
+      ],
+      "right_hand_side": [
+        0.021111111111111112,
+        0.012222222222222225
+      ],
+      "connected_gradient": [
+        0.11999999999999998,
+        0.07999999999999999
+      ],
+      "control": "weighted linear fit to all fluid neighbors, without connectivity",
+      "control_gradient": [
+        0.15749999999999995,
+        0.11749999999999998
+      ],
+      "control_relative_error_percent": 36.771775338409476,
+      "connected_relative_error_percent_exact_arithmetic": 0
+    }
+  ]
+}

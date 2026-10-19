@@ -34,7 +34,7 @@ class CoupledSnapshot:
     liquid_fraction: np.ndarray
     enthalpy_j_m3: np.ndarray
     water_phase: np.ndarray
-    solid: np.ndarray
+    solid: np.ndarray  # 0 active fluid, 1 physical ice, 2 pending refill
     sdf: np.ndarray
     phase_change_material: np.ndarray
     velocity_lattice: np.ndarray
@@ -61,6 +61,10 @@ class VelocitySequenceSummary:
     observed_max_m_s: float
     color_max_m_s: float
     quiver_stride_cells: int
+    include_air: bool = False
+    air_color_max_m_s: float = 4.0
+    water_colormap: str = "viridis"
+    air_colormap: str = "Oranges"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +78,10 @@ class VorticitySequenceSummary:
     observed_abs_max_s_1: float
     color_abs_max_s_1: float
     quiver_stride_cells: int
+    include_air: bool = False
+    air_color_abs_max_s_1: float = 5000.0
+    water_colormap: str = "RdBu_r"
+    air_colormap: str = "PuOr"
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,14 +399,15 @@ def _static_wall_mask(config: IceFlowConfig) -> np.ndarray:
     return wall
 
 
-def _physical_water_velocity(
+def _physical_flow_velocity(
     config: IceFlowConfig,
     scales: LatticeScales,
     snapshot: CoupledSnapshot,
     *,
     frame_index: int,
+    include_air: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return physical velocity and the visible liquid-water mask for one frame."""
+    """Return physical velocity and the selected fluid mask for one frame."""
 
     velocity = np.asarray(snapshot.physical_velocity_lattice, dtype=np.float64)
     expected_vector_shape = (config.ny, config.nx, 2)
@@ -421,8 +430,14 @@ def _physical_water_velocity(
             f"velocity frame {frame_index} masks must have shape "
             f"{expected_scalar_shape}"
         )
-    water = (~_static_wall_mask(config)) & (solid == 0) & (water_phase >= 0.5)
-    return velocity * scales.velocity_scale_m_s, water
+    visible = (~_static_wall_mask(config)) & (solid == 0)
+    if not include_air:
+        visible &= water_phase >= 0.5
+    return velocity * scales.velocity_scale_m_s, visible
+
+
+def _physical_water_velocity(config, scales, snapshot, *, frame_index):
+    return _physical_flow_velocity(config, scales, snapshot, frame_index=frame_index)
 
 
 def _scaled_quiver_components(
@@ -432,6 +447,7 @@ def _scaled_quiver_components(
     *,
     display_max_m_s: float,
     reference_arrow_length_m: float,
+    clip_speed: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Map physical velocity to plot-space arrows using one shared scale."""
 
@@ -439,6 +455,13 @@ def _scaled_quiver_components(
     reference_length = _positive("reference_arrow_length_m", reference_arrow_length_m)
     sampled = velocity_m_s[np.ix_(y_indices, x_indices)]
     factor = reference_length / maximum
+    if clip_speed:
+        # Cap only arrow lengths. Physical values and the measured maxima are
+        # retained, so fast air cannot draw arrows across the whole container.
+        factor = factor * np.minimum(
+            1.0, maximum / np.maximum(np.linalg.norm(sampled, axis=-1), 1e-30)
+        )
+        return sampled[..., 0] * factor, sampled[..., 1] * factor
     return sampled[..., 0] * factor, sampled[..., 1] * factor
 
 
@@ -575,7 +598,7 @@ def _draw_flow_boundaries(
             extent=extent_m,
         )
     else:
-        solid = np.asarray(snapshot.solid)
+        solid = np.asarray(snapshot.solid) == 1
         if _contains_contour(solid, 0.5):
             axis.contour(
                 solid,
@@ -672,6 +695,187 @@ class _StreamingGif:
             self._closed = True
 
 
+def _phase_flow_plot_data(config, scales, snapshot, *, frame_index):
+    """Prepare separate phase masks and curls without crossing the interface."""
+    velocity, fluid = _physical_flow_velocity(
+        config, scales, snapshot, frame_index=frame_index, include_air=True
+    )
+    phase = np.asarray(snapshot.water_phase)
+    water, air = fluid & (phase >= 0.5), fluid & (phase < 0.5)
+    speed = np.linalg.norm(velocity, axis=-1)
+    return {
+        "velocity": velocity,
+        "water_mask": water,
+        "air_mask": air,
+        "water_speed": np.ma.masked_where(~water, speed),
+        "air_speed": np.ma.masked_where(~air, speed),
+        "water_vorticity": np.ma.masked_invalid(
+            _water_vorticity_s_1(velocity, water, spacing_m=config.dx)
+        ),
+        "air_vorticity": np.ma.masked_invalid(
+            _water_vorticity_s_1(velocity, air, spacing_m=config.dx)
+        ),
+    }
+
+
+def _render_two_phase_flow_frame(
+    path,
+    config,
+    scales,
+    snapshot,
+    *,
+    frame_index,
+    geometry,
+    scenario_label,
+    quantity,
+    water_color_max,
+    air_color_max,
+    water_velocity_max,
+    air_velocity_max,
+    water_colormap,
+    air_colormap,
+):
+    """Overlay two transparent phase layers, each with its own colorbar."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patheffects as effects
+    from matplotlib.colors import Normalize
+    from matplotlib.lines import Line2D
+
+    data = _phase_flow_plot_data(config, scales, snapshot, frame_index=frame_index)
+    fields = [data[f"{phase}_{quantity}"] for phase in ("water", "air")]
+    maxima = [water_color_max, air_color_max]
+    cmaps = [water_colormap, air_colormap]
+    width, height = _flow_figure_size(config)
+    figure, axis = plt.subplots(figsize=(width + 2.0, height), constrained_layout=True)
+    axis.set_facecolor("#aeb4ba")
+    images = []
+    observed_max = 0.0
+    for phase, field, maximum, cmap in zip(
+        ("Water", "Air"), fields, maxima, cmaps, strict=True
+    ):
+        values = field.compressed()
+        if values.size:
+            observed_max = max(observed_max, float(np.max(np.abs(values))))
+        colormap = plt.get_cmap(cmap).copy()
+        colormap.set_bad((0, 0, 0, 0))
+        normalization = Normalize(
+            vmin=-maximum if quantity == "vorticity" else 0.0, vmax=maximum, clip=True
+        )
+        images.append(
+            axis.imshow(
+                field,
+                origin="lower",
+                extent=geometry.extent_m,
+                cmap=colormap,
+                norm=normalization,
+                interpolation="nearest",
+                aspect="equal",
+            )
+        )
+    for phase, plotted, maximum in zip(("Water", "Air"), images, maxima, strict=True):
+        label = (
+            f"{phase} speed |u| (m/s)"
+            if quantity == "speed"
+            else f"{phase} vorticity (1/s)"
+        )
+        ticks = np.linspace(-maximum if quantity == "vorticity" else 0.0, maximum, 5)
+        figure.colorbar(
+            plotted, ax=axis, fraction=0.03, pad=0.025, label=label, ticks=ticks
+        )
+
+    sample = np.ix_(geometry.y_indices, geometry.x_indices)
+    sampled_water = data["water_mask"][sample]
+    water_u, water_v = _scaled_quiver_components(
+        data["velocity"],
+        geometry.x_indices,
+        geometry.y_indices,
+        display_max_m_s=water_velocity_max,
+        reference_arrow_length_m=geometry.reference_arrow_length_m,
+        clip_speed=True,
+    )
+    air_u, air_v = _scaled_quiver_components(
+        data["velocity"],
+        geometry.x_indices,
+        geometry.y_indices,
+        display_max_m_s=air_velocity_max,
+        reference_arrow_length_m=geometry.reference_arrow_length_m,
+        clip_speed=True,
+    )
+    arrow_u, arrow_v = (
+        np.where(sampled_water, water_u, air_u),
+        np.where(sampled_water, water_v, air_v),
+    )
+    valid = (data["water_mask"] | data["air_mask"])[sample]
+    valid &= np.hypot(arrow_u, arrow_v) >= 0.015 * geometry.reference_arrow_length_m
+    if np.any(valid):
+        colors = np.where(
+            sampled_water.reshape(-1, 1),
+            np.array([1.0, 1.0, 1.0]),
+            np.array([1.0, 0.62, 0.26]),
+        )
+        quiver = axis.quiver(
+            geometry.sample_x_m,
+            geometry.sample_y_m,
+            np.ma.masked_where(~valid, arrow_u),
+            np.ma.masked_where(~valid, arrow_v),
+            angles="xy",
+            scale_units="xy",
+            scale=1.0,
+            pivot="mid",
+            color=colors,
+            width=0.003,
+            headwidth=3.5,
+            headlength=4.5,
+            headaxislength=4.0,
+        )
+        quiver.set_path_effects(
+            [effects.withStroke(linewidth=0.7, foreground="#263238")]
+        )
+    _draw_flow_boundaries(
+        axis, snapshot, geometry.extent_m, water_surface_color="#263238"
+    )
+    # A thin light outline keeps the phase contour visible on both palettes.
+    for artist in axis.collections:
+        if isinstance(artist, matplotlib.contour.QuadContourSet):
+            artist.set_path_effects(
+                [effects.withStroke(linewidth=2.0, foreground="white")]
+            )
+    axis.legend(
+        handles=[
+            Line2D(
+                [0],
+                [0],
+                color="white",
+                label=f"Water arrows: cap {water_velocity_max:g} m/s",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="#ff9e43",
+                label=f"Air arrows: cap {air_velocity_max:g} m/s",
+            ),
+            Line2D([0], [0], color="white", linestyle="--", label="Water surface"),
+        ],
+        loc="upper right",
+        facecolor="#263238",
+        edgecolor="none",
+        labelcolor="white",
+        fontsize=8,
+    )
+    axis.set_xlabel("x (m)")
+    axis.set_ylabel("y (m)")
+    name = "velocity" if quantity == "speed" else "vorticity"
+    axis.set_title(
+        f"Air-water {name} during {scenario_label}\nT_water,0={config.thermal.initial_water_temperature_c:g} degC, t={snapshot.physical_time_s:.4f} s, melted={100 * snapshot.melted_fraction:.2f}%"
+    )
+    figure.savefig(path, dpi=170)
+    plt.close(figure)
+    return observed_max
+
+
 def _render_velocity_frame(
     path: Path,
     config: IceFlowConfig,
@@ -682,8 +886,29 @@ def _render_velocity_frame(
     color_max_m_s: float,
     geometry: _FlowPlotGeometry,
     scenario_label: str = DEFAULT_SCENARIO_LABEL,
+    include_air: bool = False,
+    air_color_max_m_s: float = 4.0,
+    water_colormap: str = "viridis",
+    air_colormap: str = "Oranges",
 ) -> float:
-    """Render one velocity frame and return its observed water-speed maximum."""
+    """Render one velocity frame and return its observed selected-fluid maximum."""
+    if include_air:
+        return _render_two_phase_flow_frame(
+            path,
+            config,
+            scales,
+            snapshot,
+            frame_index=frame_index,
+            geometry=geometry,
+            scenario_label=scenario_label,
+            quantity="speed",
+            water_color_max=color_max_m_s,
+            air_color_max=air_color_max_m_s,
+            water_velocity_max=color_max_m_s,
+            air_velocity_max=air_color_max_m_s,
+            water_colormap=water_colormap,
+            air_colormap=air_colormap,
+        )
 
     import matplotlib
 
@@ -700,7 +925,7 @@ def _render_velocity_frame(
     )
     plotted_speed = np.ma.masked_where(~visible_water, speed_m_s)
     normalization = Normalize(vmin=0.0, vmax=color_max_m_s)
-    colormap = plt.get_cmap("viridis").copy()
+    colormap = plt.get_cmap(water_colormap).copy()
     colormap.set_bad("#aeb4ba")
 
     figure, axis = plt.subplots(
@@ -801,11 +1026,18 @@ class VelocitySequenceStream:
         *,
         display_max_m_s: float,
         scenario_label: str = DEFAULT_SCENARIO_LABEL,
+        include_air: bool = False,
+        air_display_max_m_s: float = 4.0,
+        water_colormap: str = "viridis",
+        air_colormap: str = "Oranges",
     ) -> None:
         self.config = config
         self.scales = scales
         self.color_max_m_s = _positive("display_max_m_s", display_max_m_s)
         self.scenario_label = str(scenario_label)
+        self.include_air = bool(include_air)
+        self.air_color_max_m_s = _positive("air_display_max_m_s", air_display_max_m_s)
+        self.water_colormap, self.air_colormap = water_colormap, air_colormap
         self.geometry = _flow_plot_geometry(config)
         self.frame_directory = output_dir / "velocity_frames"
         self.frame_directory.mkdir(parents=True, exist_ok=True)
@@ -831,6 +1063,10 @@ class VelocitySequenceStream:
             color_max_m_s=self.color_max_m_s,
             geometry=self.geometry,
             scenario_label=self.scenario_label,
+            include_air=self.include_air,
+            air_color_max_m_s=self.air_color_max_m_s,
+            water_colormap=self.water_colormap,
+            air_colormap=self.air_colormap,
         )
         self._gif.append_png(frame_path)
         self.observed_max_m_s = max(
@@ -851,6 +1087,10 @@ class VelocitySequenceStream:
                 observed_max_m_s=self.observed_max_m_s,
                 color_max_m_s=self.color_max_m_s,
                 quiver_stride_cells=self.geometry.stride_cells,
+                include_air=self.include_air,
+                air_color_max_m_s=self.air_color_max_m_s,
+                water_colormap=self.water_colormap,
+                air_colormap=self.air_colormap,
             )
             self._closed = True
         assert self._summary is not None
@@ -868,8 +1108,30 @@ def _render_vorticity_frame(
     quiver_speed_max_m_s: float,
     geometry: _FlowPlotGeometry,
     scenario_label: str = DEFAULT_SCENARIO_LABEL,
+    include_air: bool = False,
+    air_color_abs_max_s_1: float = 5000.0,
+    air_quiver_speed_max_m_s: float = 4.0,
+    water_colormap: str = "RdBu_r",
+    air_colormap: str = "PuOr",
 ) -> float:
     """Render one vorticity frame and return its observed absolute maximum."""
+    if include_air:
+        return _render_two_phase_flow_frame(
+            path,
+            config,
+            scales,
+            snapshot,
+            frame_index=frame_index,
+            geometry=geometry,
+            scenario_label=scenario_label,
+            quantity="vorticity",
+            water_color_max=color_abs_max_s_1,
+            air_color_max=air_color_abs_max_s_1,
+            water_velocity_max=quiver_speed_max_m_s,
+            air_velocity_max=air_quiver_speed_max_m_s,
+            water_colormap=water_colormap,
+            air_colormap=air_colormap,
+        )
 
     import matplotlib
 
@@ -900,7 +1162,7 @@ def _render_vorticity_frame(
         vmin=-color_abs_max_s_1,
         vmax=color_abs_max_s_1,
     )
-    colormap = plt.get_cmap("RdBu_r").copy()
+    colormap = plt.get_cmap(water_colormap).copy()
     colormap.set_bad("#aeb4ba")
 
     figure, axis = plt.subplots(
@@ -1007,6 +1269,11 @@ class VorticitySequenceStream:
         display_abs_max_s_1: float,
         velocity_display_max_m_s: float,
         scenario_label: str = DEFAULT_SCENARIO_LABEL,
+        include_air: bool = False,
+        air_display_abs_max_s_1: float = 5000.0,
+        air_velocity_display_max_m_s: float = 4.0,
+        water_colormap: str = "RdBu_r",
+        air_colormap: str = "PuOr",
     ) -> None:
         self.config = config
         self.scales = scales
@@ -1019,6 +1286,14 @@ class VorticitySequenceStream:
             velocity_display_max_m_s,
         )
         self.scenario_label = str(scenario_label)
+        self.include_air = bool(include_air)
+        self.air_color_abs_max_s_1 = _positive(
+            "air_display_abs_max_s_1", air_display_abs_max_s_1
+        )
+        self.air_quiver_speed_max_m_s = _positive(
+            "air_velocity_display_max_m_s", air_velocity_display_max_m_s
+        )
+        self.water_colormap, self.air_colormap = water_colormap, air_colormap
         self.geometry = _flow_plot_geometry(config)
         self.frame_directory = output_dir / "vorticity_frames"
         self.frame_directory.mkdir(parents=True, exist_ok=True)
@@ -1045,6 +1320,11 @@ class VorticitySequenceStream:
             quiver_speed_max_m_s=self.quiver_speed_max_m_s,
             geometry=self.geometry,
             scenario_label=self.scenario_label,
+            include_air=self.include_air,
+            air_color_abs_max_s_1=self.air_color_abs_max_s_1,
+            air_quiver_speed_max_m_s=self.air_quiver_speed_max_m_s,
+            water_colormap=self.water_colormap,
+            air_colormap=self.air_colormap,
         )
         self._gif.append_png(frame_path)
         self.observed_abs_max_s_1 = max(
@@ -1065,6 +1345,10 @@ class VorticitySequenceStream:
                 observed_abs_max_s_1=self.observed_abs_max_s_1,
                 color_abs_max_s_1=self.color_abs_max_s_1,
                 quiver_stride_cells=self.geometry.stride_cells,
+                include_air=self.include_air,
+                air_color_abs_max_s_1=self.air_color_abs_max_s_1,
+                water_colormap=self.water_colormap,
+                air_colormap=self.air_colormap,
             )
             self._closed = True
         assert self._summary is not None

@@ -1,0 +1,542 @@
+{
+  "audit_date": "2026-10-16",
+  "scope": "Current methods-only ACM TOG draft; cm_mrt / connected_ls / consistent_flux / enthalpy_fv configuration, plus explicitly described optional guards.",
+  "inventory_scope": [
+    "iceflow2d_v3 source comments and documentation",
+    "iceflow2d_v3/benchmarks",
+    "iceflow2d_v3/research",
+    "iceflow2d/docs/main.tex",
+    "iceflow2d_v2/derivation",
+    "iceflow2d_v2/research"
+  ],
+  "completeness_limit": "All identifiable sources for the described method found in these repository records are accounted for. Papers read outside the repository or undocumented influences cannot be inferred. Historical references are recorded, not represented as current implementation sources.",
+  "summary": {
+    "original_citations": 4,
+    "added_papers": 8,
+    "added_technical_sources": 2,
+    "total_citations": 14,
+    "total_papers": 12,
+    "historical_or_alternative_references": 24
+  },
+  "cited_sources": [
+    {
+      "key": "Geier2015",
+      "status": "retained",
+      "role": "conservative Allen-Cahn interface transport",
+      "evidence": [
+        "iceflow2d_v3/lattice.py::phase_equilibrium",
+        "iceflow2d_v3/simulator.py::_collide_phase_kernel"
+      ],
+      "manuscript_anchor": "sec:flow / eq:phase",
+      "verified_sources": [
+        "https://doi.org/10.1103/PhysRevE.91.063309"
+      ],
+      "attribution_limit": "General phase-field foundation already cited in the first draft; no claim that every collision detail reproduces this paper."
+    },
+    {
+      "key": "Liang2018",
+      "status": "retained",
+      "role": "pressure-momentum equilibrium, forcing and recovery",
+      "evidence": [
+        "iceflow2d_v3/lattice.py::momentum_equilibrium",
+        "iceflow2d_v3/simulator.py::_collide_momentum_kernel",
+        "iceflow2d_v3/benchmarks/surface_velocity_diagnosis_20260920.md"
+      ],
+      "manuscript_anchor": "sec:flow / eq:equilibria, eq:recovery",
+      "verified_sources": [
+        "https://doi.org/10.1103/PhysRevE.97.033309"
+      ],
+      "attribution_limit": "Current central-moment collision and hydrostatic decomposition are adaptations."
+    },
+    {
+      "key": "Tao2018",
+      "status": "retained",
+      "role": "single-node curved-boundary reflection",
+      "evidence": [
+        "iceflow2d_v3/simulator.py::_prepare_momentum_cut_links",
+        "iceflow2d_v3/test_iceflow.py"
+      ],
+      "manuscript_anchor": "sec:rigid / eq:boundary",
+      "verified_sources": [
+        "https://doi.org/10.1016/j.camwa.2018.07.013"
+      ],
+      "attribution_limit": "Adapted to the pressure populations used in this implementation."
+    },
+    {
+      "key": "Wen2014",
+      "status": "retained",
+      "role": "relative-velocity momentum exchange",
+      "evidence": [
+        "iceflow2d_v3/simulator.py::_prepare_momentum_cut_links"
+      ],
+      "manuscript_anchor": "sec:rigid / eq:impulse",
+      "verified_sources": [
+        "https://doi.org/10.1016/j.jcp.2014.02.018"
+      ],
+      "attribution_limit": "Hydrostatic reference traction and capillary reaction are additional project terms."
+    },
+    {
+      "key": "Sato2023",
+      "status": "added",
+      "role": "motivation for suppressing bulk-phase normal artifacts",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/bottom_velocity_root_causes_20260921.md:47",
+        "iceflow2d_v3/simulator.py::_collide_phase_kernel"
+      ],
+      "manuscript_anchor": "sec:flow / after eq:phase",
+      "verified_sources": [
+        "https://doi.org/10.1016/j.ijmultiphaseflow.2023.104554",
+        "https://www.sciencedirect.com/science/article/pii/S0301932223001751"
+      ],
+      "attribution_limit": "The code uses D/sqrt(|D|^2+epsilon^2), not the full filtering algorithm from the paper."
+    },
+    {
+      "key": "Hajabdollahi2021",
+      "status": "added",
+      "role": "pressure-based central-moment collision design; planar equilibrium profile used to motivate the Sec. 1.6 density-source gate",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:67",
+        "iceflow2d_v3/simulator.py::_collide_momentum_kernel"
+      ],
+      "manuscript_anchor": "sec:flow / before eq:collision; sec:scope / density-source limiter",
+      "verified_sources": [
+        "https://arxiv.org/abs/1909.04166",
+        "https://doi.org/10.1016/j.jcp.2020.109893",
+        "https://par.nsf.gov/servlets/purl/10296481",
+        "https://arxiv.org/html/1909.04166v1#S2"
+      ],
+      "attribution_limit": "Cite the 2021 journal version of the 2019 preprint. The current code transforms Liang equilibria and sources; it does not reproduce the full cascaded model or inherit its reported stability gains. The tanh profile supports the reference slope; empirical gate margins and limiter budgets are specific to the current implementation."
+    },
+    {
+      "key": "Coreixas2019",
+      "status": "added",
+      "role": "equilibrium and collision-basis compatibility",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:55",
+        "iceflow2d_v3/lattice.py",
+        "iceflow2d_v3/simulator.py::_collide_momentum_kernel"
+      ],
+      "manuscript_anchor": "sec:flow / before eq:collision",
+      "verified_sources": [
+        "https://doi.org/10.1103/PhysRevE.100.033305"
+      ],
+      "attribution_limit": "General moment-space theory; single-phase analysis does not prove two-phase stability here."
+    },
+    {
+      "key": "Qi2025",
+      "status": "added",
+      "role": "separation of bulk/acoustic and shear dissipation",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/bottom_velocity_root_causes_20260921.md:108",
+        "iceflow2d_v3/simulator.py::_collide_momentum_kernel"
+      ],
+      "manuscript_anchor": "sec:flow / after eq:collision",
+      "verified_sources": [
+        "https://doi.org/10.1017/jfm.2024.1206"
+      ],
+      "attribution_limit": "The common trace/fourth-order rate 0.25 is a project-specific pressure-moment choice, not a two-phase recipe supplied by this paper."
+    },
+    {
+      "key": "Mirjalili2021",
+      "status": "added",
+      "role": "consistent momentum transport of nonadvective phase mass flux",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/surface_vortex_diagnosis_20260921.md:65",
+        "iceflow2d_v3/benchmarks/surface_vortex_fix_validation_20260921.md:85",
+        "iceflow2d_v3/stability_options.py"
+      ],
+      "manuscript_anchor": "sec:flow / eq:flux",
+      "verified_sources": [
+        "https://arxiv.org/abs/1912.10096",
+        "https://doi.org/10.1016/j.jcp.2020.109918",
+        "https://www.sciencedirect.com/science/article/pii/S0021999120306926"
+      ],
+      "attribution_limit": "Cite the 2021 journal version for the consistency principle that later informed the implemented flux correction. The split face-averaged code does not inherit exact kinetic-energy conservation."
+    },
+    {
+      "key": "Zhan2022",
+      "status": "added",
+      "role": "full divergence of the extra momentum flux",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/independent_stability_options_20260921.md:106",
+        "iceflow2d_v3/benchmarks/four_ice_instability_diagnosis_20260921.md:108",
+        "iceflow2d_v3/stability_options.py::_measure_phase_mass_flux",
+        "iceflow2d_v3/stability_options.py::_phase_flux_force_density"
+      ],
+      "manuscript_anchor": "sec:flow / eq:flux",
+      "verified_sources": [
+        "https://arxiv.org/html/2111.00847v1",
+        "https://doi.org/10.1103/PhysRevE.106.025319"
+      ],
+      "attribution_limit": "The note explicitly cites Eqs. (15), (16c), and Appendix A. The code retains its existing pressure model, time splitting and axial-face discretization; no meltwater source is supplied."
+    },
+    {
+      "key": "Zhang2020",
+      "status": "added",
+      "role": "direct contact-line capillary loading on the body",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/capillary_coupling.md:11",
+        "iceflow2d_v3/simulator.py::_prepare_capillary_stress"
+      ],
+      "manuscript_anchor": "sec:rigid / after eq:impulse",
+      "verified_sources": [
+        "https://doi.org/10.1063/5.0021473",
+        "https://api.crossref.org/works/10.1063/5.0021473"
+      ],
+      "attribution_limit": "Repository note explicitly identifies this motivation. Shared capillary-stress fluxes and torque correction are project-specific, not a reproduction of the paper. Publisher-deposited metadata checked; publisher full text was not accessible in this audit."
+    },
+    {
+      "key": "IAPWS2011",
+      "status": "added_technical_source",
+      "role": "water dynamic-viscosity correlation",
+      "evidence": [
+        "iceflow2d_v3/viscosity.py:3",
+        "iceflow2d_v3/viscosity.py::water_dynamic_viscosity_pa_s"
+      ],
+      "manuscript_anchor": "sec:thermal / molecular viscosity",
+      "verified_sources": [
+        "https://iapws.org/technical-guidance/release/LiquidWater",
+        "https://iapws.org/technical-guidance/release/LiquidWater.download"
+      ],
+      "attribution_limit": "Equation (7) and Table 5 coefficients checked against code; technical release, not a journal article. The other material constants are the current example settings, not attributed to this release."
+    },
+    {
+      "key": "NASA2025",
+      "status": "added_technical_source",
+      "role": "Sutherland air-viscosity law and constants",
+      "evidence": [
+        "iceflow2d_v3/viscosity.py:5",
+        "iceflow2d_v3/viscosity.py::air_dynamic_viscosity_pa_s"
+      ],
+      "manuscript_anchor": "sec:thermal / molecular viscosity",
+      "verified_sources": [
+        "https://nasa.github.io/cape-doc/2.3/api/cape/atm.html#cape.atm.SutherlandMKS"
+      ],
+      "attribution_limit": "SI reference values match the code: 1.716e-5 Pa s, 273.15 K, 110.33333 K. Year 2025 comes from the versioned documentation footer; this is not the original publication year of Sutherland law."
+    },
+    {
+      "key": "Hu2019",
+      "status": "added_software_credit",
+      "role": "Taichi implementation platform",
+      "evidence": [
+        "iceflow2d_v3/simulator.py (Taichi kernels)",
+        "iceflow2d_v3/examples/dambreak_four_ice_melting_2d.py (CUDA initialization)"
+      ],
+      "manuscript_anchor": "sec:scope / implementation",
+      "verified_sources": [
+        "https://doi.org/10.1145/3355089.3356506",
+        "https://yuanming.taichi.graphics/publication/2019-taichi/"
+      ],
+      "attribution_limit": "Added as standard software attribution; not evidence that the numerical algorithm was taken from this paper."
+    }
+  ],
+  "not_cited_in_current_method": [
+    {
+      "reference": "Wissocq, Coreixas, Boussuge 2020, PRE 102, 053305",
+      "url": "https://arxiv.org/abs/2006.07353",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/independent_stability_options_20260921.md:83",
+        "iceflow2d_v3/benchmarks/diagonal_velocity_diagnosis_20260921.md:51"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Reference for optional cm_hrr and diagnostic short-wave stability analysis. The manuscript describes cm_mrt and does not use HRR or report those diagnostic experiments."
+    },
+    {
+      "reference": "Chen, Yu, Hou 2013, PRE 87, 053306",
+      "url": "https://doi.org/10.1103/PhysRevE.87.053306",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/bottom_velocity_root_causes_20260921.md:70"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Future investigation of geometry-induced pressure oscillations; no evidence that the current connected refill implements this paper, and no corresponding pressure-oscillation result is claimed."
+    },
+    {
+      "reference": "Zhang et al. 2023, PRE 108, 025303",
+      "url": "https://doi.org/10.1103/PhysRevE.108.025303",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/surface_vortex_diagnosis_20260921.md:65",
+        "iceflow2d_v3/benchmarks/surface_vortex_fix_validation_20260921.md:85"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Curved-surface wetting is a proposed follow-up. The current fixed 3x3 linear connected fit is not this geometric contact-angle scheme."
+    },
+    {
+      "reference": "Silva 2020, Computers & Fluids 203, 104537",
+      "url": "https://doi.org/10.1016/j.compfluid.2020.104537",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/diagonal_velocity_diagnosis_20260921.md:51"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Background for diagnostic force-discretization analysis; no implementation formula or diagnostic claim from it is included in this methods-only manuscript."
+    },
+    {
+      "reference": "Yang and Zhang 2024, regularized conservative Allen-Cahn LBM",
+      "url": "https://www.global-sci.com/aamm/article/view/5330",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:80"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed alternative regularized two-phase model; not adopted."
+    },
+    {
+      "reference": "Coreixas et al. 2017, recursive regularization",
+      "url": "https://arxiv.org/abs/1704.04413",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:82"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed RR alternative; distinct from the 2019 moment-basis reference that is cited. The selected cm_mrt does not implement RR."
+    },
+    {
+      "reference": "Hosseini, Safari, Thevenin 2021, cumulant two-phase LBM",
+      "url": "https://doi.org/10.3390/e23020166",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:90"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed cumulant alternative; no cumulant collision in the described configuration."
+    },
+    {
+      "reference": "Sitompul and Aoki 2019, filtered cumulant LBM",
+      "url": "https://www.sciencedirect.com/science/article/abs/pii/S0021999119302529",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:96"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed filtered-cumulant alternative; not adopted."
+    },
+    {
+      "reference": "Kang and Wu 2026, CuPFLBM",
+      "url": "https://doi.org/10.1016/j.ijmultiphaseflow.2026.105757",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:98"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed cumulant alternative, originally checked at abstract level; not adopted."
+    },
+    {
+      "reference": "Fakhari, Bolster, Luo 2017, weighted MRT",
+      "url": "https://doi.org/10.1016/j.jcp.2017.03.062",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:102"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed weighted MRT / D3Q27 / AMR alternative; not adopted."
+    },
+    {
+      "reference": "Hosseini, Dorschner, Karlin, entropic MRT",
+      "url": "https://arxiv.org/abs/2201.12404",
+      "evidence": [
+        "iceflow2d_v3/benchmarks/momentum_collision_options_20260920.md:106"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Surveyed entropy-based alternative with a different two-phase model; not adopted."
+    },
+    {
+      "reference": "Huang, Wang, Chai, Shi 2024, containerless freezing",
+      "url": "https://doi.org/10.1103/PhysRevE.110.035301",
+      "evidence": [
+        "iceflow2d_v3/research/huang_2024_mass_conservation_proposal_zh.md:3"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "The repository explicitly marks the conservative meltwater proposal as not integrated. Current code removes melted mass; citing the paper as the implemented melting scheme would be misleading."
+    },
+    {
+      "reference": "Wang, Huang, He 2022, thermal LBM for liquid-vapor phase change",
+      "url": "https://doi.org/10.1103/PhysRevE.106.055308",
+      "evidence": [
+        "iceflow2d_v2/derivation/derivation_zh.md:11",
+        "iceflow2d_v3/thermal_d2q5.py"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Source of the optional D2Q5 thermal branch inherited from v2. The manuscript deliberately describes enthalpy_fv, not enthalpy_d2q5. Add the citation when documenting that branch."
+    },
+    {
+      "reference": "Werner, Rettinger, Rude 2021, fully resolved light particles on adaptively refined grids",
+      "url": "https://doi.org/10.1002/fld.5034",
+      "evidence": [
+        "iceflow2d/docs/main.tex:1483"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Listed in the v1 bibliography without an explicit citation at its use site. No evidence that the current contact-prediction/kick scheme adopts its light-particle coupling or adaptive refinement; retained here as historical background."
+    },
+    {
+      "reference": "Huang, Lin, Ardekani 2022, conservative thermo-gas-liquid-solid phase field",
+      "url": "https://doi.org/10.1016/j.jcp.2021.110795",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:5"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Basis of the separate v2 conservative phase-change design. The current v3 disappearing-melt model has no associated conservative phase-change mass/energy transfer; current fluid flux consistency is attributed to its explicit v3 sources."
+    },
+    {
+      "reference": "Weber, Mukherjee, Class, Brandt 2026, consistent boiling-flow framework",
+      "url": "https://doi.org/10.1016/j.jcp.2026.114680",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:28"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 conservative coupling research; boiling dynamics and non-conservative temperature model not adopted by the current v3 finite-volume erosion path."
+    },
+    {
+      "reference": "Berger and Giuliani 2024, weighted state redistribution",
+      "url": "https://doi.org/10.1137/23M1597484",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:48"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 cut-cell redistribution research; no such redistribution operator in the described v3 method."
+    },
+    {
+      "reference": "Berger and Giuliani 2021, predecessor state redistribution algorithm",
+      "url": "https://doi.org/10.1016/j.jcp.2020.109820",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:53"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "Mentioned as the predecessor in the v2 survey; not adopted in the current v3 method."
+    },
+    {
+      "reference": "Poblador-Ibanez et al. 2025, boiling momentum balance correction",
+      "url": "https://doi.org/10.1016/j.jcp.2024.113704",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:65"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 metadata/background reference, explicitly not used for implementation formulas."
+    },
+    {
+      "reference": "Dupuy et al. 2025, cut-cell time integration and geometric conservation",
+      "url": "https://doi.org/10.1016/j.compfluid.2025.106627",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:66"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 future geometry/time-integration direction; current reconstruction has no corresponding geometric conservation guarantee."
+    },
+    {
+      "reference": "Song, Tian, Pan 2026, reacting compressible phase-change coupling",
+      "url": "https://arxiv.org/html/2609.03509v1",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:67"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 survey of a different physical model; not adopted."
+    },
+    {
+      "reference": "Zhan et al. 2025, thermodynamically consistent gas/liquid-liquid-solid model",
+      "url": "https://doi.org/10.1016/j.jcp.2025.113949",
+      "evidence": [
+        "iceflow2d_v2/research/literature_review_zh.md:68"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 metadata-only background, not an implementation source. Distinct from the implemented fluid-flux reference Zhan2022."
+    },
+    {
+      "reference": "Batty, Bertails, Bridson 2007, variational fluid-solid coupling",
+      "url": "https://www.cs.ubc.ca/~rbridson/docs/batty-siggraph2007-variationalcoupling.pdf",
+      "evidence": [
+        "iceflow2d_v2/research/subgrid_viscous_zh.md:51"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 variational coupling motivation; the current v3 uses explicit link impulses and contact prediction, without that joint pressure minimization."
+    },
+    {
+      "reference": "Takahashi and Lin 2019, implicit viscous two-way coupling",
+      "url": "https://doi.org/10.1111/cgf.13618",
+      "evidence": [
+        "iceflow2d_v2/research/subgrid_viscous_zh.md:51"
+      ],
+      "decision": "not_cited_in_current_method",
+      "reason": "v2 implicit viscous coupling motivation; not the current explicit v3 contact/link method."
+    }
+  ],
+  "checks": {
+    "all_bib_entries_cited": false,
+    "all_citations_defined": true,
+    "nocite_used": false,
+    "source_snapshot_unchanged": false,
+    "changed_source_files": [
+      "iceflow2d_v3/simulator.py"
+    ],
+    "compiled_pages": 4,
+    "page_limit": 4,
+    "compiled_bibliography_entries": 13,
+    "pdf_doi_links_present": 11,
+    "pdf_technical_source_links_present": 2,
+    "all_bib_entries_resolved": true,
+    "visual_review": "All four final pages visually inspected. Sec. 1.6 begins with plain-language thermal motivation and direct, separately computed advection/conduction substep counts. Only two limiters are numbered. User-commented velocity-repair and phase-bounds blocks are preserved. Both single-column figures remain aligned on page 2. No clipping, overlap, overfull/underfull boxes, or unresolved references. The existing pbalance warning leaves natural final-page column lengths.",
+    "uncited_bib_entries": [
+      "Coreixas2019"
+    ],
+    "uncited_bib_entries_note": "Already uncited before this revision; preserved in the bibliography without restoring the removed citation.",
+    "all_cited_entries_resolved": true
+  },
+  "last_manuscript_check_date": "2026-10-19",
+  "mass_momentum_revision": {
+    "date": "2026-10-19",
+    "attribution": "Mirjalili2021 motivates accounting for interface mass flux in momentum transport; Zhan2022 supports the consistent mass flux and full divergence correction. The manuscript explicitly presents the current solver as an adaptation with distinct discrete operators and conservation limitations.",
+    "source_citation_set_unchanged": true,
+    "prior_inventory_date": "2026-10-16"
+  },
+  "section_1_6_revision": {
+    "date": "2026-10-19",
+    "scope": "Sec. 1.6 only; earlier source text including user comments preserved byte-for-byte.",
+    "overall_motivation": "Balance efficiency and stability for narrow-gap transients using local guards and thermal substeps.",
+    "numbered_items": [
+      "Density-source limiter",
+      "Momentum-flux limiter"
+    ],
+    "formula_provenance": {
+      "density_reference": "Derivative of the unregularized planar tanh equilibrium profile; Hajabdollahi2021 Eqs. (2)-(3). The 1.5 factor and floor are empirical.",
+      "density_scale": "D2Q9 directional-product bound and a local density-weighted source budget.",
+      "face_scale": "Four-face acceleration budget, shared coefficients and the triangle inequality.",
+      "thermal_substeps": "Direct ceil-based counts from the upwind outflow-fraction and Fourier limits, 0.5 and 0.15. Advection and conduction are substepped separately; exceeding 64 aborts.",
+      "refill_projection": "Moment consistency under new geometry, distinguished from amplitude limiting."
+    },
+    "primary_reference": "https://arxiv.org/html/1909.04166v1#S2",
+    "added_equation_labels": [
+      "eq:face-limiter",
+      "eq:thermal-bounds"
+    ],
+    "citation_key_set_preserved": true,
+    "inputs_unchanged": true,
+    "implementation_tests_repeated": false,
+    "pages": 4,
+    "commented_items_preserved": [
+      "Velocity-outlier repair",
+      "Phase bounds"
+    ],
+    "thermal_substeps_in_opening": true
+  },
+  "thermal_intro_revision": {
+    "date": "2026-10-19",
+    "scope": "Sec. 1.6 opening and thermal substeps only, plus removal of the stale phrase \"and the above repairs\"; preceding sections and user-commented blocks preserved byte-for-byte.",
+    "thermal_substeps_in_opening": true,
+    "opening_motivation": "A large explicit thermal step can remove more water than a cell contains or cause temperature overshoots; substep thermal updates while retaining the fluid time step.",
+    "direct_counts": {
+      "advection": "max(1, ceil(dt_adv * U_out / (0.5*h)))",
+      "conduction": "max(1, ceil(dt_diff * alpha_max / (0.15*h*h)))"
+    },
+    "separate_update_intervals": "Advection at every fluid step; conduction/erosion may span multiple fluid steps. Each interval is divided into its own number of equal substeps.",
+    "substep_cap_behavior": "Abort when either count exceeds 64; do not truncate the count.",
+    "implementation_evidence": [
+      "iceflow2d_v3/simulator.py:267-279",
+      "iceflow2d_v3/simulator.py:282-351",
+      "iceflow2d_v3/simulator.py:369-440",
+      "iceflow2d_v3/simulator.py:1614-1704"
+    ],
+    "active_numbered_items": [
+      "Density-source limiter",
+      "Momentum-flux limiter"
+    ],
+    "commented_items_preserved": [
+      "Velocity-outlier repair",
+      "Phase bounds"
+    ],
+    "existing_equation_labels_preserved": true,
+    "code_figures_macros_bibliography_unchanged": true,
+    "implementation_tests_repeated": false,
+    "pages": 4
+  }
+}

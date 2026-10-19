@@ -1,15 +1,19 @@
 {
-  "snapshot_date": "2026-10-08",
+  "snapshot_date": "2026-10-14",
   "time_zone": "Asia/Shanghai",
   "scope": "current workspace contents including uncommitted changes",
   "sources": [
     {
       "path": "iceflow2d_v3/simulator.py",
-      "sha256": "6949c417e5ebbc58678f93c3644247aa4458da79583089ac7cbbbf6fae402866"
+      "sha256": "74268d52834ae18beaed3f6f4e391a2d553fbe8a2fd27b3ec61dee31d8ab1daf"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "sha256": "1931e3a66217f922176a3392e596069359a7f758d2f205ff1531282cdce3277e"
     },
     {
       "path": "iceflow2d_v3/config.py",
-      "sha256": "e27a4cf6c8a86f1d27e1b29f3159030856c764233caa2fde2e16dba787386fea"
+      "sha256": "ec76a48c4240460b9f673aa52bfeabcf9033c9392b3cd3ea147103e43c9d18ae"
     },
     {
       "path": "iceflow2d_v3/lattice.py",
@@ -25,7 +29,7 @@
     },
     {
       "path": "iceflow2d_v3/stability_options.py",
-      "sha256": "65ee8776ff205413d308534b00595255621f438c530020404f5e4635b789fd83"
+      "sha256": "74250d77c0709ac64fdf4f30db5498a3a722a61512d84ad8dabf790a66d758aa"
     },
     {
       "path": "iceflow2d_v3/thermal_d2q5.py",
@@ -36,633 +40,1371 @@
       "sha256": "69c215e4d9ee1759e97e05f31e3d70c6e83091d21c682599527bfd133caf7208"
     },
     {
+      "path": "iceflow2d_v3/reporting.py",
+      "sha256": "03cc94cdfc18df626a6355c6de7daa34f52177b33c5c6369b516537de8745300"
+    },
+    {
       "path": "iceflow2d_v3/examples/coupled_falling_ice_melting_2d.py",
-      "sha256": "5a4cf9b61a094d4aae40f8c061ce05a391bb8821cd18d21bf9281499baabbc9a"
+      "sha256": "221d2eab3612121302bc71b4ea7df12ad9fd1cdf001d4b3c13da28338ca3b2a6"
     },
     {
       "path": "iceflow2d_v3/examples/four_falling_ice_melting_2d.py",
       "sha256": "3f3c4659a543a831eef9e3140c9a192dd18322dd858f5097e16b57f319909279"
+    },
+    {
+      "path": "iceflow2d_v3/examples/dambreak_four_ice_melting_2d.py",
+      "sha256": "c88e07871ee534c7f0231b326ac4e9b058d122debe4bff0f0f3f2db95a4db11a"
+    },
+    {
+      "path": "iceflow2d_v3/examples/dambreak_single_ice_melting_2d.py",
+      "sha256": "216eac8a9162da91f41ebf040f1c519d1fcdb0abcd2584fa1bf4709abee86240"
     }
   ],
-  "simulator_callable_count": 124,
+  "simulator_callable_count": 128,
   "methods": [
     {
-      "owner": "_DerivedField",
-      "name": "__init__",
-      "definition_line": 78
+      "path": "iceflow2d_v3/simulator.py",
+      "owner": null,
+      "name": "ensure_taichi_cuda",
+      "definition_line": 52,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
+      "owner": "_DerivedField",
+      "name": "__init__",
+      "definition_line": 79,
+      "decorators": [],
+      "kind": "Python"
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "_DerivedField",
       "name": "__getitem__",
-      "definition_line": 86
+      "definition_line": 87,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "_DerivedField",
       "name": "__setitem__",
-      "definition_line": 99
+      "definition_line": 100,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "_DerivedField",
       "name": "to_numpy",
-      "definition_line": 104
+      "definition_line": 105,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "__init__",
-      "definition_line": 128
+      "definition_line": 129,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "maximum_advection_time_step_s",
-      "definition_line": 280
+      "definition_line": 281,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_validate_substep_count",
-      "definition_line": 290
+      "definition_line": 291,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "required_advection_substeps",
-      "definition_line": 315
+      "definition_line": 316,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "required_diffusion_substeps",
-      "definition_line": 339
+      "definition_line": 340,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "initialize",
-      "definition_line": 351
+      "definition_line": 352,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "advance_fast",
-      "definition_line": 367
+      "definition_line": 368,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "advance_slow",
-      "definition_line": 396
+      "definition_line": 397,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "synchronize_water_aperture",
-      "definition_line": 440
+      "definition_line": 441,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_initialize_body_state",
-      "definition_line": 458
+      "definition_line": 459,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_initialize_water_state",
-      "definition_line": 472
+      "definition_line": 473,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_build_phase_aperture_targets",
-      "definition_line": 501
+      "definition_line": 502,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_apply_phase_aperture_transfer",
-      "definition_line": 547
+      "definition_line": 548,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_accumulate_body_conduction",
-      "definition_line": 560
+      "definition_line": 561,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_compute_water_conduction_flux_x",
-      "definition_line": 587
+      "definition_line": 588,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_compute_water_advection_flux_x",
-      "definition_line": 685
+      "definition_line": 686,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_compute_water_conduction_flux_y",
-      "definition_line": 736
+      "definition_line": 737,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_compute_water_advection_flux_y",
-      "definition_line": 834
+      "definition_line": 835,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_update_water_advection",
-      "definition_line": 885
+      "definition_line": 886,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_update_water_conduction",
-      "definition_line": 904
+      "definition_line": 905,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_exchange_interface_heat",
-      "definition_line": 916
+      "definition_line": 917,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_apply_body_heat_and_phase_change",
-      "definition_line": 1057
+      "definition_line": 1058,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_body_fraction_at",
-      "definition_line": 1074
+      "definition_line": 1075,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_body_temperature_at",
-      "definition_line": 1084
+      "definition_line": 1085,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_water_temperature_at",
-      "definition_line": 1094
+      "definition_line": 1095,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_body_grid_coordinates",
-      "definition_line": 1104
+      "definition_line": 1105,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_water_aperture_target",
-      "definition_line": 1133
+      "definition_line": 1134,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_body_fraction_numpy",
-      "definition_line": 1151
+      "definition_line": 1152,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_body_temperature_numpy",
-      "definition_line": 1160
+      "definition_line": 1161,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "_water_temperature_numpy",
-      "definition_line": 1173
+      "definition_line": 1174,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "MovingBodyThermal2D",
       "name": "sample_world_fields",
-      "definition_line": 1185
+      "definition_line": 1186,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "__init__",
-      "definition_line": 1269
+      "definition_line": 1270,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "step",
-      "definition_line": 1535
+      "definition_line": 1539,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_advance_fluid",
-      "definition_line": 1549
+      "definition_line": 1553,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_advance_body",
-      "definition_line": 1558
+      "definition_line": 1567,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_refresh_fluid_domain",
-      "definition_line": 1562
+      "definition_line": 1571,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_advance_thermal",
-      "definition_line": 1568
+      "definition_line": 1582,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "physical_time_s",
-      "definition_line": 1579
+      "definition_line": 1593,
+      "decorators": [
+        "property"
+      ],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_advance_moving_thermal_fast",
-      "definition_line": 1582
+      "definition_line": 1596,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_advance_moving_thermal_slow",
-      "definition_line": 1598
+      "definition_line": 1612,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_refresh_eroded_body",
-      "definition_line": 1610
+      "definition_line": 1624,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_is_fluid_cell",
-      "definition_line": 1621
+      "definition_line": 1635,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_measure_water_outflow_rate",
-      "definition_line": 1625
+      "definition_line": 1639,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_collect_thermal_stability_metrics",
-      "definition_line": 1661
+      "definition_line": 1675,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_check_thermal_advection_stability",
-      "definition_line": 1690
+      "definition_line": 1704,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_validate_thermal_advection_velocity",
-      "definition_line": 1702
+      "definition_line": 1716,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_body_velocity_at",
-      "definition_line": 1770
+      "definition_line": 1784,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_cell_point",
-      "definition_line": 1776
+      "definition_line": 1790,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_phase_sample_inside_walls",
-      "definition_line": 1780
+      "definition_line": 1794,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_ice_mirror_sample",
-      "definition_line": 1801
+      "definition_line": 1815,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
+      "owner": "IceFlow2D",
+      "name": "_ice_phase_ghost_legacy",
+      "definition_line": 1853,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_ice_phase_ghost",
-      "definition_line": 1833
+      "definition_line": 1874,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_phase_neighbor",
-      "definition_line": 1854
+      "definition_line": 1883,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_body_local_coordinates",
-      "definition_line": 1882
+      "definition_line": 1911,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_nearest_body_index",
-      "definition_line": 1898
+      "definition_line": 1927,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_sample_body_fraction",
-      "definition_line": 1915
+      "definition_line": 1944,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_calculate_moving_body_fraction",
-      "definition_line": 1947
+      "definition_line": 1976,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_commit_moving_body_raster",
-      "definition_line": 1959
+      "definition_line": 1988,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_initialize_body",
-      "definition_line": 1967
+      "definition_line": 1996,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_initialize_geometry",
-      "definition_line": 1989
+      "definition_line": 2018,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_initialize_fluid",
-      "definition_line": 1996
+      "definition_line": 2025,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_build_hydrostatic_reference",
-      "definition_line": 2028
+      "definition_line": 2057,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_initialize_hydrostatic_equilibrium",
-      "definition_line": 2067
+      "definition_line": 2116,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_initialize_moving_body_geometry",
-      "definition_line": 2101
+      "definition_line": 2155,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_update_solid_mask",
-      "definition_line": 2107
+      "definition_line": 2163,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_update_moving_body_mass_properties",
-      "definition_line": 2124
+      "definition_line": 2180,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_reduce_moving_body_mass_properties",
-      "definition_line": 2131
+      "definition_line": 2187,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_apply_moving_body_mass_properties",
-      "definition_line": 2161
+      "definition_line": 2217,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_extrapolate_exposed_fluid",
-      "definition_line": 2199
+      "definition_line": 2255,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_refill_changed_nodes",
-      "definition_line": 2245
+      "definition_line": 2301,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_prepare_capillary_stress",
-      "definition_line": 2297
+      "definition_line": 2353,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_phase_central_gradient",
-      "definition_line": 2336
+      "definition_line": 2399,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_capillary_traction",
-      "definition_line": 2348
+      "definition_line": 2417,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_ice_capillary_stress",
-      "definition_line": 2357
+      "definition_line": 2426,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_capillary_force_density",
-      "definition_line": 2390
+      "definition_line": 2464,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_fluid_kinematic_viscosity_lattice",
-      "definition_line": 2438
+      "definition_line": 2518,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_fluid_force_and_gradient",
-      "definition_line": 2454
+      "definition_line": 2534,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_collide_momentum",
-      "definition_line": 2497
+      "definition_line": 2577,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_collide_momentum_kernel",
-      "definition_line": 2513
+      "definition_line": 2594,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_collide_phase",
-      "definition_line": 2777
+      "definition_line": 2857,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
+      "owner": "IceFlow2D",
+      "name": "_collide_phase_kernel",
+      "definition_line": 2863,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_stream",
-      "definition_line": 2938
+      "definition_line": 3027,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_stream_phase_only",
-      "definition_line": 2980
+      "definition_line": 3069,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_update_streamed_macroscopic_fields",
-      "definition_line": 3016
+      "definition_line": 3105,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_update_streamed_phase",
-      "definition_line": 3048
+      "definition_line": 3137,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_warm_start_phase",
-      "definition_line": 3059
+      "definition_line": 3148,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_update_pressure",
-      "definition_line": 3066
+      "definition_line": 3157,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_prepare_moving_body_contact_support",
-      "definition_line": 3097
+      "definition_line": 3188,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_prepare_moving_body_contact_support_kernel",
-      "definition_line": 3111
+      "definition_line": 3202,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_reset_moving_body_contact_support",
-      "definition_line": 3123
+      "definition_line": 3219,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_reduce_moving_body_contact_extrema",
-      "definition_line": 3130
+      "definition_line": 3226,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_finalize_moving_body_contact_support",
-      "definition_line": 3157
+      "definition_line": 3253,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
+      "owner": "IceFlow2D",
+      "name": "_reduce_wall_contact_ranges",
+      "definition_line": 3260,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "owner": "IceFlow2D",
+      "name": "_wall_contact_impulse",
+      "definition_line": 3295,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_integrate_rigid_ice",
-      "definition_line": 3164
+      "definition_line": 3326,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_project_moving_body_inside_container",
-      "definition_line": 3215
+      "definition_line": 3377,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_solve_contact_and_rasterize",
-      "definition_line": 3286
+      "definition_line": 3465,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_reduce_phase_change_geometry_volume",
-      "definition_line": 3330
+      "definition_line": 3509,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "phase_change_solid_volume_cells",
-      "definition_line": 3337
+      "definition_line": 3516,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "phase_change_geometry_volume_cells",
-      "definition_line": 3340
+      "definition_line": 3519,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_bound_water_phase",
-      "definition_line": 3344
+      "definition_line": 3523,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "sample_thermal_fields",
-      "definition_line": 3369
+      "definition_line": 3548,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_wall_at",
-      "definition_line": 3373
+      "definition_line": 3552,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_wall_numpy",
-      "definition_line": 3383
+      "definition_line": 3562,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_signed_distance_at",
-      "definition_line": 3394
+      "definition_line": 3573,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_signed_distance_numpy",
-      "definition_line": 3402
+      "definition_line": 3581,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_reference_pressure_at",
-      "definition_line": 3412
+      "definition_line": 3591,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_reference_density_at",
-      "definition_line": 3416
+      "definition_line": 3595,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_physical_velocity_at",
-      "definition_line": 3420
+      "definition_line": 3599,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_physical_velocity_numpy",
-      "definition_line": 3429
+      "definition_line": 3608,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_read_body_initial_mass_lattice",
-      "definition_line": 3440
+      "definition_line": 3619,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_read_body_active",
-      "definition_line": 3445
+      "definition_line": 3624,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_read_cumulative_melted_mass_lattice",
-      "definition_line": 3450
+      "definition_line": 3629,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_read_phase_change_initial_solid_volume",
-      "definition_line": 3455
+      "definition_line": 3634,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_read_phase_change_current_solid_volume",
-      "definition_line": 3464
+      "definition_line": 3643,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_read__body_contact_geometry_active",
-      "definition_line": 3473
+      "definition_line": 3652,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_body_center_at",
-      "definition_line": 3482
+      "definition_line": 3661,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_body_center_numpy",
-      "definition_line": 3492
+      "definition_line": 3671,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_set_body_center_host",
-      "definition_line": 3505
+      "definition_line": 3684,
+      "decorators": [],
+      "kind": "Python"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_body_level_at",
-      "definition_line": 3521
+      "definition_line": 3700,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_cut_link_fraction",
-      "definition_line": 3528
+      "definition_line": 3707,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_prepare_momentum_cut_links",
-      "definition_line": 3545
+      "definition_line": 3724,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
     },
     {
+      "path": "iceflow2d_v3/simulator.py",
       "owner": "IceFlow2D",
       "name": "_allocate_populations",
-      "definition_line": 3661
+      "definition_line": 3840,
+      "decorators": [],
+      "kind": "Python"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_initialize_phase_reconstruction",
+      "definition_line": 23,
+      "decorators": [],
+      "kind": "Python"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_phase_donor_allowed",
+      "definition_line": 47,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_unclipped_ice_fraction",
+      "definition_line": 55,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_phase_visible_diagonal",
+      "definition_line": 61,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_phase_ice_geometry",
+      "definition_line": 111,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_prepare_phase_geometry",
+      "definition_line": 144,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_phase_fit_basis",
+      "definition_line": 225,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_phase_minimum_norm_fit",
+      "definition_line": 229,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_fit_boundary_phase",
+      "definition_line": 316,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_prepare_phase_gradients_kernel",
+      "definition_line": 410,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_prepare_phase_gradients",
+      "definition_line": 460,
+      "decorators": [],
+      "kind": "Python"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_connected_phase_ghost",
+      "definition_line": 465,
+      "decorators": [
+        "ti.func"
+      ],
+      "kind": "func"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_seed_connected_refill",
+      "definition_line": 475,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_propagate_connected_refill",
+      "definition_line": 501,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_commit_connected_refill",
+      "definition_line": 529,
+      "decorators": [
+        "ti.kernel"
+      ],
+      "kind": "kernel"
+    },
+    {
+      "path": "iceflow2d_v3/phase_reconstruction.py",
+      "owner": "PhaseReconstruction",
+      "name": "_refill_connected_nodes",
+      "definition_line": 570,
+      "decorators": [],
+      "kind": "Python"
     }
   ],
-  "validation": {
+  "reconstruction_callable_count": 16,
+  "historical_validation_2026_10_08": {
     "selected_existing_tests": {
       "passed": 50,
       "failed": 1,
@@ -672,5 +1414,219 @@
       "command": "python -m pytest -q iceflow2d_v3/test_iceflow.py iceflow2d_v3/test_phase_bounds.py iceflow2d_v3/test_thermal_coupling.py iceflow2d_v3/test_thermal_d2q5.py iceflow2d_v3/test_stability_options.py iceflow2d_v3/test_physical_viscosity.py iceflow2d_v3/test_momentum_collision.py::MomentumCollisionTests::test_both_frames_match_matrix_collision_with_full_source iceflow2d_v3/test_capillary_coupling.py::CapillaryCouplingTests::test_flat_interface_has_no_capillary_acceleration iceflow2d_v3/test_capillary_coupling.py::CapillaryCouplingTests::test_ice_receives_opposite_capillary_force_and_torque iceflow2d_v3/test_multibody.py::MultiBodyCudaTests::test_shared_water_heat_is_limited_once_and_split_symmetrically iceflow2d_v3/test_multibody.py::MultiBodyCudaTests::test_contact_separates_eroded_bodies_and_balances_impulses iceflow2d_v3/test_multibody.py::MultiBodyCudaTests::test_unresolved_remnant_freezes_only_its_own_motion iceflow2d_v3/test_gpu_state.py::DerivedGpuStateTests::test_invalid_step_counts_do_not_advance_state"
     },
     "document_example": "passed on CUDA; state identities, eight-step thermal schedule and split calls"
+  },
+  "recorded_connected_validation": {
+    "status": "implemented_but_8s_validation_failed",
+    "boundary_tests": {
+      "passed": 10
+    },
+    "boundary_and_capillary_suite": {
+      "passed": 17,
+      "failed": 0
+    },
+    "main_regression_suite": {
+      "passed": 73,
+      "failed": 1,
+      "failure": "test_original_wide_interface_column_survives_impact_and_free_body_motion: unresolved new fluid node at (326,33), step 11365"
+    },
+    "eight_second_attempt": {
+      "failed_step": 8287,
+      "failed_time_s": 0.06905833333333333,
+      "peak_cell": [
+        176,
+        11
+      ],
+      "peak_speed_l1_lattice": 95.6040039,
+      "peak_phi": 0.000490885228,
+      "requested_time_s": 8.0,
+      "last_saved_time_s": 0.06,
+      "visualization_directory": "/home/georgelyu/Repos/ProjectIcy/iceflow2d_v3/outputs/dambreak_four_ice_melting_2d_connected_ls_8s_continuous",
+      "raw_fields_saved": false
+    },
+    "matched_checkpoint": "matched_step8544_final.json",
+    "scope": "historical prior runs; not evidence for the current data-priority implementation and not rerun by this documentation update",
+    "implementation": "historical hard-Neumann connected_ls, superseded by data-priority reconstruction"
+  },
+  "documentation_validation": {
+    "date": "2026-10-14",
+    "gradient_tests": {
+      "passed": 12,
+      "failed": 0,
+      "command": "python -m unittest iceflow2d_v3.test_phase_reconstruction -v",
+      "log": "iceflow2d_v3/outputs/documentation_gradient_sync_20261014/gradient_tests.log",
+      "test_sha256": "5465eddafd7e0447a27ccbd1a3310a6811b31c71e881d3e3fcae97878d22eac6"
+    },
+    "guide_examples": {
+      "sections": [
+        "9.2",
+        "9.7"
+      ],
+      "backend": "CUDA",
+      "completed": true,
+      "gradient_and_coupling_combinations": 4,
+      "checks": [
+        "phase sum and bounds",
+        "raw/effective velocity relation",
+        "material mass relation",
+        "water aperture",
+        "8-step thermal schedule",
+        "split-step equivalence",
+        "finite connected gradients and diagnostics",
+        "post-step gradient caches match explicit recomputation"
+      ],
+      "log": "iceflow2d_v3/outputs/documentation_gradient_sync_20261014/guide_examples.log"
+    },
+    "source_index": {
+      "command": "python iceflow2d_v3/docs/update_simulator_method_manifest.py --check",
+      "methods": 144,
+      "source_files": 14,
+      "passed": true
+    },
+    "markdown": {
+      "relative_file_links_resolve": true,
+      "code_fences_balanced": true
+    },
+    "lint": {
+      "command": "ruff check iceflow2d_v3/docs/update_simulator_method_manifest.py",
+      "passed": true
+    },
+    "solver_modified": false,
+    "full_eight_second_run_repeated": false,
+    "pdf": {
+      "compiled": true,
+      "pages": 37,
+      "visual_review": "All 37 pages in contact sheets; detailed review of pages 15–18 and 31–33; final page 31 rechecked after the last wording change.",
+      "words_outside_page_boundaries": 0,
+      "sha256": "f59e09804251f7d98924cc16b69c8ca841d71aa27318ded8f2d90a004349d1ac"
+    },
+    "guide_sha256": "5e7af47c682af80f91cb2476c756a2a90a8d1797d217ce5c2c78ab1fb1ff609a"
+  },
+  "historical_documentation_validation_2026_10_13": {
+    "date": "2026-10-13",
+    "configuration_and_visualization_tests": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q iceflow2d_v3/tests/test_config_validation.py iceflow2d_v3/tests/test_dambreak_four_ice_melting_example.py iceflow2d_v3/tests/test_velocity_air_visualization.py"
+    },
+    "pressure_and_rotating_wall_tests": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "command": "python -m pytest -q iceflow2d_v3/test_dambreak.py::DamBreakCudaTests::test_initial_column_hydrostatic_pressure iceflow2d_v3/test_iceflow.py::IceFlowCudaTests::test_exact_left_wall_contact_resolves_rotating_contact_points iceflow2d_v3/test_iceflow.py::IceFlowCudaTests::test_wall_projection_resolves_normal_contacts_without_friction"
+    },
+    "guide_examples": {
+      "sections": [
+        "9.2",
+        "9.7"
+      ],
+      "backend": "CUDA",
+      "completed": true,
+      "gradient_and_coupling_combinations": 4,
+      "checks": [
+        "phase sum and bounds",
+        "raw/effective velocity relation",
+        "material mass relation",
+        "water aperture",
+        "8-step thermal schedule",
+        "split-step equivalence",
+        "finite connected gradients"
+      ]
+    },
+    "source_index": {
+      "command": "python iceflow2d_v3/docs/update_simulator_method_manifest.py --check",
+      "methods": 144,
+      "passed": true
+    },
+    "solver_modified": false,
+    "full_eight_second_run_repeated": false,
+    "pdf": {
+      "compiled": true,
+      "pages": 35,
+      "visual_review": "all page contact sheets and detailed new-formula pages",
+      "words_outside_page_boundaries": 0
+    }
+  },
+  "recorded_data_priority_validation": {
+    "scope": "saved results from preceding implementation and diagnosis tasks; full simulations not repeated by this documentation update",
+    "regression_suite": {
+      "passed": 31,
+      "record": "iceflow2d_v3/outputs/dambreak_single_ice_data_priority_5s/regression.log"
+    },
+    "single_ice": {
+      "status": "completed_at_user_requested_stop",
+      "requested_stop_time_s": 5.0,
+      "last_completed_output_step": 600000,
+      "last_completed_output_time_s": 5.0,
+      "visualization_validation": {
+        "velocity": {
+          "png_frames": 501,
+          "gif_frames": 501,
+          "last_frame": "frame_00500.png",
+          "last_frame_loaded": true,
+          "gif_closed": true,
+          "image_size": [
+            2040,
+            793
+          ]
+        },
+        "vorticity": {
+          "png_frames": 501,
+          "gif_frames": 501,
+          "last_frame": "frame_00500.png",
+          "last_frame_loaded": true,
+          "gif_closed": true,
+          "image_size": [
+            2040,
+            793
+          ]
+        },
+        "temperature": {
+          "png_frames": 501,
+          "gif_frames": 501,
+          "last_frame": "frame_00500.png",
+          "last_frame_loaded": true,
+          "gif_closed": true,
+          "image_size": [
+            1700,
+            793
+          ]
+        },
+        "phase": {
+          "png_frames": 501,
+          "gif_frames": 501,
+          "last_frame": "frame_00500.png",
+          "last_frame_loaded": true,
+          "gif_closed": true,
+          "image_size": [
+            1700,
+            793
+          ]
+        }
+      },
+      "eight_second_completion_verified": false,
+      "record": "iceflow2d_v3/outputs/dambreak_single_ice_data_priority_5s/run_stop.json"
+    },
+    "four_ice": {
+      "status": "failed",
+      "requested_time_s": 8.0,
+      "failed_step": 8532,
+      "failed_time_s": 0.0711,
+      "peak_cell": [
+        152,
+        3
+      ],
+      "peak_speed_l1_lattice": 1009.53973,
+      "last_saved_time_s": 0.07,
+      "record": "iceflow2d_v3/outputs/dambreak_four_ice_data_priority_8s/run_failure.json",
+      "diagnosis": "iceflow2d_v3/outputs/four_ice_data_priority_diagnosis/evidence_summary.json"
+    },
+    "local_smoothing_control": {
+      "scope": "diagnostic local phase-sum-preserving intervention, not a production fix",
+      "completed_steps_after_8520": 3249,
+      "next_failure_step": 11770,
+      "failure": "isolated new fluid node (236,6)",
+      "record": "iceflow2d_v3/outputs/four_ice_data_priority_smoothed_long_control/controls.json"
+    }
   }
 }

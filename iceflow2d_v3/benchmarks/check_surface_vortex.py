@@ -72,7 +72,7 @@ def configuration(case):
     if case == "grid_200":
         cfg = replace(
             cfg,
-            angular_damping=0.999**0.5,
+            angular_damping=cfg.angular_damping**0.5,
         )
     return cfg
 

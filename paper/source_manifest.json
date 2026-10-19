@@ -1,0 +1,29 @@
+{
+  "snapshot_date": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "source": "current working tree, including uncommitted changes",
+  "described_configuration": {
+    "momentum_collision_model": "cm_mrt",
+    "phase_gradient_scheme": "connected_ls",
+    "phase_momentum_coupling": "consistent_flux",
+    "thermal_scheme": "enthalpy_fv",
+    "stability_guards": "optional; current dam-break configuration described"
+  },
+  "files": {
+    "iceflow2d_v3/config.py": "7db1f2ba4bdd80fb90cdad11b39bbd724104c5075e10ccd81c3bb08365a96157",
+    "iceflow2d_v3/lattice.py": "d598ec6d1e4f0ffa4528a4b37f2a5dd0dd6af3a936f0d6147e3719a6a47d3b5f",
+    "iceflow2d_v3/simulator.py": "25de81e7585cc038ca512705d7905e5cb0bbc81f08042162c9844ffea945513f",
+    "iceflow2d_v3/phase_reconstruction.py": "2b720bb400bd597f51bc20e8c3740a2b7758e3a162884e42fd3751d2f4166692",
+    "iceflow2d_v3/body_motion.py": "fd0cc8869023ea895c957c699c773c663b619480fed5d26df4319a1b55e3608f",
+    "iceflow2d_v3/contact.py": "a340792c4f6b3e48fe27f182a088c683b6a634c3a43357ddcaec078dd4b7c549",
+    "iceflow2d_v3/stability_options.py": "19bc25ff4af16ba4880d531033496d620ca29fcc80f2cce0bbda00b9be753733",
+    "iceflow2d_v3/thermal_d2q5.py": "9ebfb0cb2ca33306366592377f6ba85ad7404ec33f4e1d4385bf765498242ea3",
+    "iceflow2d_v3/viscosity.py": "69c215e4d9ee1759e97e05f31e3d70c6e83091d21c682599527bfd133caf7208",
+    "iceflow2d_v3/examples/coupled_falling_ice_melting_2d.py": "7e1daedb764b82daa7053475474533de6ab21a2b25ceef73ff1201c632befab8",
+    "iceflow2d_v3/examples/dambreak_four_ice_melting_2d.py": "d14c453f5582bf0116cbbc517131c5c3692228bf4a0e7447cb14ec6f881a9d58"
+  },
+  "template_files": {
+    "acmart.cls": "784c4f2fb07a70d8a797ee9d1c63f441c10fbd2f915c9c615d28cda35c0b742a",
+    "ACM-Reference-Format.bst": "4342d27456645567ef1a027f6474e894715bc31d468f040142fa54540440ad04"
+  }
+}

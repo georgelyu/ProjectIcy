@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+snapshot_date="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("simulator_method_source_manifest.json").read_text())["snapshot_date"])')"
 pandoc simulator_method_zh.md \
   --from=markdown --standalone --shift-heading-level-by=-1 \
   --toc --toc-depth=2 \
@@ -17,5 +18,5 @@ pandoc simulator_method_zh.md \
   --variable=CJKmonofont:'Noto Sans CJK SC' \
   --metadata=lang:zh-CN \
   --metadata=title:'IceFlow2D v3 模拟器原理与逐步验证指南' \
-  --metadata=date:'源码快照 2026 年 10 月 8 日' \
+  --metadata=date:"源码快照 ${snapshot_date}" \
   --output=simulator_method_zh.pdf

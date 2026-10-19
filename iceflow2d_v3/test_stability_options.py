@@ -36,14 +36,24 @@ def flux_force(s: ti.template(), out: ti.types.ndarray()):
 
 
 class StabilityConfigurationTests(unittest.TestCase):
-    def test_options_default_off_and_are_independent(self):
-        baseline = create_config(parse_args([])).to_dict()
+    def test_options_are_independent_with_explicit_baseline(self):
+        # The example defaults now use a wider interface and consistent flux;
+        # explicitly select the historical baseline for option independence.
+        baseline_args = [
+            "--interface-width",
+            "5",
+            "--phase-momentum-coupling",
+            "legacy",
+        ]
+        baseline = create_config(parse_args(baseline_args)).to_dict()
         for flag, value, field in (
             ("--momentum-collision-model", "cm_hrr", "momentum_collision_model"),
             ("--phase-momentum-coupling", "consistent_flux", "phase_momentum_coupling"),
             ("--exposed-node-refill", "non_equilibrium", "exposed_node_refill"),
         ):
-            selected = create_config(parse_args([flag, value])).to_dict()
+            selected = create_config(
+                parse_args([*baseline_args, flag, value])
+            ).to_dict()
             self.assertEqual(selected[field], value)
             self.assertEqual(
                 {k for k in baseline if baseline[k] != selected[k]}, {field}

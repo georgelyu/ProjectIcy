@@ -23,6 +23,16 @@ def _prepare_test_cut_links(simulation: ti.template()):
                 simulation.momentum_stream_buffer[i, j, direction] = prepared[direction]
 
 
+@ti.kernel
+def _reflect_endpoint_test_link(simulation: ti.template()) -> ti.types.vector(
+    2, ti.f32
+):
+    raw = ti.Vector.zero(ti.f32, 9)
+    raw[1], raw[3] = 0.91, 0.17
+    prepared = simulation._prepare_momentum_cut_links(5, 5, raw)
+    return ti.Vector([simulation._cut_link_fraction(5, 5, 6, 5), prepared[1]])
+
+
 def _thermal_config(*, update_interval: int = 2) -> ThermalConfig:
     hot = ThermalBoundary.dirichlet(90.0)
     return ThermalConfig(
@@ -248,22 +258,17 @@ class IceFlowCudaTests(unittest.TestCase):
         simulation.momentum_populations[i, j, q] = outgoing_nonequilibrium
         simulation.phase_stream_buffer[i, j, q] = outgoing_phase
 
-        sdf_fluid = max(float(simulation.body_signed_distance_m[i, j]), 1.0e-6)
-        eta = min(
-            0.95,
-            max(
-                0.05,
-                sdf_fluid
-                / (
-                    sdf_fluid
-                    - float(
-                        simulation.body_signed_distance_m[
-                            i + directions[q][0], j + directions[q][1]
-                        ]
-                    )
-                    + 1.0e-12
-                ),
-            ),
+        sdf_fluid = max(
+            float(simulation.body_signed_distance_m[i, j]), simulation.config.dx * 1e-6
+        )
+        eta = sdf_fluid / (
+            sdf_fluid
+            - float(
+                simulation.body_signed_distance_m[
+                    i + directions[q][0], j + directions[q][1]
+                ]
+            )
+            + 1.0e-12
         )
         weight = 1.0 / 9.0 if q <= 4 else 1.0 / 36.0
         incoming_direction = np.asarray(directions[opposite], dtype=np.float64)
@@ -336,13 +341,41 @@ class IceFlowCudaTests(unittest.TestCase):
             places=6,
         )
 
+    def test_single_node_reflection_retains_near_endpoint_crossings(self):
+        simulation = IceFlow2D(
+            _falling_config(gravity=(0.0, 0.0), sigma=0.0, phase_warmup_steps=0)
+        )
+        simulation.solid_mask[6, 5] = 1
+        simulation.solid_body_id[6, 5] = 0
+        simulation.body_velocity[None] = (0.0, 0.0)
+        simulation.body_angular_velocity[None] = 0.0
+        simulation.momentum_velocity_lattice[5, 5] = (0.0, 0.0)
+        simulation.fluid_acceleration_lattice[5, 5] = (0.0, 0.0)
+        simulation.pressure_lattice[5, 5] = simulation.hydrostatic_reference_pressure[
+            5, 5
+        ]
+        simulation.momentum_populations[5, 5, 1] = 0.31
+        threshold = simulation.config.thermal.solid_liquid_threshold
+        for fraction in (0.001, 0.01, 0.5, 0.99, 0.999):
+            with self.subTest(fraction=fraction):
+                # A linear coverage field whose threshold lies at this fraction
+                # of the fluid-to-solid link, including both formerly cut tails.
+                simulation._body_fractions[0, 5, 5] = threshold - 0.4 * fraction
+                simulation._body_fractions[0, 6, 5] = threshold + 0.4 * (1 - fraction)
+                actual_fraction, reflected = _reflect_endpoint_test_link(simulation)
+                self.assertAlmostEqual(float(actual_fraction), fraction, delta=2e-7)
+                self.assertAlmostEqual(
+                    float(reflected),
+                    (0.31 + fraction * 0.17) / (1 + fraction),
+                    delta=2e-7,
+                )
+
     def test_rigid_integration_uses_physical_mass_and_inertia(self):
         simulation = IceFlow2D(
             _falling_config(
                 gravity=(0.0, 0.0),
                 phase_warmup_steps=0,
                 linear_damping=1.0,
-                angular_damping=1.0,
             )
         )
         mass = float(simulation.body_mass_lattice[None])
@@ -430,7 +463,7 @@ class IceFlowCudaTests(unittest.TestCase):
             support_world_extrema, expected_world_extrema, rtol=0.0, atol=2.0e-6
         )
 
-    def test_exact_left_wall_contact_rejects_leftward_velocity(self):
+    def test_exact_left_wall_contact_resolves_rotating_contact_points(self):
         simulation = IceFlow2D(
             _falling_config(
                 gravity=(0.0, 0.0),
@@ -464,15 +497,20 @@ class IceFlowCudaTests(unittest.TestCase):
             rtol=0.0,
             atol=2.0e-6,
         )
-        np.testing.assert_allclose(
-            simulation.body_velocity.to_numpy(),
-            np.asarray([0.0, 2.0e-4], dtype=np.float32),
-            rtol=0.0,
-            atol=1.0e-10,
+        velocity = simulation.body_velocity.to_numpy()
+        omega = float(simulation.body_angular_velocity[None])
+        self.assertAlmostEqual(float(velocity[1]), 2.0e-4, delta=1e-10)
+        endpoints = simulation._body_wall_contact_ranges.to_numpy()[0, 4:6]
+        self.assertTrue(np.all(velocity[0] - omega * endpoints >= -1e-9))
+        mass = float(simulation.body_mass_lattice[None])
+        inertia = float(simulation.body_inertia_lattice[None])
+        energy_before = mass * (1e-3**2 + 2e-4**2) + inertia * omega_before**2
+        self.assertLessEqual(
+            mass * float(velocity @ velocity) + inertia * omega**2,
+            energy_before + 1e-10,
         )
-        self.assertEqual(float(simulation.body_angular_velocity[None]), omega_before)
 
-    def test_wall_projection_clamps_only_outward_velocity(self):
+    def test_wall_projection_resolves_normal_contacts_without_friction(self):
         simulation = IceFlow2D(
             _falling_config(
                 gravity=(0.0, 0.0),
@@ -562,9 +600,27 @@ class IceFlowCudaTests(unittest.TestCase):
                 self.assertGreater(
                     inward_sign * (center_after[axis] - center_before[axis]), 0.0
                 )
-                self.assertEqual(velocity_after[axis], 0.0)
                 self.assertEqual(velocity_after[1 - axis], velocity_before[1 - axis])
-                self.assertEqual(omega_after, omega_before)
+                side = {"bottom": 0, "top": 1, "left": 2, "right": 3}[name]
+                endpoints = simulation._body_wall_contact_ranges.to_numpy()[
+                    0, 2 * side : 2 * side + 2
+                ]
+                rotational_sign = 1.0 if axis == 1 else -1.0
+                normal_speeds = inward_sign * (
+                    velocity_after[axis] + rotational_sign * omega_after * endpoints
+                )
+                self.assertTrue(np.all(normal_speeds >= -1e-9))
+                mass = float(simulation.body_mass_lattice[None])
+                inertia = float(simulation.body_inertia_lattice[None])
+                energy_before = (
+                    mass * float(velocity_before @ velocity_before)
+                    + inertia * omega_before**2
+                )
+                self.assertLessEqual(
+                    mass * float(velocity_after @ velocity_after)
+                    + inertia * omega_after**2,
+                    energy_before + 1e-10,
+                )
                 simulation._prepare_moving_body_contact_support()
                 origin_after = np.asarray(
                     simulation.body_reference_origin[None], dtype=np.float64

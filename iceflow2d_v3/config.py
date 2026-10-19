@@ -412,9 +412,11 @@ class IceFlowConfig:
     # Gradient in lattice units used to regularize the phase compression
     # normal. Zero restores the original normalization.
     phase_normal_epsilon: float = 1.0e-3
+    phase_gradient_scheme: Literal["legacy", "connected_ls"] = "legacy"
     phase_warmup_steps: int = 500
     thermal: ThermalConfig = field(default_factory=_default_thermal_config)
-    # Build a frozen hydrostatic reference, initialize the fluid at rest, and
+    # Build a frozen hydrostatic reference (pool or air atmosphere), initialize
+    # the fluid at rest with any water-column pressure residual, and
     # complete dynamic momentum exchange with the matching equilibrium
     # traction.  This is one well-balanced formulation, not an independently
     # added Archimedes force.  No sub-grid quadrature is used.
@@ -435,10 +437,18 @@ class IceFlowConfig:
     hrr_kinetic_blend: float = 0.0
     phase_momentum_coupling: Literal["legacy", "consistent_flux"] = "legacy"
     exposed_node_refill: Literal["equilibrium", "non_equilibrium"] = "equilibrium"
+    # Local numerical-source guards, independent of viscosity and phase width.
+    density_gradient_source_limit: float = 0.0
+    phase_flux_acceleration_limit: float = 0.0
+    refill_moment_projection: bool = False
+    gas_state_repair: bool = False
 
     # Falling-ice geometry in lattice-cell coordinates.
     water_width_fraction: float = 0.9875
     water_height_fraction: float = 0.60125
+    # Additional full-width water layer, measured above the inner floor.
+    # Zero preserves the single rectangular water region.
+    floor_water_depth_cells: int = 0
     ice_width_fraction: float = 0.3225
     ice_height_fraction: float = 0.16125
     ice_base_y_cells: float = 254.6672141068609
@@ -459,9 +469,9 @@ class IceFlowConfig:
 
     # Hydrodynamic drag is resolved by cut-link momentum exchange.  Damping
     # remains an optional, explicitly configured numerical model for the
-    # rigid-body state.
+    # rigid-body state; both defaults disable this additional damping.
     linear_damping: float = 1.0
-    angular_damping: float = 0.9990
+    angular_damping: float = 1.0
     # Wet-cell threshold for thermal transport and its CFL checks; this does
     # not clip the fluid phase or its distributions.
     water_phase_cutoff: float = 1.0e-3
@@ -510,6 +520,18 @@ class IceFlowConfig:
             )
         if not 0.0 <= self.hrr_kinetic_blend <= 1.0:
             raise ValueError("hrr_kinetic_blend must be in [0, 1]")
+        for name in ("density_gradient_source_limit", "phase_flux_acceleration_limit"):
+            if getattr(self, name) < 0.0:
+                raise ValueError(f"{name} must be nonnegative")
+        if not isinstance(self.refill_moment_projection, bool):
+            raise ValueError("refill_moment_projection must be a boolean")
+        if not isinstance(self.gas_state_repair, bool):
+            raise ValueError("gas_state_repair must be a boolean")
+        if self.gas_state_repair and (
+            self.phase_momentum_coupling != "consistent_flux"
+            or self.phase_gradient_scheme != "connected_ls"
+        ):
+            raise ValueError("gas_state_repair requires consistent_flux and connected_ls")
         if self.phase_momentum_coupling not in ("legacy", "consistent_flux"):
             raise ValueError(
                 "phase_momentum_coupling must be 'legacy' or 'consistent_flux'"
@@ -517,6 +539,15 @@ class IceFlowConfig:
         if self.exposed_node_refill not in ("equilibrium", "non_equilibrium"):
             raise ValueError(
                 "exposed_node_refill must be 'equilibrium' or 'non_equilibrium'"
+            )
+        if self.phase_gradient_scheme not in ("legacy", "connected_ls"):
+            raise ValueError("phase_gradient_scheme must be 'legacy' or 'connected_ls'")
+        if (
+            self.refill_moment_projection
+            and self.phase_gradient_scheme != "connected_ls"
+        ):
+            raise ValueError(
+                "refill_moment_projection requires phase_gradient_scheme='connected_ls'"
             )
 
         try:
@@ -594,6 +625,14 @@ class IceFlowConfig:
         base_y = _finite("ice_base_y_cells", self.ice_base_y_cells)
         if base_y < self.boundary_cells:
             raise ValueError("ice_base_y_cells must not overlap the bottom wall")
+        floor_depth = _non_negative(
+            "floor_water_depth_cells", self.floor_water_depth_cells
+        )
+        if int(floor_depth) != floor_depth:
+            raise ValueError("floor_water_depth_cells must be an integer")
+        self.floor_water_depth_cells = int(floor_depth)
+        if self.floor_water_height > self.water_height:
+            raise ValueError("floor water must not exceed the water-column height")
 
         if len(self.ice_initial_velocity) != 2:
             raise ValueError("ice_initial_velocity must contain exactly two components")
@@ -630,10 +669,6 @@ class IceFlowConfig:
                 "ice rectangle must be at least two cells in each direction"
             )
         if self.well_balanced_hydrostatics:
-            if self.water_width != nx - self.boundary_cells:
-                raise ValueError(
-                    "hydrostatic reference requires a full-width horizontal pool"
-                )
             if abs(float(self.gravity[0])) > 1.0e-14:
                 raise ValueError(
                     "the row-wise hydrostatic reference requires vertical gravity"
@@ -731,6 +766,10 @@ class IceFlowConfig:
     @property
     def water_height(self) -> int:
         return max(self.boundary_cells + 2, int(self.ny * self.water_height_fraction))
+
+    @property
+    def floor_water_height(self) -> int:
+        return self.boundary_cells + self.floor_water_depth_cells
 
     @property
     def ice_width(self) -> int:

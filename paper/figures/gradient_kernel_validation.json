@@ -1,0 +1,52 @@
+{
+  "scope": "Actual connectivity and gradient kernels on manufactured local data",
+  "backend": "Taichi CPU, float32",
+  "implementation_sha256": "2b720bb400bd597f51bc20e8c3740a2b7758e3a162884e42fd3751d2f4166692",
+  "cases": [
+    {
+      "case": "truncated",
+      "donor_mask": 63,
+      "rank": 2,
+      "gradient_fp32": [
+        0.11999999731779099,
+        0.07999999821186066
+      ],
+      "expected": [
+        0.12,
+        0.08
+      ],
+      "absolute_error": 3.223614042131031e-09,
+      "checks_passed": true
+    },
+    {
+      "case": "separated",
+      "donor_mask": 95,
+      "rank": 2,
+      "gradient_fp32": [
+        0.12000000476837158,
+        0.08000002056360245
+      ],
+      "expected": [
+        0.12,
+        0.08
+      ],
+      "absolute_error": 2.1109218676621215e-08,
+      "checks_passed": true
+    },
+    {
+      "case": "rank_one",
+      "donor_mask": 146,
+      "rank": 1,
+      "gradient_fp32": [
+        0.11999998241662979,
+        0.0
+      ],
+      "expected": [
+        0.12,
+        0.0
+      ],
+      "absolute_error": 1.7583370204299342e-08,
+      "checks_passed": true
+    }
+  ]
+}

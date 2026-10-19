@@ -21,6 +21,92 @@ from .lattice import (
 @ti.data_oriented
 class StabilityOptions:
     @ti.func
+    def _gas_velocity_outlier(self, i, j, velocity):
+        """Require a rapid temporal jump and a connected-neighbor outlier.
+
+        Neighbor velocities are the immutable pre-collision cache; no current
+        macro field is read across threads. Only candidates read the stencil.
+        """
+        previous = self.stability_velocity[i, j]
+        result = ti.Vector([velocity.x, velocity.y, 0.0, 0.0])
+        speed = ti.abs(velocity.x) + ti.abs(velocity.y)
+        jump = ti.abs(velocity.x - previous.x) + ti.abs(velocity.y - previous.y)
+        if (self.water_phase[i, j] < 0.5 or speed > 1.0) and speed > 0.25 and jump > 0.15:
+            total = ti.Vector.zero(ti.f32, 2)
+            pressure_sum = 0.0
+            count, maximum = 0, 0.0
+            for q in range(1, 9):
+                c = lattice_direction(q)
+                if self._phase_donor_allowed(i, j, c.x, c.y):
+                    value = self.stability_velocity[i + c.x, j + c.y]
+                    neighbor_speed = ti.abs(value.x) + ti.abs(value.y)
+                    maximum = ti.max(maximum, neighbor_speed)
+                    if neighbor_speed <= 0.25:
+                        total += value
+                        pressure_sum += self.stability_pressure[i + c.x, j + c.y]
+                        count += 1
+            target = ti.Vector.zero(ti.f32, 2)
+            pressure = 0.0
+            if count > 0:
+                target = total / count
+                pressure = pressure_sum / count
+            if speed > ti.max(0.25, 2.0 * maximum + 0.05) or (speed > 1.0 and jump > 0.5):
+                result = ti.Vector([target.x, target.y, 1.0, pressure])
+        return result
+
+    @ti.func
+    def _density_source_limiter(self, i, j, velocity, gradient):
+        """One scalar for all source directions and pressure's matching moment.
+
+        Read only phase/geometry, never a concurrently updated neighbor force.
+        The cheap pure-air lower bound skips the stencil in quiet regions.
+        """
+        alpha = 1.0
+        limit = self.stability_limit_parameters[None][0]
+        delta_rho = ti.static(self._water_density_lattice - self._air_density_lattice)
+        strength = (
+            delta_rho
+            * (ti.abs(velocity.x) + ti.abs(velocity.y))
+            * (ti.abs(gradient.x) + ti.abs(gradient.y))
+        )
+        phi = self.water_phase[i, j]
+        # A translated, resolved W-cell interface needs its full density
+        # source even when the gas moves fast. Only guard gradients markedly
+        # steeper than the local equilibrium profile (e.g. a newly opened gap).
+        resolved_slope = (6.0 * phi * (1.0 - phi) + 0.0005) / ti.static(
+            self.config.interface_width
+        )
+        unresolved = gradient.dot(gradient) > resolved_slope * resolved_slope
+        if (
+            limit > 0.0
+            and unresolved
+            and strength > limit * ti.static(self._air_density_lattice)
+        ):
+            minimum = mixture_density(
+                self.water_phase[i, j],
+                self._water_density_lattice,
+                self._air_density_lattice,
+            )
+            for q in range(1, 9):
+                c = lattice_direction(q)
+                nb = self._stability_neighbor(i, j, c.x, c.y)
+                allowed = True
+                if ti.static(self.config.phase_gradient_scheme == "connected_ls"):
+                    allowed = self._phase_donor_allowed(i, j, c.x, c.y)
+                if allowed and inside_grid(nb.x, nb.y, self.nx, self.ny):
+                    if self._is_fluid_cell(nb.x, nb.y):
+                        minimum = ti.min(
+                            minimum,
+                            mixture_density(
+                                self.water_phase[nb.x, nb.y],
+                                self._water_density_lattice,
+                                self._air_density_lattice,
+                            ),
+                        )
+            alpha = ti.min(1.0, limit * minimum / (strength + 1e-20))
+        return alpha
+
+    @ti.func
     def _stability_neighbor(self, i, j, di, dj):
         # Periodic verification fixtures override this one addressing primitive.
         return ti.Vector([i + di, j + dj])
@@ -29,6 +115,10 @@ class StabilityOptions:
     def _cache_stability_velocity(self):
         for i, j in self.water_phase:
             self.stability_velocity[i, j] = self._physical_velocity_at(i, j)
+            if ti.static(self.config.gas_state_repair):
+                self.stability_pressure[i, j] = (
+                    self.pressure_lattice[i, j] - self.hydrostatic_reference_pressure[i, j]
+                )
 
     @ti.func
     def _regularization_velocity_neighbor(self, i, j, di, dj):
@@ -40,7 +130,7 @@ class StabilityOptions:
         if inside_grid(index.x, index.y, self.nx, self.ny):
             if self._is_fluid_cell(index.x, index.y):
                 value = self.stability_velocity[index.x, index.y]
-            elif self.solid_mask[index.x, index.y] != 0:
+            elif self.solid_mask[index.x, index.y] == 1:
                 fraction = self._cut_link_fraction(i, j, index.x, index.y)
                 boundary = self._body_velocity_at(
                     self._cell_point(i, j) + fraction * ti.Vector([di, dj]),
@@ -118,7 +208,33 @@ class StabilityOptions:
                         self.stability_velocity[i, j]
                         + self.stability_velocity[index.x, index.y]
                     )
-                    force -= direction * face_mass * face_velocity
+                    if ti.static(self.config.phase_flux_acceleration_limit > 0):
+                        face_force = face_mass * face_velocity
+                        limit = self.stability_limit_parameters[None][1]
+                        rho0 = mixture_density(
+                            self.water_phase[i, j],
+                            self._water_density_lattice,
+                            self._air_density_lattice,
+                        )
+                        rho1 = mixture_density(
+                            self.water_phase[index.x, index.y],
+                            self._water_density_lattice,
+                            self._air_density_lattice,
+                        )
+                        # Same unsigned face coefficient at both ends; four
+                        # faces share the per-cell numerical acceleration budget.
+                        alpha = ti.min(
+                            1.0,
+                            0.25
+                            * limit
+                            * ti.min(rho0, rho1)
+                            / (ti.abs(face_force.x) + ti.abs(face_force.y) + 1e-20),
+                        )
+                        if limit > 0.0:
+                            face_force *= alpha
+                        force -= direction * face_force
+                    else:
+                        force -= direction * face_mass * face_velocity
         return force
 
     @ti.func
@@ -132,15 +248,24 @@ class StabilityOptions:
         """
         result = ti.Vector.zero(ti.f32, 3)
         radius, count = 1, 0.0
-        while count == 0.0 and radius < ti.static(max(self.nx, self.ny)):
+        search_limit = ti.static(
+            3
+            if self.config.phase_gradient_scheme == "connected_ls"
+            else max(self.nx, self.ny)
+        )
+        while count == 0.0 and radius < search_limit:
             total = ti.Vector.zero(ti.f32, 3)
             for di, dj in ti.ndrange((-radius, radius + 1), (-radius, radius + 1)):
                 ni, nj = i + di, j + dj
                 if ti.max(ti.abs(di), ti.abs(dj)) == radius and inside_grid(
                     ni, nj, self.nx, self.ny
                 ):
+                    accepted = True
+                    if ti.static(self.config.phase_gradient_scheme == "connected_ls"):
+                        accepted = self._phase_donor_allowed(i, j, di, dj)
                     if (
-                        self._is_fluid_cell(ni, nj)
+                        accepted
+                        and self._is_fluid_cell(ni, nj)
                         and self.previous_solid_mask[ni, nj] == 0
                     ):
                         rho = mixture_density(

@@ -6,6 +6,36 @@ from iceflow2d_v3.config import IceFlowConfig, PhaseChangeProperties
 
 
 class NumericConfigurationTests(unittest.TestCase):
+    def test_floor_water_depth_is_validated_and_serialized(self):
+        self.assertEqual(IceFlowConfig().floor_water_depth_cells, 0)
+        self.assertEqual(
+            IceFlowConfig(floor_water_depth_cells=31).to_dict()["floor_water_depth_cells"],
+            31,
+        )
+        for value in (-1, 1.5, True, None, float("nan"), float("inf")):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ValueError, "floor_water_depth_cells"),
+            ):
+                IceFlowConfig(floor_water_depth_cells=value)
+        with self.assertRaisesRegex(ValueError, "floor water"):
+            IceFlowConfig(floor_water_depth_cells=399)
+
+    def test_phase_gradient_scheme_is_validated_and_serialized(self):
+        self.assertEqual(IceFlowConfig().phase_gradient_scheme, "legacy")
+        self.assertEqual(
+            IceFlowConfig(phase_gradient_scheme="connected_ls").to_dict()[
+                "phase_gradient_scheme"
+            ],
+            "connected_ls",
+        )
+        for value in (None, True, "unknown"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ValueError, "phase_gradient_scheme"),
+            ):
+                IceFlowConfig(phase_gradient_scheme=value)
+
     def test_stability_controls_are_independent_and_serialized(self):
         defaults = IceFlowConfig()
         self.assertEqual(defaults.phase_normal_epsilon, 1e-3)

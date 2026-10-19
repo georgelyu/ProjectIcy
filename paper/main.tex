@@ -1,0 +1,38 @@
+% ACM TOG / SIGGRAPH methods draft. Build with `make` in this directory.
+% Keep acmtog,anonymous,review for a Technical Papers submission.
+% nonacm suppresses publication metadata for this unpublished working draft;
+% remove it and enter the actual submission/rights metadata when submitting.
+\documentclass[acmtog,anonymous,review,nonacm,pbalance]{acmart}
+
+\citestyle{acmauthoryear}
+\settopmatter{printacmref=false}
+\setcopyright{none}
+\acmJournal{TOG}
+\acmDOI{}
+\acmISBN{}
+% \acmSubmissionID{actual submission ID}
+
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\norm}[1]{\lVert#1\rVert}
+\newcommand{\pos}[1]{[#1]_{+}}
+\newcommand{\cl}[1]{\textcolor{purple}{(CL: #1)}}
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+
+\title[Two-Phase Flow with Melting Rigid Ice]{Two-Phase Flow with Melting Rigid Ice}
+\subtitle{Method Draft}
+% Author information is hidden by the anonymous class option.
+% Add \author, \affiliation, and \email here for a non-anonymous version.
+
+\begin{document}
+
+% This compact document intentionally contains only the method.
+% Add abstract, introduction, related work, results, and conclusions when
+% extending it to a full paper; doing so changes the four-page budget.
+\maketitle
+\input{sections/method}
+
+% The class's pbalance option handles the final page as the draft changes.
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
