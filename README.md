@@ -1,5 +1,10 @@
 # IceFlow2D
 
+The experimental three-dimensional extension of `iceflow2d_v3`, including the four-ice
+dam-break case, is in [iceflow3d/README.md](iceflow3d/README.md).
+Run it with `python -m iceflow3d`; use the documented small-grid smoke command
+before starting a full 3D run.
+
 IceFlow2D is a CUDA/Taichi simulation of one two-dimensional scenario: a rigid
 ice block falls through an air–water free surface and melts in a hot-water
 bath. The retained solver couples:

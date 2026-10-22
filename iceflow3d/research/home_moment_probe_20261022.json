@@ -1,0 +1,67 @@
+{
+  "study_date": "2026-10-22",
+  "source_sha256": {
+    "iceflow3d/simulator.py": "2769cf5d9dce0df804834b0a85df08a57534d36ee3c85396607418312832a5e0",
+    "iceflow3d/lattice.py": "f95c6fdba34d0e8a86f286807f3d02a28af25c3fd6abdc15e2fb517ff23c4c16",
+    "iceflow3d/config.py": "d1dd97ac68eb292b39f90b806d026363f5aec31d5c6b7634f4b787d803460bb5",
+    "iceflow2d_v3/simulator.py": "95972c1cc64e9d559d90271b2e9a868a221bcfe149df02452d1e6f67148e29d9",
+    "iceflow2d_v3/config.py": "7db1f2ba4bdd80fb90cdad11b39bbd724104c5075e10ccd81c3bb08365a96157"
+  },
+  "phase_algebra": {
+    "samples": 128,
+    "max_population_error": 1.1102230246251565e-16,
+    "max_phase_mass_flux_error": 2.7755575615628914e-17,
+    "scope": "FP64 local algebra; boundary, streaming and time-layer storage excluded"
+  },
+  "momentum_counterexample": {
+    "backend": "actual Taichi CPU CM-MRT collision kernel",
+    "acoustic_relaxation_rate": 0.6,
+    "input_220_delta": 0.000244140625,
+    "input_202_delta": -0.000244140625,
+    "max_low_order_moment_delta": 0.0,
+    "moving_population_sum_delta": 0.0,
+    "max_post_population_delta": 4.882812572759576e-05,
+    "max_error_vs_retained_ghost_prediction": 0.0,
+    "conclusion": "Identical pressure, velocity and second moments do not determine the current collision output."
+  },
+  "phase_kernel": {
+    "backend": "actual Taichi CPU phase collision kernel",
+    "cells": 960,
+    "max_post_population_error": 2.9802322387695312e-08,
+    "max_phase_mass_flux_error": 2.3283064365386963e-08,
+    "max_reencoded_zeroth_rounding": 1.4668330550193787e-08,
+    "scope": "One local collision; FP32 order/rounding changes allowed; no full HOME stepping"
+  },
+  "memory_model": {
+    "cells": 6075000,
+    "bytes_per_scalar": 4,
+    "scope": "Population/moment state only, same grid, explicit double buffers; auxiliary and boundary snapshots excluded",
+    "schemes": {
+      "current_2x27_2x27": {
+        "floats_per_cell": 108,
+        "gib": 2.444162964820862,
+        "reduction_vs_current": 0.0
+      },
+      "home_flow_only_2x10_2x27": {
+        "floats_per_cell": 74,
+        "gib": 1.6747042536735535,
+        "reduction_vs_current": 0.31481481481481477
+      },
+      "phase_d3q7_only_2x27_2x7": {
+        "floats_per_cell": 68,
+        "gib": 1.5389174222946167,
+        "reduction_vs_current": 0.37037037037037035
+      },
+      "home_and_d3q7_double_buffers": {
+        "floats_per_cell": 34,
+        "gib": 0.7694587111473083,
+        "reduction_vs_current": 0.6851851851851851
+      },
+      "home_and_phase_four_moments_ideal_lower_budget": {
+        "floats_per_cell": 28,
+        "gib": 0.6336718797683716,
+        "reduction_vs_current": 0.7407407407407407
+      }
+    }
+  }
+}

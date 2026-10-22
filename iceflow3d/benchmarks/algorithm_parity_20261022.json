@@ -1,0 +1,217 @@
+{
+  "fixture": {
+    "backend": "cuda",
+    "taichi": [
+      1,
+      7,
+      4
+    ],
+    "dx_m": 0.0005,
+    "dt_s": 1.25e-05,
+    "shape_2d": [
+      32,
+      48
+    ],
+    "shape_3d": [
+      32,
+      48,
+      12
+    ]
+  },
+  "initial_interface_without_warmup": {
+    "2d_phi_below_surface": 1.0,
+    "3d_phi_below_surface": 0.5986876487731934,
+    "2d_phi_above_surface": 0.0,
+    "3d_phi_above_surface": 0.40131235122680664
+  },
+  "momentum_equilibrium_planar_reduction": {
+    "u": [
+      0.08,
+      0.06,
+      0
+    ],
+    "rho": 0.7,
+    "p": 0.012,
+    "max_population_difference": 0.00014246301725506783,
+    "raw_21_2d": 0.014000000199303031,
+    "raw_21_3d": 0.014268798709963448
+  },
+  "matched_phase_collision_control": {
+    "epsilon_both": 1e-08,
+    "max_population_difference": 1.862645149230957e-08,
+    "agreement_tolerance": 2e-07
+  },
+  "mixture_viscosity_phi_0_5_T90": {
+    "nu_2d_m2_s": 7.410312719002832e-06,
+    "nu_3d_m2_s": 3.3189147075063374e-07,
+    "ratio_2d_over_3d": 22.32751779442552
+  },
+  "wall_normal_density_source_gradient": {
+    "2d_shared_gradient": 0.010000004433095455,
+    "3d_phase_gradient": 0.01000000350177288,
+    "3d_density_source_gradient": 0.005000002216547728
+  },
+  "ice_boundary_ghosts": {
+    "2d_Kxy_ghost": -1.0,
+    "3d_Kxy_ghost": 1.0,
+    "2d_hrr_velocity_ghost": -0.03999999910593033,
+    "3d_hrr_velocity_ghost": -0.03333333507180214
+  },
+  "phase_flux_momentum_force_lattice": {
+    "2d_centered": -0.00010000000474974513,
+    "3d_upwind": -8.000000525498763e-05
+  },
+  "phase_overshoot_repair": {
+    "initial_phi": 1.1,
+    "initial_velocity": [
+      0.07,
+      -0.03
+    ],
+    "bounded_phi_2d": 1.0,
+    "bounded_phi_3d": 1.0,
+    "first_phase_moment_2d": [
+      0.07000001706182957,
+      -0.030000003054738045
+    ],
+    "first_phase_moment_3d": [
+      0.07700001541525126,
+      -0.03300000261515379,
+      0.0
+    ]
+  },
+  "connected_refill_weights": {
+    "2d_new_phi": 0.125,
+    "3d_new_phi": 0.20000003278255463
+  },
+  "newly_wet_temperature_donor_two_cells_away": {
+    "2d_temperature_c": 79.99999979801942,
+    "3d_temperature_c": 0.0
+  },
+  "rigid_order_from_rest_same_impulse": {
+    "2d_displacement_cells": [
+      0.0,
+      0.0
+    ],
+    "3d_displacement_cells": [
+      0.019999999999999574,
+      0.0,
+      0.0
+    ],
+    "2d_velocity_lattice": [
+      0.020000001415610313,
+      0.0
+    ],
+    "3d_velocity_lattice": [
+      0.02,
+      0.0,
+      0.0
+    ]
+  },
+  "eroded_body_fraction_0.75": {
+    "2d_Izz_per_mass_cells2": 10.624999999999995,
+    "3d_Izz_per_mass_cells2": 10.666666671633717,
+    "2d_contact_lower": [
+      -3.8333332538604736,
+      -3.8333332538604736
+    ],
+    "2d_contact_upper": [
+      3.8333332538604736,
+      3.8333332538604736
+    ],
+    "3d_contact_lower": [
+      -4.0,
+      -4.0,
+      -2.0
+    ],
+    "3d_contact_upper": [
+      4.0,
+      4.0,
+      2.0
+    ]
+  },
+  "eroded_body_fraction_0.25": {
+    "2d_Izz_per_mass_cells2": 10.541666666666654,
+    "3d_Izz_per_mass_cells2": 10.666666671633706,
+    "2d_contact_lower": [
+      1.0000000150474662e+30,
+      1.0000000150474662e+30
+    ],
+    "2d_contact_upper": [
+      -1.0000000150474662e+30,
+      -1.0000000150474662e+30
+    ],
+    "3d_contact_lower": [
+      -4.0,
+      -4.0,
+      -2.0
+    ],
+    "3d_contact_upper": [
+      4.0,
+      4.0,
+      2.0
+    ]
+  },
+  "four_ice_example_defaults": {
+    "momentum_collision_model": {
+      "2d": "cm_mrt",
+      "3d": "cm_mrt"
+    },
+    "phase_normal_epsilon": {
+      "2d": 0.01,
+      "3d": 1e-08
+    },
+    "phase_warmup_steps": {
+      "2d": 2000,
+      "3d": 2000
+    },
+    "cm_acoustic_relaxation_rate": {
+      "2d": 0.25,
+      "3d": 0.6
+    },
+    "density_gradient_source_limit": {
+      "2d": 0.05,
+      "3d": 0.0
+    },
+    "phase_flux_acceleration_limit": {
+      "2d": 0.01,
+      "3d": 0.0
+    },
+    "gas_state_repair": {
+      "2d": true,
+      "3d": false
+    },
+    "body_contact_iterations": {
+      "2d": 32,
+      "3d": 128
+    },
+    "surface_tension_n_m": {
+      "2d": 0.0,
+      "3d": 0.072
+    }
+  },
+  "source_sha256": {
+    "iceflow2d_v3/__init__.py": "c7fcf261ffc07a4ee8fac91c0fc7c440b486860420d008a86aeec3a06f18dd1c",
+    "iceflow2d_v3/__main__.py": "3f928a6a5c1cdefb774cd4bb6246a53de5ee98eaaf2eb702dbdddf5cd83819fd",
+    "iceflow2d_v3/body_motion.py": "fd0cc8869023ea895c957c699c773c663b619480fed5d26df4319a1b55e3608f",
+    "iceflow2d_v3/body_state.py": "e3e93d6fafbde8254532146046924b96b1ad7ffbc5356826459c21fd90a7b6a0",
+    "iceflow2d_v3/config.py": "7db1f2ba4bdd80fb90cdad11b39bbd724104c5075e10ccd81c3bb08365a96157",
+    "iceflow2d_v3/contact.py": "a340792c4f6b3e48fe27f182a088c683b6a634c3a43357ddcaec078dd4b7c549",
+    "iceflow2d_v3/lattice.py": "d598ec6d1e4f0ffa4528a4b37f2a5dd0dd6af3a936f0d6147e3719a6a47d3b5f",
+    "iceflow2d_v3/phase_reconstruction.py": "49706053dc4718eedfcb419fe0766685ea1f4e7d1b72ed5f3999930cad71c7a7",
+    "iceflow2d_v3/reporting.py": "860562c11832dffab375c9dcbf2f57a1e8f30720cec15b31ca580b74e978de4c",
+    "iceflow2d_v3/simulator.py": "95972c1cc64e9d559d90271b2e9a868a221bcfe149df02452d1e6f67148e29d9",
+    "iceflow2d_v3/stability_options.py": "19bc25ff4af16ba4880d531033496d620ca29fcc80f2cce0bbda00b9be753733",
+    "iceflow2d_v3/thermal_d2q5.py": "9ebfb0cb2ca33306366592377f6ba85ad7404ec33f4e1d4385bf765498242ea3",
+    "iceflow2d_v3/viscosity.py": "69c215e4d9ee1759e97e05f31e3d70c6e83091d21c682599527bfd133caf7208",
+    "iceflow3d/__init__.py": "b34e6f6829c487b3841e33877e8d36e3f7259075db418366eb5b33ea79b4d16f",
+    "iceflow3d/__main__.py": "58f7c984936f6a9e9d0dea6a5440de200038aa54283baadd091bee5898fd5c5d",
+    "iceflow3d/checkpoint.py": "16c6c6bf4e8f7e02a928b3b6f6dc1de6890846fd20943efeb95686785d1663a5",
+    "iceflow3d/config.py": "005fea621df605522206a911175399667df8baf63ebff5c6945bf7b20f60621d",
+    "iceflow3d/lattice.py": "f95c6fdba34d0e8a86f286807f3d02a28af25c3fd6abdc15e2fb517ff23c4c16",
+    "iceflow3d/reporting.py": "1400f6581ac1c146b28ec550abc315326bfc0cef57813f2176e9134e2d4b6028",
+    "iceflow3d/rigid.py": "2461e4087253232fee621e540f16a80491f8d3de2bf63dd588e90a70f4696736",
+    "iceflow3d/simulator.py": "29c6c5890b8d2364727445c935b035bd1b5fe07e327029b11187055dc7fea5e8",
+    "iceflow3d/thermal.py": "32ee0482d45cafaba66f0a6cc060b7ada3643a07b5115fd6c89e4ee15ffb27f3",
+    "iceflow3d/viscosity.py": "4a67805da15cf41660080c2e24f471d86d76b20bf26c6dab8eeb8f4daf8e32a0"
+  }
+}
