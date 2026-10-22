@@ -196,8 +196,6 @@ class IceFlowConfig:
     interface_width: float = 5.0
     mobility: float = 0.1
     momentum_collision_model: str = "cm_mrt"
-    hrr_kinetic_blend: float = 0.0
-    hrr_cubic_correction: bool = True
     # Regularize weak bulk gradients in the phase-compression normal (LU).
     # Match the 2D four-ice example; larger values also weaken interface tails.
     phase_normal_epsilon: float = 0.01
@@ -298,16 +296,11 @@ class IceFlowConfig:
             raise ValueError("floor water must be lower than the column")
         if self.backend not in ("cuda", "cpu"):
             raise ValueError("backend must be cuda or cpu")
-        if self.momentum_collision_model not in ("cm_mrt", "cm_hrr"):
-            raise ValueError("momentum_collision_model must be cm_mrt or cm_hrr")
-        blend = finite("hrr_kinetic_blend", self.hrr_kinetic_blend)
-        if not 0 <= blend <= 1:
-            raise ValueError("hrr_kinetic_blend must be in [0, 1]")
-        object.__setattr__(self, "hrr_kinetic_blend", blend)
+        if self.momentum_collision_model != "cm_mrt":
+            raise ValueError("HOME requires central-moment cm_mrt; HRR is not supported")
         for name in (
             "check_stability",
             "gas_state_repair",
-            "hrr_cubic_correction",
             "conserve_phase_volume",
         ):
             if not isinstance(getattr(self, name), bool):

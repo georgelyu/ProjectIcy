@@ -35,18 +35,18 @@ class Thermal3D:
             else b.temperature_c
             for b in self.config.bodies
         ]
-        self.initial_body_temperature = ti.field(ti.f64, shape=self.body_count)
-        self.initial_body_temperature.from_numpy(np.array(temperatures))
+        self.initial_body_temperature = ti.field(ti.f32, shape=self.body_count)
+        self.initial_body_temperature.from_numpy(np.array(temperatures, np.float32))
         material_shape = (self.body_count, *map(int, sizes.max(axis=0)))
         for name in ("material_mass", "material_energy", "material_heat"):
-            setattr(self, name, ti.field(ti.f64, shape=material_shape))
+            setattr(self, name, ti.field(ti.f32, shape=material_shape))
         for name in ("water_volume", "water_energy", "target_energy"):
-            setattr(self, name, ti.field(ti.f64, shape=self.shape))
+            setattr(self, name, ti.field(ti.f32, shape=self.shape))
         self.sampled_ice_temperature = ti.field(ti.f32, shape=self.shape)
-        self.energy_flux = ti.Vector.field(3, ti.f64, shape=self.shape)
-        self.volume_flux = ti.Vector.field(3, ti.f64, shape=self.shape)
-        self.remap_energy = ti.field(ti.f64, shape=())
-        self.discarded_heat = ti.field(ti.f64, shape=())
+        self.energy_flux = ti.Vector.field(3, ti.f32, shape=self.shape)
+        self.volume_flux = ti.Vector.field(3, ti.f32, shape=self.shape)
+        self.remap_energy = ti.field(ti.f32, shape=())
+        self.discarded_heat = ti.field(ti.f32, shape=())
         self.max_outflow = ti.field(ti.f32, shape=())
         self.thermal_invalid = ti.field(ti.i32, shape=())
 
@@ -63,14 +63,14 @@ class Thermal3D:
 
     @ti.func
     def _water_target(self, I):
-        value = ti.cast(0.0, ti.f64)
+        value = ti.cast(0.0, ti.f32)
         if self._fluid(I) and self.water_phase[I] > 1e-3:
-            value = ti.cast(self.water_phase[I], ti.f64) * self.cell_volume
+            value = ti.cast(self.water_phase[I], ti.f32) * self.cell_volume
         return value
 
     @ti.func
     def _water_temperature(self, I):
-        temperature = ti.cast(self.config.thermal.initial_air_temperature_c, ti.f64)
+        temperature = ti.cast(self.config.thermal.initial_air_temperature_c, ti.f32)
         if self.water_volume[I] > 1e-30:
             temperature = self.tm + self.water_energy[I] / (
                 self.rho_cp * self.water_volume[I]
@@ -80,7 +80,7 @@ class Thermal3D:
     @ti.func
     def _ice_temperature(self, b, J):
         mass = self.material_mass[b, J.x, J.y, J.z]
-        temp = ti.cast(self.tm, ti.f64)
+        temp = ti.cast(self.tm, ti.f32)
         if mass > 1e-30:
             temp += self.material_energy[b, J.x, J.y, J.z] / (self.cp_ice * mass)
         return temp
@@ -99,12 +99,12 @@ class Thermal3D:
     def _build_water_targets(self):
         for I in ti.grouped(self.water_volume):
             target = self._water_target(I)
-            specific = ti.cast(0.0, ti.f64)
+            specific = ti.cast(0.0, ti.f32)
             if target > 0:
                 if self.water_volume[I] > 1e-30:
                     specific = self.water_energy[I] / self.water_volume[I]
                 else:
-                    total = ti.cast(0.0, ti.f64)
+                    total = ti.cast(0.0, ti.f32)
                     # Immediate wet donors, including cells just covered by ice,
                     # are read from the immutable old thermal state.
                     for a, b, c in ti.ndrange(3, 3, 3):
@@ -133,7 +133,7 @@ class Thermal3D:
     @ti.kernel
     def _thermal_fluxes(self, advect: ti.template()):
         for I in ti.grouped(self.water_volume):
-            ef, vf = ti.Vector.zero(ti.f64, 3), ti.Vector.zero(ti.f64, 3)
+            ef, vf = ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3)
             for a in ti.static(range(3)):
                 J = I + ti.Vector(ti.static(AXES[a]))
                 if self._fluid(I) and self._fluid(J):
@@ -169,9 +169,9 @@ class Thermal3D:
             self.energy_flux[I], self.volume_flux[I] = ef, vf
 
     @ti.kernel
-    def _apply_thermal_fluxes(self, dt: ti.f64, advect: ti.template()):
+    def _apply_thermal_fluxes(self, dt: ti.f32, advect: ti.template()):
         for I in ti.grouped(self.water_volume):
-            de, dv = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)
+            de, dv = ti.cast(0.0, ti.f32), ti.cast(0.0, ti.f32)
             for a in ti.static(range(3)):
                 J = I - ti.Vector(ti.static(AXES[a]))
                 de += self.energy_flux[I][a]
@@ -258,11 +258,11 @@ class Thermal3D:
                 raise RuntimeError(f"invalid thermal state at step {self.steps + 1}")
 
     @ti.kernel
-    def _body_conduction(self, dt: ti.f64):
+    def _body_conduction(self, dt: ti.f32):
         for b, i, j, k in self.material_mass:
             I = ti.Vector([i, j, k])
             mass = self.material_mass[b, i, j, k]
-            heat = ti.cast(0.0, ti.f64)
+            heat = ti.cast(0.0, ti.f32)
             if mass > 0:
                 temperature = self._ice_temperature(b, I)
                 for face in ti.static(FACES):
@@ -313,12 +313,12 @@ class Thermal3D:
             and self._touches_thermal_ice(I)
         ):
             # Seven world samples x eight trilinear material donors.
-            heat = ti.Vector.zero(ti.f64, 56)
+            heat = ti.Vector.zero(ti.f32, 56)
             body = ti.Vector.zero(ti.i32, 7)
             base_x = ti.Vector.zero(ti.i32, 7)
             base_y = ti.Vector.zero(ti.i32, 7)
             base_z = ti.Vector.zero(ti.i32, 7)
-            requested = ti.cast(0.0, ti.f64)
+            requested = ti.cast(0.0, ti.f32)
             tw = self._water_temperature(I)
             aperture = self.water_volume[I] / self.cell_volume
             for f in ti.static(range(7)):
@@ -392,7 +392,7 @@ class Thermal3D:
             self.water_energy[I] -= scale * requested
 
     @ti.kernel
-    def _exchange_heat(self, dt: ti.f64):
+    def _exchange_heat(self, dt: ti.f32):
         lo, hi = self._thermal_ice_bounds()
         # The union box visits overlapping body neighborhoods exactly once.
         for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
@@ -417,7 +417,7 @@ class Thermal3D:
     @ti.kernel
     def _sample_ice_temperature(self):
         for I in ti.grouped(self.water_volume):
-            t = ti.cast(self.tm, ti.f64)
+            t = ti.cast(self.tm, ti.f32)
             b = self.solid_body_id[I]
             if b >= 0:
                 grid = self._material_grid(ti.cast(I, ti.f32) + 0.5, b)

@@ -47,7 +47,7 @@ def main():
     p.add_argument("--time-step-scale", type=float, default=1.0, help="physical timestep multiplier; material properties and grid/interface widths remain fixed")
     p.add_argument("--geometry-only", action="store_true", help="omit the unused 3D velocity field from render snapshots")
     p.add_argument(
-        "--momentum-collision-model", choices=("cm_mrt", "cm_hrr"), default=None
+        "--momentum-collision-model", choices=("cm_mrt",), default=None
     )
     args = p.parse_args()
     source = args.source_root or Path(__file__).resolve().parents[2]

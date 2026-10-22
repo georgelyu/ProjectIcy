@@ -1,0 +1,679 @@
+{
+  "source_sha256": {
+    "thermal.py": "912d73feb1528de9670d02e6915bdf1980a4f4f82e83efb4652da416f5553a79",
+    "phase.py": "c1f1349d43b4b4fa4aa748eaee1eace4925736f2d9fe9221fd7b4ba4d8ec710e",
+    "gradients.py": "43c9aaf4dc1cb13712e131bf18a734f039281d585b9ecf1dc84e36051529c4d3",
+    "simulator.py": "529444fd052d37f834beb8d851ea96a4d3dba090bfeb26004dea8c7b38a7ee16",
+    "config.py": "ec73b3a3137f2607a49c9a9259b52b71cc8e73a40670143c2da0c141c8662882",
+    "__main__.py": "58f7c984936f6a9e9d0dea6a5440de200038aa54283baadd091bee5898fd5c5d",
+    "home.py": "17c1a8e4d21b6f19c4293d2d9308dd23c61e3d96c2d210c17f56cda145d90305",
+    "rigid.py": "eb90e6734331e25e6bf80e26d9898b145085f83fe6bbf35f382e204e913f1138",
+    "__init__.py": "b34e6f6829c487b3841e33877e8d36e3f7259075db418366eb5b33ea79b4d16f",
+    "viscosity.py": "4a67805da15cf41660080c2e24f471d86d76b20bf26c6dab8eeb8f4daf8e32a0",
+    "checkpoint.py": "bf3852c57d2dc4670c97b3596f6147dc47c037666bdd0093c820f2e63aa870cf",
+    "reporting.py": "1400f6581ac1c146b28ec550abc315326bfc0cef57813f2176e9134e2d4b6028",
+    "lattice.py": "f95c6fdba34d0e8a86f286807f3d02a28af25c3fd6abdc15e2fb517ff23c4c16"
+  },
+  "modules": [
+    {
+      "name": "taichi_kernel_nvptx_0000.ptx",
+      "sha256": "56eb8b2c0aa4f6c321bee598e94ebc56d22c96ab3e6184d51d2014cc1e9a5f12",
+      "entry_points": [
+        "runtime_retrieve_and_reset_error_code",
+        "runtime_retrieve_error_message",
+        "runtime_retrieve_error_message_argument",
+        "runtime_ListManager_get_num_active_chunks",
+        "runtime_LLVMRuntime_get_node_allocators",
+        "runtime_LLVMRuntime_get_element_lists",
+        "runtime_LLVMRuntime_get_total_requested_memory",
+        "runtime_NodeManager_get_free_list",
+        "runtime_NodeManager_get_recycled_list",
+        "runtime_NodeManager_get_data_list",
+        "runtime_NodeManager_get_free_list_used",
+        "runtime_ListManager_get_num_elements",
+        "runtime_ListManager_get_max_num_elements_per_chunk",
+        "runtime_ListManager_get_element_size",
+        "runtime_memory_allocate_aligned",
+        "runtime_get_memory_requirements",
+        "runtime_initialize",
+        "runtime_initialize_memory",
+        "runtime_initialize_rand_states_cuda",
+        "runtime_initialize_rand_states_serial",
+        "runtime_initialize_snodes",
+        "runtime_NodeAllocator_initialize",
+        "runtime_allocate_ambient"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0001.ptx",
+      "sha256": "71fd7d7a9204da206ef2791855d1476de2159c201a7d659bff76a3734603f5de",
+      "entry_points": [
+        "ext_arr_to_matrix_c30_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0002.ptx",
+      "sha256": "5257c31ae79d127907cb1b2f3d3bca06f3ff1c353051b4f84fa23ae6a8010ef4",
+      "entry_points": [
+        "ext_arr_to_tensor_c20_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0003.ptx",
+      "sha256": "d702eb7fe2656c18aea5f3bef92fdb4ebf5eb7f4bcfd738693419cf8c02bd287",
+      "entry_points": [
+        "ext_arr_to_matrix_c30_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0004.ptx",
+      "sha256": "5bed9449413bc1a0c639a83edb6fee1627b905a12dc50dfb072717b3a2b97e6f",
+      "entry_points": [
+        "ext_arr_to_matrix_c30_2_kernel_0_range_for"
+      ],
+      "fp32_mentions": 19,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0005.ptx",
+      "sha256": "43b569efe4e9085725ac4c4b55798983b29f97a973f3cd0ad3411dcfddbd2014",
+      "entry_points": [
+        "ext_arr_to_matrix_c30_3_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0006.ptx",
+      "sha256": "d8ab1f5ae12aad40a1e856130c4fdd01a87198ebdbb6b9f75180030c376fb5e5",
+      "entry_points": [
+        "ext_arr_to_matrix_c30_4_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0007.ptx",
+      "sha256": "0c75b2a1d05f92765eb1eaf495729aa9ad1483bc0c811562c3c2de5791ed86de",
+      "entry_points": [
+        "ext_arr_to_matrix_c30_5_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0008.ptx",
+      "sha256": "1d90ad174e7f270ab85a4fd4c9db411f8df9f0f80f25ba39639bf73e60c7287c",
+      "entry_points": [
+        "_initialize_material_c98_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 4,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0009.ptx",
+      "sha256": "a5ab94f8ce940575baa5d7e2365963b5a97990649043879e831826d8bbe8a004",
+      "entry_points": [
+        "_reduce_mass_c138_0_kernel_0_range_for",
+        "_reduce_mass_c138_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 220,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0010.ptx",
+      "sha256": "40e4acd322224fa6d41a4433369072ab8b6473ec6b46b096acb45854b7892b26",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0011.ptx",
+      "sha256": "ebc3a88fca92408186cc11d291f36d84fa56e6612337ca8ca5a6f3c0309689a9",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0012.ptx",
+      "sha256": "d2e5b2dfd93e5063db0e136334b3ff42d3c2500c32b739a9a1284072de16a452",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 19,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0013.ptx",
+      "sha256": "1cbb94a168ec5ff298c5491e052979a78e61e5ee8aded89d49ba111fa32cae42",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_2_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0014.ptx",
+      "sha256": "350cf0e9a9c7b7466dd2f7ccae61ea9525f751f0a7d459354f4e5ef4b63e902b",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_3_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0015.ptx",
+      "sha256": "6a0704fe5f7f2c9bd623b29e03a4a69f3649fe845629a8d6bc0357b3a148fafc",
+      "entry_points": [
+        "_rasterize_c122_0_kernel_0_serial",
+        "_rasterize_c122_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 98,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0016.ptx",
+      "sha256": "c174fa491a02a175be258f5363f8e7f631d4d041783d4d405f79f1526be68ab3",
+      "entry_points": [
+        "_initialize_phase_c124_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 48,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0017.ptx",
+      "sha256": "ce5e87d5cad3062cbadd458d87a448108d1da94e5ce028a8af526303d1b70ade",
+      "entry_points": [
+        "_gradients_c94_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 354,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0018.ptx",
+      "sha256": "16f07ad5fc52b88de360529668b4d0ad839d49e73dfe590a55df625f808c20ef",
+      "entry_points": [
+        "_collide_phase_kernel_c86_0_kernel_0_range_for",
+        "_collide_phase_kernel_c86_0_kernel_1_serial"
+      ],
+      "fp32_mentions": 99,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0019.ptx",
+      "sha256": "9917b3dcd36e9fb3de305af35e500441eb6915f29a2dcff03bcbc6f1cc8701f4",
+      "entry_points": [
+        "_recover_phase_c88_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 29,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0020.ptx",
+      "sha256": "bc1c5bb66a23a7de878ed7e0f8c483b20d00f9aeeaa08f5c0c378ae97e3515a5",
+      "entry_points": [
+        "_initialize_water_heat_c100_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 10,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0021.ptx",
+      "sha256": "fbc6e161e643dd7ef16542636b0a38772ed2f04395d78b26ed493482a64b0439",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0022.ptx",
+      "sha256": "a9ff70c290c2d6d9d2762c63dffbe29edeb9eca052ba91de09467948f364b6ca",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_2_kernel_0_range_for"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0023.ptx",
+      "sha256": "fa6f114a60b13c641fb7a756220f4687a463eeeac720c4f49ad7fea8066f361a",
+      "entry_points": [
+        "ext_arr_to_tensor_c20_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0024.ptx",
+      "sha256": "93bf85a070345089e1401bd87bdd5ff49085df23a5cc48b93cc3db87f5825749",
+      "entry_points": [
+        "ext_arr_to_tensor_c20_2_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0025.ptx",
+      "sha256": "5c407afb986acfddb6b4f7ca55e1865841c8dcf0fa50e5628a99b4fe3516ac0a",
+      "entry_points": [
+        "ext_arr_to_tensor_c20_3_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0026.ptx",
+      "sha256": "c5ff98c70009e27a5a0e4e73c247c219c09a1011f3ea5a15d5cca2219e6438d5",
+      "entry_points": [
+        "_forces_c128_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 599,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0027.ptx",
+      "sha256": "f1519e8fc0ee43f9cab5910862df862a280ab288f2e3a3c2aac310d7eec7ce97",
+      "entry_points": [
+        "_seed_populations_c126_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 18,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0028.ptx",
+      "sha256": "4b066793572ead8c80aef1d06f6e70e56875efb12c367e8149ef5b6bc82632ad",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_3_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0029.ptx",
+      "sha256": "2303b1b7f9936a0e48d211b78420a94ca2b6d52d00de59f508c9315460ef30f1",
+      "entry_points": [
+        "_collide_phase_kernel_c86_1_kernel_0_range_for",
+        "_collide_phase_kernel_c86_1_kernel_1_serial"
+      ],
+      "fp32_mentions": 188,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0030.ptx",
+      "sha256": "0f8e3dafbb6b29eded618f2d9bbce5797e365f1b6a16fbca0dce172c96b325a4",
+      "entry_points": [
+        "_forces_c128_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 704,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0031.ptx",
+      "sha256": "2c34b43c53559b9ac5021c1779a8ff9a966a23eb2a4c909d04b126321c804b69",
+      "entry_points": [
+        "_collide_momentum_c80_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 404,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0032.ptx",
+      "sha256": "8d6cd140b8df39e34bbb43b9b4b03ffc912b4866f3ee92212cb960bcdee56fce",
+      "entry_points": [
+        "field_fill_python_scope_c38_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0033.ptx",
+      "sha256": "e765103be792ca0b4d62a1953e98cbcc592201c9e83e0c2639bd5825ac58f1a9",
+      "entry_points": [
+        "field_fill_python_scope_c38_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0034.ptx",
+      "sha256": "478e2ef47302071ad453b2a611cd2ec894a41b0e2b23c78f76224493e62c9bd4",
+      "entry_points": [
+        "_stream_home_c82_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 591,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0035.ptx",
+      "sha256": "571909cbe011571263afaa4568338616494cc9f5ed56200aab547a1bc564d5e3",
+      "entry_points": [
+        "_recover_pressure_c84_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 9,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0036.ptx",
+      "sha256": "ca9f64421ff13454d8386b0fd07e7ac80dbaf1ce99d62270c047aede71193725",
+      "entry_points": [
+        "_scan_stability_c140_0_kernel_0_serial",
+        "_scan_stability_c140_0_kernel_1_range_for",
+        "_scan_stability_c140_0_kernel_2_serial"
+      ],
+      "fp32_mentions": 36,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0037.ptx",
+      "sha256": "1df5f69fdd1d6d78096324600449c6b12f758b5e768d996292d1f9931b5174a5",
+      "entry_points": [
+        "snode_reader_193_kernel_0_serial"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0038.ptx",
+      "sha256": "84ab86f518a6cf6271dc63b9bfb4bad0559cd2e40498c54309a645dfbe1b889c",
+      "entry_points": [
+        "snode_reader_195_kernel_0_serial"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0039.ptx",
+      "sha256": "9fa3f0fa6ef4e6eae13730cf2023b0af45a1aadc7c0cc1b5ff0590cba9904d33",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_4_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0040.ptx",
+      "sha256": "101fb468ded49bad8dc8a35af21fe7574efc3905cbfdb275c3a25c86852b6d72",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_5_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0041.ptx",
+      "sha256": "8e7f9e24f60a01cec8d10eb3076730e08c021ffb3702db99a5e893bd999dfb33",
+      "entry_points": [
+        "_repair_phase_layout_c90_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 13,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0042.ptx",
+      "sha256": "7cca026f0131a33a474c820a23f9030e67b4e50d72e06de34836d352b270e1ec",
+      "entry_points": [
+        "_seed_refill_c130_0_kernel_0_serial",
+        "_seed_refill_c130_0_kernel_1_range_for",
+        "_seed_refill_c130_0_kernel_2_serial"
+      ],
+      "fp32_mentions": 11,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0043.ptx",
+      "sha256": "771830f4101a9db20464993ea19c508c801a5f09f97732e6fa37ede9bd374892",
+      "entry_points": [
+        "_commit_refill_c134_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 42,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0044.ptx",
+      "sha256": "49b201c82b9b1ae3181ceac034e727fc30669ef9915eb4e98ac6dcdc1bf7c392",
+      "entry_points": [
+        "_refill_gradients_c96_0_kernel_0_serial",
+        "_refill_gradients_c96_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 345,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0045.ptx",
+      "sha256": "40062eb03508cd17d4e14bff345df1c3b4881378b5f7cf6ee0876f8889571933",
+      "entry_points": [
+        "_build_water_targets_c102_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 24,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0046.ptx",
+      "sha256": "bd18f38dfa9aad2c0e8d89c7d7ce24dc68ea7566d0107e24a2035141ec65d706",
+      "entry_points": [
+        "_commit_water_targets_c104_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 21,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0047.ptx",
+      "sha256": "55ddfad7b144640351a7fe60b8d45887b1b82280182b0972d1a3f892cb4a26f7",
+      "entry_points": [
+        "_thermal_fluxes_c106_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 72,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0048.ptx",
+      "sha256": "c383787f9f67b80983a27687606ea92a9a2ffa03552ca8908f2d8857de61df18",
+      "entry_points": [
+        "_apply_thermal_fluxes_c108_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 31,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0049.ptx",
+      "sha256": "d1bf5be38421167f81310cc3b48fae5daed66dd99fd2a899bb234126cada4bed",
+      "entry_points": [
+        "_body_conduction_c112_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 93,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0050.ptx",
+      "sha256": "f19c02eb8ea4edd0819b711c14622e902818dff4481e74fb11b920740097dc31",
+      "entry_points": [
+        "_thermal_fluxes_c106_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 51,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0051.ptx",
+      "sha256": "02660a71b8a5e0b8b2d5b955f51cdd19430ad61d36c802ef1761c8e33f1fd1dc",
+      "entry_points": [
+        "_apply_thermal_fluxes_c108_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 17,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0052.ptx",
+      "sha256": "96e143b0c4568ff372b409aae7b06192179dff5ed7ff7c07d12dda5885bcbed7",
+      "entry_points": [
+        "_exchange_heat_c114_0_kernel_0_serial",
+        "_exchange_heat_c114_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 2208,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0053.ptx",
+      "sha256": "85354e5b397b8af36691fa6b98522c1bd72913ed755a2a837517e41c54c8d313",
+      "entry_points": [
+        "_apply_melting_c116_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 38,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0054.ptx",
+      "sha256": "7c8fad19057ccd88ffc97c6549a9fc9d8c4a23aff9fac6787898296d85d8d34d",
+      "entry_points": [
+        "_check_heat_c120_0_kernel_0_serial",
+        "_check_heat_c120_0_kernel_1_range_for",
+        "_check_heat_c120_0_kernel_2_range_for"
+      ],
+      "fp32_mentions": 9,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0055.ptx",
+      "sha256": "4a02f72b5c343a91338d0bcef747b1f9d543b778d45da3f127fa9fb73c4b053c",
+      "entry_points": [
+        "snode_reader_249_kernel_0_serial"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0056.ptx",
+      "sha256": "3ac59af1058ea1feb6ba7409c1fc7b8acb9bcab16ed0b2b2fe1c8904a50ee4af",
+      "entry_points": [
+        "_propagate_refill_c132_0_kernel_0_serial",
+        "_propagate_refill_c132_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 38,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0057.ptx",
+      "sha256": "94db494a888dcd1f53748edc769bb99b5073ddb2d711f7ce8df641a7700d020a",
+      "entry_points": [
+        "snode_reader_113_kernel_0_serial"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0058.ptx",
+      "sha256": "049d10337b992552d4efea08af3caa7be5e12972223389040df84958f3c547c2",
+      "entry_points": [
+        "tensor_to_tensor_c18_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 11,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0059.ptx",
+      "sha256": "2b2ee9593c59b651e35f908a5f6a30dc111b91a0fb06c9b15a3cb97a9b6d15b9",
+      "entry_points": [
+        "tensor_to_tensor_c18_1_kernel_0_range_for"
+      ],
+      "fp32_mentions": 0,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0060.ptx",
+      "sha256": "ab2418e95e42f0ef206982c5588b40e77aaf79e33def789ba1618fe6b9c57ac5",
+      "entry_points": [
+        "_project_refill_c136_0_kernel_0_serial",
+        "_project_refill_c136_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 662,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0061.ptx",
+      "sha256": "22888bf0f3f2375b877dfe2b52d91cfcd155e2a552af00c6c4b7fee1a4bf390d",
+      "entry_points": [
+        "_measure_outflow_c110_0_kernel_0_serial",
+        "_measure_outflow_c110_0_kernel_1_range_for"
+      ],
+      "fp32_mentions": 57,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0062.ptx",
+      "sha256": "6ea437ce0347b15f34fc4a05e4b6d8daa07058d3ac8925ac81dba3024a8a1131",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_4_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0063.ptx",
+      "sha256": "e7e77f8c62b4c97f6b7bb57006cd94fd8e2355a3e23cf33c72a31b2cec223ddd",
+      "entry_points": [
+        "_sample_ice_temperature_c118_0_kernel_0_range_for"
+      ],
+      "fp32_mentions": 79,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0064.ptx",
+      "sha256": "3e2934e7bb025742e50f9c9329cc4d7752c0df277e65a8278a7d26c6c4fcac7f",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_5_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0065.ptx",
+      "sha256": "5373ed6d122046d7d62ae850a5ad8b749bf569440de30174a6b235acce3d612e",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_6_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0066.ptx",
+      "sha256": "274454b8a568edd8496bb4f496930cadc3b1c6ffaee2d24325587f1674e4ef63",
+      "entry_points": [
+        "matrix_to_ext_arr_c28_6_kernel_0_range_for"
+      ],
+      "fp32_mentions": 7,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0067.ptx",
+      "sha256": "f7e456a6070583cdfe6dcfb0bc194b125bdf0b43a15b8ba3a92f0047fc45d770",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_7_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    },
+    {
+      "name": "taichi_kernel_nvptx_0068.ptx",
+      "sha256": "975015fcf1b5282d1c5a8b9c69d1ed21d67207afe5aefa1069a69ed3fb93a37a",
+      "entry_points": [
+        "tensor_to_ext_arr_c6_8_kernel_0_range_for"
+      ],
+      "fp32_mentions": 3,
+      "fp64_mentions": 0
+    }
+  ],
+  "fp64_mentions": 0,
+  "passed": true
+}

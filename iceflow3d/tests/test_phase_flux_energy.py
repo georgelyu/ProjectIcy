@@ -29,6 +29,7 @@ class PhaseFluxEnergyTests(unittest.TestCase):
                 sim._forces(True)
                 actual = sim.force_density.to_numpy().astype(float)
                 central = np.zeros_like(actual)
+                divergence = np.zeros(sim.shape)
                 expected_dissipation = 0.
                 # Sum each shared face once. This provides an independent
                 # conservative reference and the analytical face-jump budget.
@@ -43,13 +44,17 @@ class PhaseFluxEnergyTests(unittest.TestCase):
                     centered_flux = mass[...,None]*.5*(u0+u1)
                     central[lo] -= centered_flux
                     central[hi] += centered_flux
+                    divergence[lo] += mass
+                    divergence[hi] -= mass
                     expected_dissipation -= float((.5*abs(mass)*((u1-u0)**2).sum(-1)).sum())
-                correction = actual-central
+                conservative = actual - velocity * divergence[..., None]
+                correction = conservative-central
                 work = float((velocity*correction).sum())
-                self.assertLess(np.linalg.norm(actual.sum((0,1,2))),1e-8)
+                self.assertLess(np.linalg.norm(conservative.sum((0,1,2))),1e-8)
                 self.assertAlmostEqual(work,expected_dissipation,delta=1e-8)
                 if uniform:
                     self.assertLess(abs(correction).max(),1e-9)
+                    np.testing.assert_array_equal(actual, 0)
                 else:
                     self.assertLess(work,0)
 

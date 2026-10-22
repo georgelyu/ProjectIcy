@@ -1,0 +1,89 @@
+{
+  "source_sha256": {
+    "thermal.py": "912d73feb1528de9670d02e6915bdf1980a4f4f82e83efb4652da416f5553a79",
+    "phase.py": "c1f1349d43b4b4fa4aa748eaee1eace4925736f2d9fe9221fd7b4ba4d8ec710e",
+    "gradients.py": "43c9aaf4dc1cb13712e131bf18a734f039281d585b9ecf1dc84e36051529c4d3",
+    "simulator.py": "8c39b04c9263a0814ded7787d07ab1217a535daa754cb1d50c513b91be693549",
+    "config.py": "ec73b3a3137f2607a49c9a9259b52b71cc8e73a40670143c2da0c141c8662882",
+    "__main__.py": "58f7c984936f6a9e9d0dea6a5440de200038aa54283baadd091bee5898fd5c5d",
+    "home.py": "17c1a8e4d21b6f19c4293d2d9308dd23c61e3d96c2d210c17f56cda145d90305",
+    "rigid.py": "eb90e6734331e25e6bf80e26d9898b145085f83fe6bbf35f382e204e913f1138",
+    "__init__.py": "b34e6f6829c487b3841e33877e8d36e3f7259075db418366eb5b33ea79b4d16f",
+    "viscosity.py": "4a67805da15cf41660080c2e24f471d86d76b20bf26c6dab8eeb8f4daf8e32a0",
+    "checkpoint.py": "bf3852c57d2dc4670c97b3596f6147dc47c037666bdd0093c820f2e63aa870cf",
+    "reporting.py": "1400f6581ac1c146b28ec550abc315326bfc0cef57813f2176e9134e2d4b6028",
+    "lattice.py": "f95c6fdba34d0e8a86f286807f3d02a28af25c3fd6abdc15e2fb517ff23c4c16"
+  },
+  "backend": "cuda",
+  "buoyancy": {
+    "cases": [
+      {
+        "water_fraction": 0.0,
+        "force_n": [
+          -5.87760951020755e-12,
+          6.271959136938677e-06,
+          -1.3346834748517724e-11
+        ],
+        "expected_force_n": [
+          -0.0,
+          6.272000000000001e-06,
+          -0.0
+        ],
+        "relative_error": 6.917647880403783e-06,
+        "torque_lattice": [
+          -2.4940050025179517e-12,
+          4.707345624410664e-13,
+          1.1329603921694797e-11
+        ],
+        "passed": true
+      },
+      {
+        "water_fraction": 1.0,
+        "force_n": [
+          2.0267543732188647e-08,
+          0.005017542839050294,
+          -1.1839802027679981e-08
+        ],
+        "expected_force_n": [
+          -0.0,
+          0.0050176000000000005,
+          -0.0
+        ],
+        "relative_error": 1.2315175433574888e-05,
+        "torque_lattice": [
+          -2.2246240405365825e-09,
+          -4.547473508864641e-10,
+          7.283233571797609e-09
+        ],
+        "passed": true
+      },
+      {
+        "water_fraction": 0.37,
+        "force_n": [
+          -8.237566362367944e-09,
+          0.0018604794517159465,
+          -3.824425220955164e-10
+        ],
+        "expected_force_n": [
+          -0.0,
+          0.0018604633600000004,
+          -0.0
+        ],
+        "relative_error": 9.718911168834826e-06,
+        "torque_lattice": [
+          1.7826096154749393e-10,
+          1.0825260687852278e-09,
+          7.013397862465354e-09
+        ],
+        "passed": true
+      }
+    ],
+    "net_ice_acceleration_relative_error": 0.00015436544568134318,
+    "thermal_force_relative_error": 3.8335909137828666e-07,
+    "diffuse_free_surface_relative_error": 0.005385678360344426,
+    "diffuse_surface_level_cells": 17.43855290040328,
+    "stationary_column_speed_lattice": 1.6428293187625842e-12,
+    "passed": true
+  },
+  "passed": true
+}

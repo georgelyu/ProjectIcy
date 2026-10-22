@@ -136,22 +136,28 @@ class RigidBodies:
     def upload(self):
         s = self.s
         rotations = np.array([rotation_matrix(q) for q in self.q])
-        s.body_origin.from_numpy(self.origin.astype(np.float32))
-        s.body_rotation.from_numpy(rotations.astype(np.float32))
-        s.body_center.from_numpy(
-            (self.origin + np.einsum("bij,bj->bi", rotations, self.com)).astype(
-                np.float32
-            )
-        )
-        s.body_velocity.from_numpy(self.velocity.astype(np.float32))
-        s.body_angular_velocity.from_numpy(self.omega.astype(np.float32))
+        # One transfer for the small body state. Host pose/contact arithmetic
+        # stays FP64; the device receives the same once-rounded FP32 values.
+        state = np.concatenate(
+            (
+                self.origin,
+                rotations.reshape(s.body_count, 9),
+                self.origin + np.einsum("bij,bj->bi", rotations, self.com),
+                self.velocity,
+                self.omega,
+            ),
+            axis=1,
+        ).astype(np.float32)
+        s._upload_rigid_state(state)
 
     def update_mass(self, *, upload=True):
         s = self.s
         s._reduce_mass()
-        mass = s.reduced_mass.to_numpy()
-        first = s.reduced_first.to_numpy()
-        second = s.reduced_second.to_numpy()
+        state = np.empty((s.body_count, 19), np.float32)
+        s._download_rigid_state(state, True)
+        state = state.astype(float)
+        mass, first = state[:, 0].copy(), state[:, 1:4].copy()
+        second = state[:, 4:13].reshape(s.body_count, 3, 3)
         for b in range(s.body_count):
             if mass[b] > 1e-15:
                 com = first[b] / mass[b]
@@ -164,15 +170,16 @@ class RigidBodies:
             else:
                 self.velocity[b] = self.omega[b] = 0.0
         self.mass = mass
-        self.lower = s.reduced_lower.to_numpy().astype(float)
-        self.upper = s.reduced_upper.to_numpy().astype(float)
+        self.lower = state[:, 13:16].copy()
+        self.upper = state[:, 16:19].copy()
         if upload:
             self.upload()
 
     def advance(self):
         s = self.s
-        forces = s.hydrodynamic_force.to_numpy()
-        torques = s.hydrodynamic_torque.to_numpy()
+        state = np.empty((s.body_count, 6), np.float32)
+        s._download_rigid_state(state, False)
+        forces, torques = state[:, :3].astype(float), state[:, 3:].astype(float)
         gravity = np.array(s.config.gravity) * s.scales.dt_s**2 / s.scales.dx_m
         for b in range(s.body_count):
             if self.mass[b] <= 1e-15:

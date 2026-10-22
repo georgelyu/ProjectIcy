@@ -60,6 +60,7 @@ class ConfigurationTests(unittest.TestCase):
             {"phase_normal_epsilon": -1},
             {"density_gradient_source_limit": 0.1},
             {"cm_acoustic_relaxation_rate": 2},
+            {"momentum_collision_model": "cm_hrr"},
             {"ice_bodies": (c.bodies[0], c.bodies[0])},
             {"gravity": (0, 0, -9.8)},
             {"boundary_cells": True},

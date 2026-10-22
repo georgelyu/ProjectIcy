@@ -130,34 +130,21 @@ class MirrorGradientTests(unittest.TestCase):
         s._gradients()
         self.assertTrue(np.isfinite(s.phase_gradient_lattice.to_numpy()).all())
 
-    def test_all_density_source_paths_read_the_cached_vector(self):
+    def test_home_pressure_and_collision_use_velocity_moments(self):
         s = self.s
-        # Deliberately prescribe a gradient unlike the spatial phase. This
-        # catches hidden stencil rescans in seeding, collision and recovery.
         s.water_phase.fill(0.6)
-        g = np.array([0.002, -0.001, 0.003])
-        u = np.array([0.005, 0.003, -0.002])
-        s.phase_gradient_lattice.fill(g.tolist())
-        s.velocity_lattice.fill(u.tolist())
-        s.force_density.fill(0)
+        s.phase_gradient_lattice.fill([.002, -.001, .003])
+        s.velocity_lattice.fill([.005, .003, -.002])
+        s.home_acceleration.fill(0)
         seed_cached_source(s)
         I = (8, 10, 10)
-        source = (1 - s.rho_air) * np.dot(u, g)
-        f = s.f.to_numpy()[I]
-        self.assertAlmostEqual(float(f.sum()), -0.5 * source, delta=2e-8)
+        rho = .6 + .4*s.rho_air
+        self.assertAlmostEqual(float(s.home[I][0]), 3*.01/rho, delta=2e-8)
+        before = s.home.to_numpy()[I]
         s._collide_momentum()
-        self.assertAlmostEqual(
-            float(s.f_post.to_numpy()[I].sum() - f.sum()), source, delta=2e-8
-        )
-        self.assertEqual(float(s.density_source_scale[I]), 1.0)
-        # Both recovery entry points close the prescribed pressure with the
-        # same cache, despite spatially constant phase (actual gradient=0).
-        s._recover_momentum()
-        self.assertAlmostEqual(float(s.pressure_lattice[I]), 0.01, delta=2e-8)
-        moving = s.f.to_numpy().sum(-1, dtype=np.float64) - s.f.to_numpy()[..., 13]
-        s.moving_population_sum.from_numpy(moving)
+        np.testing.assert_allclose(s.home_post.to_numpy()[I][:4], before[:4], atol=2e-8)
         s._recover_pressure()
-        self.assertAlmostEqual(float(s.pressure_lattice[I]), 0.01, delta=2e-8)
+        self.assertAlmostEqual(float(s.pressure_lattice[I]), .01, delta=2e-8)
 
     def check_geometry_refresh(self, melt=False):
         s = self.s

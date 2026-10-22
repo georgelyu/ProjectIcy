@@ -143,6 +143,10 @@ class MirrorGradient3D:
                                 * (self._wall_phase_sample(I, c) - self.water_phase[I])
                             )
             gradient = 3 * rhs
+        self._store_gradient(I, gradient)
+
+    @ti.func
+    def _store_gradient(self, I, gradient):
         self.phase_gradient_lattice[I] = gradient
         self.capillary_stress[I] = (
             1.5
@@ -154,13 +158,44 @@ class MirrorGradient3D:
             )
         )
 
-    @ti.kernel
-    def _gradients(self):
-        for I in ti.grouped(self.water_phase):
-            self._write_gradient(I)
+    def _gradients(self, classified=False):
+        if not classified:
+            self._classify_home()
+        self._gradients_regular()
+        self._gradients_ice()
+
+    @ti.func
+    def _write_regular_gradient(self, I, flag):
+        rhs = ti.Vector.zero(ti.f32, 3)
+        if flag >= 0:
+            for q in ti.static(range(Q)):
+                if ti.static(q != REST):
+                    c = direction(q)
+                    J = I + c
+                    if flag == 1:
+                        J = self._tank_mirror_index(J)
+                    rhs += (
+                        weight(q)
+                        * ti.cast(c, ti.f32)
+                        * (self.water_phase[J] - self.water_phase[I])
+                    )
+        self._store_gradient(I, 3 * rhs)
 
     @ti.kernel
-    def _refill_gradients(self):
+    def _gradients_regular(self):
+        for I in ti.grouped(self.water_phase):
+            flag = self._home_boundary[I]
+            if flag < 2:
+                self._write_regular_gradient(I, flag)
+
+    @ti.kernel
+    def _gradients_ice(self):
+        for I in ti.grouped(self.water_phase):
+            if self._home_boundary[I] == 2:
+                self._write_gradient(I)
+
+    @ti.func
+    def _refill_gradient_bounds(self):
         # Coverage can change without any label flipping, e.g. sub-cell ice
         # movement or partial melting. Both change the mirror sampling point.
         lo = ti.min(self.refill_lower[None], self._gradient_geometry_lower[None])
@@ -171,5 +206,35 @@ class MirrorGradient3D:
         hi = ti.min(hi + radius + 1, ti.Vector(self.shape))
         if not changed:
             hi = lo
+        return lo, hi
+
+    def _refill_gradients(self):
+        self._classify_refill_gradients()
+        self._refill_gradients_regular()
+        self._refill_gradients_ice()
+
+    @ti.kernel
+    def _classify_refill_gradients(self):
+        lo, hi = self._refill_gradient_bounds()
         for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
-            self._write_gradient(ti.Vector([i, j, k]))
+            I = ti.Vector([i, j, k])
+            # Geometry just changed, so the pre-stream classification may be
+            # stale. Reclassify only this halo and use the same arithmetic as
+            # the full gradient update, including planar tank corners.
+            self._home_boundary[I] = ti.cast(self._home_boundary_at(I), ti.i8)
+
+    @ti.kernel
+    def _refill_gradients_regular(self):
+        lo, hi = self._refill_gradient_bounds()
+        for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
+            I = ti.Vector([i, j, k])
+            if self._home_boundary[I] < 2:
+                self._write_regular_gradient(I, self._home_boundary[I])
+
+    @ti.kernel
+    def _refill_gradients_ice(self):
+        lo, hi = self._refill_gradient_bounds()
+        for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
+            I = ti.Vector([i, j, k])
+            if self._home_boundary[I] == 2:
+                self._write_gradient(I)

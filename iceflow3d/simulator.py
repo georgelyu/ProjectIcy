@@ -1,8 +1,4 @@
-"""CUDA/CPU Taichi D3Q27 flow, moving ice, and material-frame melting.
-
-Pressure populations carry dynamic pressure, not an isothermal rho/3.
-Material density is independently interpolated from the bounded water phase.
-"""
+"""HOME central-moment flow, D3Q7 in-place phase, moving and melting ice."""
 # ruff: noqa: E741 -- I and J are Taichi grouped grid indices.
 
 import math
@@ -13,17 +9,12 @@ from .config import IceFlowConfig, LatticeScales, integer
 from .lattice import (
     Q,
     REST,
-    W0,
     density,
     direction,
-    inverse_basis,
-    mixture_kinematic_viscosity,
-    momentum_equilibrium,
-    momentum_rest_velocity,
-    phase_equilibrium,
-    transform,
     weight,
 )
+from .home import HomeMomentum
+from .phase import InPlacePhase, phase_equilibrium7
 from .gradients import MirrorGradient3D
 from .rigid import RigidBodies
 from .thermal import Thermal3D
@@ -42,10 +33,12 @@ def initialize_taichi(backend):
         )
     elif ti.lang.impl.current_cfg().arch != arch:
         raise RuntimeError("Taichi is already initialized with a different backend")
+    elif ti.lang.impl.current_cfg().default_fp != ti.f32:
+        raise RuntimeError("IceFlow3D requires Taichi default_fp=ti.f32")
 
 
 @ti.data_oriented
-class IceFlow3D(MirrorGradient3D, Thermal3D):
+class IceFlow3D(HomeMomentum, InPlacePhase, MirrorGradient3D, Thermal3D):
     # Scratch bounds are reconstructed by rasterization, not restart state.
     _transient_field_names = frozenset(
         ("_gradient_geometry_lower", "_gradient_geometry_upper")
@@ -59,6 +52,8 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 "global phase-volume correction is commented out; "
                 "set conserve_phase_volume=False"
             )
+        if config.gas_state_repair:
+            raise ValueError("HOME does not use gas-state repair")
         initialize_taichi(config.backend)
         self.config, self.scales = config, LatticeScales.from_iceflow_config(config)
         self.shape = (config.nx, config.ny, config.nz)
@@ -80,27 +75,33 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         self.nu_air = (
             self.mu_air / config.rho_air * self.scales.dt_s / self.scales.dx_m**2
         )
-        self.f, self.f_post, self.h, self.h_post = [ti.field(ti.f32) for _ in range(4)]
-        for population in (self.f, self.f_post, self.h, self.h_post):
-            ti.root.dense(ti.l, Q).dense(ti.ijk, self.shape).place(population)
+        self.home = ti.Vector.field(10, ti.f32, shape=self.shape, layout=ti.Layout.SOA)
+        self.home_post = ti.Vector.field(
+            10, ti.f32, shape=self.shape, layout=ti.Layout.SOA
+        )
+        # Rebuilt by every HOME stream; scratch masks are not restart state.
+        self._home_boundary = ti.field(ti.i8, shape=self.shape)
+        self._transient_field_names = self._transient_field_names | {"_home_boundary"}
+        self.h = ti.field(ti.f32)
+        ti.root.dense(ti.l, 7).dense(ti.ijk, self.shape).place(self.h)
+        self.phase_parity = ti.field(ti.i32, shape=())
         for name in (
             "water_phase",
             "pressure_lattice",
             "old_pressure",
             "coverage",
-            "density_source_scale",
         ):
             setattr(self, name, ti.field(ti.f32, shape=self.shape))
         for name in (
             "velocity_lattice",
             "old_velocity",
             "force_density",
+            "home_acceleration",
             "phase_gradient_lattice",
             "phase_mass_flux",
         ):
             setattr(self, name, ti.Vector.field(3, ti.f32, shape=self.shape))
         self.capillary_stress = ti.Matrix.field(3, 3, ti.f32, shape=self.shape)
-        self.moving_population_sum = ti.field(ti.f64, shape=self.shape)
         # IDs: -1 fluid, -2 container, -3 unresolved newly exposed cavity, >=0 ice.
         self.solid_body_id = ti.field(ti.i32, shape=self.shape)
         self.previous_body_id = ti.field(ti.i32, shape=self.shape)
@@ -122,22 +123,22 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         self.body_center = ti.Vector.field(3, ti.f32, shape=self.body_count)
         self.body_velocity = ti.Vector.field(3, ti.f32, shape=self.body_count)
         self.body_angular_velocity = ti.Vector.field(3, ti.f32, shape=self.body_count)
-        self.hydrodynamic_force = ti.Vector.field(3, ti.f64, shape=self.body_count)
-        self.hydrodynamic_torque = ti.Vector.field(3, ti.f64, shape=self.body_count)
-        self.reduced_mass = ti.field(ti.f64, shape=self.body_count)
-        self.reduced_first = ti.Vector.field(3, ti.f64, shape=self.body_count)
-        self.reduced_second = ti.Matrix.field(3, 3, ti.f64, shape=self.body_count)
+        self.hydrodynamic_force = ti.Vector.field(3, ti.f32, shape=self.body_count)
+        self.hydrodynamic_torque = ti.Vector.field(3, ti.f32, shape=self.body_count)
+        self.reduced_mass = ti.field(ti.f32, shape=self.body_count)
+        self.reduced_first = ti.Vector.field(3, ti.f32, shape=self.body_count)
+        self.reduced_second = ti.Matrix.field(3, 3, ti.f32, shape=self.body_count)
         self.reduced_lower = ti.Vector.field(3, ti.f32, shape=self.body_count)
         self.reduced_upper = ti.Vector.field(3, ti.f32, shape=self.body_count)
         self.invalid_index = ti.field(ti.i32, shape=())
         self.maximum_speed = ti.field(ti.f32, shape=())
         self.peak_speed = ti.field(ti.f32, shape=())
         self.repair_count = ti.field(ti.i32, shape=())
-        self.phase_clip_volume = ti.field(ti.f64, shape=())
-        self.phase_balance_sum = ti.field(ti.f64, shape=())
-        self.phase_balance_capacity = ti.field(ti.f64, shape=())
-        self.phase_volume_projection_m3 = ti.field(ti.f64, shape=())
-        self.phase_projection_momentum_n_s = ti.Vector.field(3, ti.f64, shape=())
+        self.phase_clip_volume = ti.field(ti.f32, shape=())
+        self.phase_balance_sum = ti.field(ti.f32, shape=())
+        self.phase_balance_capacity = ti.field(ti.f32, shape=())
+        self.phase_volume_projection_m3 = ti.field(ti.f32, shape=())
+        self.phase_projection_momentum_n_s = ti.Vector.field(3, ti.f32, shape=())
         self.pending_cells = 0
         self._allocate_thermal()
         self.rigid = RigidBodies(self)
@@ -147,8 +148,7 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         self._initialize_phase()
         for _ in range(config.phase_warmup_steps):
             self._gradients()
-            self._collide_phase()
-            self._stream(True)
+            self._collide_phase(moving_walls=False)
             self._recover_phase()
         self._initialize_water_heat()
         self._build_reference()
@@ -156,7 +156,9 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         self._forces(False)
         self._seed_populations()
         self.initial_ice_mass_kg = self.rigid.mass.copy() * self.scales.mass_kg
-        self.initial_water_volume_m3 = float(self.water_volume.to_numpy().sum())
+        self.initial_water_volume_m3 = float(
+            self.water_volume.to_numpy().sum(dtype=float)
+        )
         self.initial_phase_volume_m3 = float(
             self.water_phase.to_numpy().sum(dtype=np.float64) * self.cell_volume
         )
@@ -255,6 +257,35 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         )
 
     @ti.kernel
+    def _upload_rigid_state(self, values: ti.types.ndarray(dtype=ti.f32, ndim=2)):
+        for b in range(self.body_count):
+            for a in ti.static(range(3)):
+                self.body_origin[b][a] = values[b, a]
+                self.body_center[b][a] = values[b, 12 + a]
+                self.body_velocity[b][a] = values[b, 15 + a]
+                self.body_angular_velocity[b][a] = values[b, 18 + a]
+                for c in ti.static(range(3)):
+                    self.body_rotation[b][a, c] = values[b, 3 + 3 * a + c]
+
+    @ti.kernel
+    def _download_rigid_state(
+        self, values: ti.types.ndarray(dtype=ti.f32, ndim=2), mass: ti.template()
+    ):
+        for b in range(self.body_count):
+            if ti.static(mass):
+                values[b, 0] = self.reduced_mass[b]
+                for a in ti.static(range(3)):
+                    values[b, 1 + a] = self.reduced_first[b][a]
+                    values[b, 13 + a] = self.reduced_lower[b][a]
+                    values[b, 16 + a] = self.reduced_upper[b][a]
+                    for c in ti.static(range(3)):
+                        values[b, 4 + 3 * a + c] = self.reduced_second[b][a, c]
+            else:
+                for a in ti.static(range(3)):
+                    values[b, a] = self.hydrodynamic_force[b][a]
+                    values[b, 3 + a] = self.hydrodynamic_torque[b][a]
+
+    @ti.kernel
     def _rasterize(self):
         bnd = ti.static(self.config.boundary_cells)
         self._gradient_geometry_lower[None] = ti.Vector(self.shape)
@@ -312,8 +343,8 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                     )
                 phi = 0.5 + 0.5 * ti.tanh(2 * distance / self.config.interface_width)
             self.water_phase[I] = phi
-            for q in range(Q):
-                self.h[I, q] = weight(q) * phi
+            for q in ti.static(range(7)):
+                self.h[I, q] = phase_equilibrium7(q, phi, ti.Vector.zero(ti.f32, 3))
 
     def _build_reference(self):
         phase = self.water_phase.to_numpy()
@@ -364,71 +395,6 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 )
 
     @ti.func
-    def _set_momentum_equilibrium(self, I, phi, p, u):
-        rho = density(phi, self.rho_air)
-        force = self.force_density[I]
-        grad = self.phase_gradient_lattice[I]
-        for q in range(Q):
-            c = ti.cast(direction(q), ti.f32)
-            correction = (
-                -1.5
-                * weight(q)
-                * (c.dot(force) + (1 - self.rho_air) * c.dot(u) * c.dot(grad))
-            )
-            self.f[I, q] = momentum_equilibrium(q, p, rho, u) + correction
-        self.velocity_lattice[I] = u
-
-    @ti.func
-    def _set_equilibrium(self, I, phi, p, u):
-        self._set_momentum_equilibrium(I, phi, p, u)
-        for q in range(Q):
-            self.h[I, q] = phase_equilibrium(q, phi, u)
-
-    @ti.kernel
-    def _collide_phase(self):
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                phi, u = self.water_phase[I], self.velocity_lattice[I]
-                g = self.phase_gradient_lattice[I]
-                normal = g / ti.sqrt(
-                    g.dot(g) + self.config.phase_normal_epsilon**2 + 1e-28
-                )
-                base = ti.Vector.zero(ti.f32, Q)
-                residual_first = ti.Vector.zero(ti.f32, 3)
-                for q in ti.static(range(Q)):
-                    c = ti.cast(direction(q), ti.f32)
-                    eq = phase_equilibrium(q, phi, u)
-                    src = (
-                        weight(q)
-                        * 4
-                        * phi
-                        * (1 - phi)
-                        / self.config.interface_width
-                        * c.dot(normal)
-                    )
-                    base[q] = eq + 0.5 * src
-                    residual_first += (c - u) * (self.h[I, q] - eq + 0.5 * src)
-                # By linearity, T^-1(T(base) + delta) = base + T^-1(delta).
-                # Avoid a forward transform of an already known population.
-                moments = ti.Vector.zero(ti.f32, Q)
-                rate = ti.static(1 / (0.5 + 3 * self.config.mobility))
-                moments[9] += (1 - rate) * residual_first.x
-                moments[3] += (1 - rate) * residual_first.y
-                moments[1] += (1 - rate) * residual_first.z
-                post = base + transform(moments, u, True)
-                outgoing = ti.cast(0.0, ti.f64)
-                flux = ti.Vector.zero(ti.f32, 3)
-                for q in ti.static(range(Q)):
-                    if ti.static(q != REST):
-                        outgoing += ti.cast(post[q], ti.f64)
-                    self.h_post[I, q] = post[q]
-                    flux += (
-                        0.5 * (self.h[I, q] + post[q]) * ti.cast(direction(q), ti.f32)
-                    )
-                self.h_post[I, REST] = ti.cast(ti.cast(phi, ti.f64) - outgoing, ti.f32)
-                self.phase_mass_flux[I] = (1 - self.rho_air) * (flux - phi * u)
-
-    @ti.func
     def _capillary_neighbor(self, I, c):
         J = I + c
         stress = self.capillary_stress[I]
@@ -450,7 +416,13 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         return stress
 
     @ti.func
-    def _force_at(self, I, with_flux: ti.template()):
+    def _force_at(
+        self,
+        I,
+        with_flux: ti.template(),
+        interior: ti.template() = False,
+        tank: ti.template() = False,
+    ):
         force = ti.Vector.zero(ti.f32, 3)
         if self._fluid(I):
             phi = self.water_phase[I]
@@ -467,24 +439,60 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 * gravity
             )
             if ti.static(self.sigma > 0):
-                for q in range(Q):
-                    if q != REST:
+                wall = False
+                # The center-stress contribution sums to zero by quadrature
+                # symmetry. Specialize the fluid stencil; handle reflected
+                # wall tensors only on links actually touching a solid.
+                for q in ti.static(range(Q)):
+                    if ti.static(q != REST):
                         c = direction(q)
-                        force += (
-                            3
-                            * weight(q)
-                            * (
-                                self.capillary_stress[I]
-                                + self._capillary_neighbor(I, c)
-                            )
-                            @ ti.cast(c, ti.f32)
-                        )
+                        g = ti.Vector.zero(ti.f32, 3)
+                        valid = False
+                        if ti.static(tank):
+                            # A one-link ghost of a planar tank wall reflects
+                            # to the nearest fluid layer. P(R*g)=R*P(g)*R.
+                            J = I + c
+                            b = ti.static(self.config.boundary_cells)
+                            K = ti.max(b, ti.min(ti.Vector(self.shape) - b - 1, J))
+                            g = self.phase_gradient_lattice[K]
+                            for a in ti.static(range(3)):
+                                if J[a] != K[a]:
+                                    g[a] = -g[a]
+                            valid = True
+                        else:
+                            if self._force_link_fluid(I + c, interior, False):
+                                g = self.phase_gradient_lattice[I + c]
+                                valid = True
+                            else:
+                                wall = True
+                        if valid:
+                            # P*c = K*(|grad(phi)|^2*c - (grad(phi).c)*grad(phi)).
+                            # Read three gradient scalars rather than a 3x3
+                            # cached tensor, retaining the same stress law.
+                            cf = ti.cast(c, ti.f32)
+                            force += (
+                                4.5
+                                * self.sigma
+                                * self.config.interface_width
+                                * weight(q)
+                            ) * (g.dot(g) * cf - g.dot(cf) * g)
+                if not ti.static(interior or tank) and wall:
+                    for q in range(Q):
+                        if q != REST:
+                            c = direction(q)
+                            if not self._fluid(I + c):
+                                force += (
+                                    3
+                                    * weight(q)
+                                    * self._capillary_neighbor(I, c)
+                                    @ ti.cast(c, ti.f32)
+                                )
             if ti.static(with_flux):
                 for a, sign in ti.static(ti.ndrange(3, 2)):
                     c = ti.Vector.zero(ti.i32, 3)
                     c[a] = 2 * sign - 1
                     J = I + c
-                    if self._fluid(J):
+                    if self._force_link_fluid(J, interior, tank):
                         # Conservative donor transport for the phase mass flux.
                         # The added face-jump term dissipates kinetic energy and
                         # vanishes for uniform velocity, without changing the
@@ -495,7 +503,9 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                         donor = self.velocity_lattice[J]
                         if (2 * sign - 1) * mass_flux >= 0:
                             donor = self.velocity_lattice[I]
-                        flux = mass_flux * donor
+                        # Velocity formulation: -div(J u) + u div(J).
+                        # Uniform velocity is invariant even as phase diffuses.
+                        flux = mass_flux * (donor - self.velocity_lattice[I])
                         if ti.static(self.config.phase_flux_acceleration_limit > 0):
                             budget = (
                                 self.config.phase_flux_acceleration_limit
@@ -508,183 +518,43 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                         force -= (2 * sign - 1) * flux
         return force
 
-    @ti.kernel
-    def _forces(self, with_flux: ti.template()):
-        for I in ti.grouped(self.water_phase):
-            self.force_density[I] = self._force_at(I, with_flux)
+    def _forces(self, with_flux, moment_pressure=False):
+        self._classify_home()
+        self._forces_bulk(with_flux, moment_pressure)
+        self._forces_tank(with_flux, moment_pressure)
+        self._forces_boundary(with_flux, moment_pressure)
 
     @ti.kernel
-    def _collide_momentum(self):
+    def _forces_bulk(self, with_flux: ti.template(), moment_pressure: ti.template()):
         for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                phi = self.water_phase[I]
-                rho = density(phi, self.rho_air)
-                u = self.velocity_lattice[I]
-                self.old_velocity[I], self.old_pressure[I] = u, self.pressure_lattice[I]
-                g = self.phase_gradient_lattice[I]
-                # Compatibility diagnostic: no separate density limiter.
-                self.density_source_scale[I] = 1.0
-                nu = (
-                    mixture_kinematic_viscosity(
-                        phi,
-                        self._water_temperature(I),
-                        self.config.rho_water,
-                        self.config.rho_air,
-                        self.mu_air,
-                    )
-                    * self.scales.dt_s
-                    / self.scales.dx_m**2
+            if self._home_boundary[I] == 0:
+                force = self._force_at(I, with_flux, True)
+                self.force_density[I] = force
+                self.home_acceleration[I] = self._home_acceleration_at(
+                    I, force, True, moment_pressure
                 )
-                rate = 1 / (0.5 + 3 * nu)
-                base, residual = ti.Vector.zero(ti.f32, Q), ti.Vector.zero(ti.f32, Q)
-                old_moving, eq_moving, source_moving = 0.0, 0.0, 0.0
-                for q in ti.static(range(Q)):
-                    c = ti.cast(direction(q), ti.f32)
-                    eq = momentum_equilibrium(q, self.pressure_lattice[I], rho, u)
-                    source = (
-                        3
-                        * weight(q)
-                        * (
-                            c.dot(self.force_density[I])
-                            + (1 - self.rho_air) * c.dot(u) * c.dot(g)
-                        )
-                    )
-                    base[q] = eq + 0.5 * source
-                    residual[q] = self.f[I, q] - eq + 0.5 * source
-                    if ti.static(q != REST):
-                        old_moving += self.f[I, q]
-                        eq_moving += eq
-                        source_moving += source
-                moments = ti.Vector.zero(ti.f32, Q)
-                non_eq = transform(residual, u, False)
-                bulk = ti.static(self.config.cm_acoustic_relaxation_rate)
-                trace = (non_eq[18] + non_eq[6] + non_eq[2]) / 3
-                reconstructed = ti.Matrix.zero(ti.f32, 3, 3)
-                if ti.static(self.config.momentum_collision_model == "cm_hrr"):
-                    reconstructed = self._regularized_stress(I, rho, 1 / rate)
-                    reconstructed -= (
-                        reconstructed.trace() / 3 * ti.Matrix.identity(ti.f32, 3)
-                    )
-                    kinetic = ti.Matrix(
-                        [
-                            [non_eq[18] - trace, non_eq[12], non_eq[10]],
-                            [non_eq[12], non_eq[6] - trace, non_eq[4]],
-                            [non_eq[10], non_eq[4], non_eq[2] - trace],
-                        ]
-                    )
-                    blend = ti.static(self.config.hrr_kinetic_blend)
-                    reconstructed = blend * kinetic + (1 - blend) * reconstructed
-                if ti.static(self.config.momentum_collision_model == "cm_mrt"):
-                    # Kinetic deviatoric stress: no velocity-gradient estimate
-                    # or HRR blending enters CM-MRT. It also defines the
-                    # second-order content of the central fourth moments.
-                    reconstructed = ti.Matrix(
-                        [
-                            [non_eq[18] - trace, non_eq[12], non_eq[10]],
-                            [non_eq[12], non_eq[6] - trace, non_eq[4]],
-                            [non_eq[10], non_eq[4], non_eq[2] - trace],
-                        ]
-                    )
-                for a, b, c in ti.static(ti.ndrange(3, 3, 3)):
-                    k = ti.static(a * 9 + b * 3 + c)
-                    if ti.static((a, b, c) in ((2, 0, 0), (0, 2, 0), (0, 0, 2))):
-                        dev = non_eq[k] - trace
-                        if ti.static(self.config.momentum_collision_model == "cm_hrr"):
-                            axis = ti.static(0 if a == 2 else (1 if b == 2 else 2))
-                            dev = reconstructed[axis, axis]
-                        moments[k] += (1 - rate) * dev + (1 - bulk) * trace
-                    elif ti.static(a + b + c == 2):
-                        dev = non_eq[k]
-                        if ti.static(self.config.momentum_collision_model == "cm_hrr"):
-                            axis0 = ti.static(0 if a else 1)
-                            axis1 = ti.static(2 if c else 1)
-                            dev = reconstructed[axis0, axis1]
-                        moments[k] += (1 - rate) * dev
-                    elif ti.static(a + b + c == 4):
-                        # Relax independent fourth-order modes after removing
-                        # their second-order shear content (central Hermite
-                        # basis). Retain that content at the molecular shear
-                        # rate. Setting monomial fourth moments to equilibrium
-                        # instead couples ghost modes back into kinetic shear.
-                        # In 3D even 220/202/022 retain deviatoric content too.
-                        high = 0.0
-                        if ti.static(a == 0):
-                            high = (reconstructed[1, 1] + reconstructed[2, 2]) / 3
-                        elif ti.static(b == 0):
-                            high = (reconstructed[0, 0] + reconstructed[2, 2]) / 3
-                        elif ti.static(c == 0):
-                            high = (reconstructed[0, 0] + reconstructed[1, 1]) / 3
-                        elif ti.static(a == 2):
-                            high = reconstructed[1, 2] / 3
-                        elif ti.static(b == 2):
-                            high = reconstructed[0, 2] / 3
-                        else:
-                            high = reconstructed[0, 1] / 3
-                        moments[k] += (1 - rate) * high
-                        if ti.static(a % 2 == 0 and b % 2 == 0 and c % 2 == 0):
-                            moments[k] += (1 - bulk) * (non_eq[k] - high)
-                    elif ti.static(
-                        a % 2 == 0 and b % 2 == 0 and c % 2 == 0 and a + b + c >= 4
-                    ):
-                        # All even pressure modes share the acoustic rate.
-                        moments[k] += (1 - bulk) * non_eq[k]
-                if ti.static(
-                    self.config.momentum_collision_model == "cm_hrr"
-                    and self.config.hrr_cubic_correction
-                ):
-                    # D3Q27 aliases c_a^3=c_a and omits rho*u_a^3 from
-                    # the diagonal third equilibrium moment. HRR supplies the
-                    # physical shear explicitly; cancel the remaining
-                    # half-step streaming defect in the post-collision stress.
-                    cubic = self._hrr_cubic_correction(I)
-                    moments[18] += cubic.x
-                    moments[6] += cubic.y
-                    moments[2] += cubic.z
-                    moments[24] += (cubic.x + cubic.y) / 3
-                    moments[20] += (cubic.x + cubic.z) / 3
-                    moments[8] += (cubic.y + cubic.z) / 3
-                    moments[26] += cubic.sum() / 9
-                post = base + transform(moments, u, True)
-                if ti.static(True):
-                    # Close the raw pressure mode independently of the shear
-                    # relaxation in both collision models. A pure 222 lift changes sum(q != rest) by +delta
-                    # and preserves all lower moments, including momentum.
-                    actual = 0.0
-                    for q in ti.static(range(Q)):
-                        if ti.static(q != REST):
-                            actual += post[q]
-                    target = (
-                        old_moving
-                        - bulk * (old_moving - eq_moving)
-                        + (1 - 0.5 * bulk) * source_moving
-                    )
-                    for q in ti.static(range(Q)):
-                        c = direction(q)
-                        post[q] += (
-                            (target - actual)
-                            * inverse_basis(c.x, 0.0, 2)
-                            * inverse_basis(c.y, 0.0, 2)
-                            * inverse_basis(c.z, 0.0, 2)
-                        )
-                # Enforce the local forced first moment to roundoff accuracy.
-                # rho*u and the equilibrium are rounded independently in f32;
-                # repeatedly replacing the incoming momentum by that rounded
-                # equilibrium biases low-viscosity shear, especially at mixed
-                # densities. An antisymmetric axis-pair lift changes only the
-                # first raw moment among orders <=2 and leaves pressure intact.
-                defect = ti.cast(self.force_density[I], ti.f64)
-                for q in ti.static(range(Q)):
-                    defect += ti.cast(direction(q), ti.f64) * (
-                        ti.cast(self.f[I, q], ti.f64) - ti.cast(post[q], ti.f64)
-                    )
-                for q in ti.static(range(Q)):
-                    c = direction(q)
-                    correction = ti.cast(0.0, ti.f64)
-                    if ti.abs(c).sum() == 1:
-                        correction = 0.5 * ti.cast(c, ti.f64).dot(defect)
-                    self.f_post[I, q] = ti.cast(
-                        ti.cast(post[q], ti.f64) + correction, ti.f32
-                    )
+
+    @ti.kernel
+    def _forces_tank(self, with_flux: ti.template(), moment_pressure: ti.template()):
+        for I in ti.grouped(self.water_phase):
+            if self._home_boundary[I] == 1:
+                force = self._force_at(I, with_flux, False, True)
+                self.force_density[I] = force
+                self.home_acceleration[I] = self._home_acceleration_at(
+                    I, force, False, moment_pressure, True
+                )
+
+    @ti.kernel
+    def _forces_boundary(
+        self, with_flux: ti.template(), moment_pressure: ti.template()
+    ):
+        for I in ti.grouped(self.water_phase):
+            if self._home_boundary[I] == 2:
+                force = self._force_at(I, with_flux)
+                self.force_density[I] = force
+                self.home_acceleration[I] = self._home_acceleration_at(
+                    I, force, False, moment_pressure
+                )
 
     @ti.func
     def _stress_neighbor_velocity(self, I, c):
@@ -716,271 +586,20 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 neighbor = 2 * ub - center
         return neighbor
 
-    @ti.func
-    def _regularized_stress(self, I, rho, tau):
-        """3D form of v3's HRR finite-difference, time-centered shear stress."""
-        gradient = ti.Matrix.zero(ti.f32, 3, 3)
-        for q in range(Q):
-            if q != REST:
-                c = direction(q)
-                neighbor = self._stress_neighbor_velocity(I, c)
-                gradient += 3 * weight(q) * neighbor.outer_product(ti.cast(c, ti.f32))
-        return -rho * tau / 3 * (gradient + gradient.transpose())
-
-    @ti.func
-    def _hrr_cubic_correction(self, I):
-        derivative = ti.Vector.zero(ti.f32, 3)
-        for q in range(Q):
-            if q != REST:
-                c = direction(q)
-                J = I + c
-                rho = density(self.water_phase[I], self.rho_air)
-                if self._fluid(J):
-                    rho = density(self.water_phase[J], self.rho_air)
-                neighbor = self._stress_neighbor_velocity(I, c)
-                derivative += 3 * weight(q) * ti.cast(c, ti.f32) * rho * neighbor**3
-        return -0.5 * derivative
-
-    @ti.func
-    def _touches_ice(self, I):
-        near = False
-        for q in range(Q):
-            J = I + direction(q)
-            if self._inside(J) and self.solid_body_id[J] >= 0:
-                near = True
-        return near
+    def _seed_refill(self):
+        counts = self._find_refill_changes()
+        if int(counts[0]) > 0:
+            self._seed_refill_region()
+        return counts
 
     @ti.kernel
-    def _prepare_boundaries(self):
-        """Read old populations before *any* streaming thread overwrites them."""
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I) and self._touches_ice(I):
-                raw = ti.Vector.zero(ti.f32, Q)
-                for q in ti.static(range(Q)):
-                    raw[q] = self.f_post[I, q]
-                for q in range(Q):
-                    c = direction(q)
-                    J = I + c
-                    if self._inside(J) and self.solid_body_id[J] >= 0:
-                        b = self.solid_body_id[J]
-                        cf = ti.cast(c, ti.f32)
-                        eta = self._boundary_link_fraction(I, J)
-                        point = ti.cast(I, ti.f32) + 0.5 + eta * cf
-                        ub = self._body_velocity_at(point, b)
-                        rho = density(self.water_phase[I], self.rho_air)
-                        neq = self.f[I, q] - momentum_equilibrium(
-                            q, self.pressure_lattice[I], rho, self.velocity_lattice[I]
-                        )
-                        reflected = (
-                            momentum_equilibrium(
-                                26 - q, self.pressure_lattice[I], rho, ub
-                            )
-                            + neq
-                            + eta * raw[26 - q]
-                        ) / (1 + eta)
-                        impulse = (cf - ub) * raw[q] - (-cf - ub) * reflected
-                        pref = (1 - eta) * self.reference_pressure[
-                            I.y
-                        ] + eta * self.reference_pressure[J.y]
-                        impulse += 6 * weight(q) * pref * cf
-                        capillary = (
-                            -3
-                            * weight(q)
-                            * (
-                                self.capillary_stress[I]
-                                + self._capillary_neighbor(I, c)
-                            )
-                            @ cf
-                        )
-                        ti.atomic_add(
-                            self.hydrodynamic_force[b],
-                            ti.cast(impulse + capillary, ti.f64),
-                        )
-                        torque = (point - self.body_center[b]).cross(impulse)
-                        torque += (
-                            ti.cast(I, ti.f32) + 0.5 + 0.5 * cf - self.body_center[b]
-                        ).cross(capillary)
-                        ti.atomic_add(
-                            self.hydrodynamic_torque[b], ti.cast(torque, ti.f64)
-                        )
-                        self.f_post[I, q] = reflected
-                        self.h_post[I, q] -= (
-                            6 * weight(q) * self.water_phase[I] * cf.dot(ub)
-                        )
-
-    @ti.kernel
-    def _stream(self, phase_only: ti.template()):
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                for q in ti.static(range(Q)):
-                    J = I + direction(q)
-                    if self._fluid(J):
-                        self.h[J, q] = self.h_post[I, q]
-                        if ti.static(not phase_only):
-                            self.f[J, q] = self.f_post[I, q]
-                    else:
-                        self.h[I, 26 - q] = self.h_post[I, q]
-                        if ti.static(not phase_only):
-                            self.f[I, 26 - q] = self.f_post[I, q]
-
-    @ti.kernel
-    def _stream_recover(self, block_size: ti.template()):
-        """Pull both populations and recover phase/momentum in one memory pass.
-
-        Pressure alone waits for the new phase gradient. Accumulations retain
-        the f64 precision of the separate recovery kernels.
-        """
-        ti.loop_config(block_dim=block_size)
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                total = ti.cast(0.0, ti.f64)
-                momentum = ti.Vector.zero(ti.f64, 3)
-                moving = ti.cast(0.0, ti.f64)
-                for q in ti.static(range(Q)):
-                    J = I - direction(q)
-                    hp, fp = 0.0, 0.0
-                    if self._fluid(J):
-                        hp, fp = self.h_post[J, q], self.f_post[J, q]
-                    else:
-                        hp, fp = self.h_post[I, 26 - q], self.f_post[I, 26 - q]
-                    self.h[I, q], self.f[I, q] = hp, fp
-                    total += ti.cast(hp, ti.f64)
-                    momentum += ti.cast(direction(q), ti.f64) * ti.cast(fp, ti.f64)
-                    if ti.static(q != REST):
-                        moving += ti.cast(fp, ti.f64)
-                bounded = total
-                if not ti.math.isnan(total) and not ti.math.isinf(total):
-                    bounded = ti.min(1.0, ti.max(0.0, total))
-                self.h[I, REST] += ti.cast(bounded - total, ti.f32)
-                phi = ti.cast(bounded, ti.f32)
-                self.water_phase[I] = phi
-                ti.atomic_add(self.phase_clip_volume[None], bounded - total)
-                self.velocity_lattice[I] = ti.cast(
-                    (momentum + 0.5 * ti.cast(self.force_density[I], ti.f64))
-                    / density(phi, self.rho_air),
-                    ti.f32,
-                )
-                self.moving_population_sum[I] = moving
-            else:
-                self.water_phase[I] = 0.0
-                self.velocity_lattice[I] = ti.Vector.zero(ti.f32, 3)
-                if self.solid_body_id[I] >= 0:
-                    self.velocity_lattice[I] = self._body_velocity_at(
-                        ti.cast(I, ti.f32) + 0.5, self.solid_body_id[I]
-                    )
-
-    @ti.kernel
-    def _recover_pressure(self):
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                u = self.velocity_lattice[I]
-                rho = density(self.water_phase[I], self.rho_air)
-                gradient = self.phase_gradient_lattice[I]
-                self.pressure_lattice[I] = ti.cast(
-                    (
-                        self.moving_population_sum[I]
-                        + 0.5 * (1 - self.rho_air) * u.dot(gradient)
-                        + momentum_rest_velocity(rho, u)
-                    )
-                    / (3 * (1 - W0)),
-                    ti.f32,
-                )
-
-    @ti.kernel
-    def _recover_phase(self):
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                total = ti.cast(0.0, ti.f64)
-                for q in range(Q):
-                    total += ti.cast(self.h[I, q], ti.f64)
-                bounded = total
-                if not ti.math.isnan(total) and not ti.math.isinf(total):
-                    bounded = ti.min(1.0, ti.max(0.0, total))
-                self.h[I, REST] += ti.cast(bounded - total, ti.f32)
-                self.water_phase[I] = ti.cast(bounded, ti.f32)
-                ti.atomic_add(self.phase_clip_volume[None], bounded - total)
-            else:
-                self.water_phase[I] = 0.0
-
-    @ti.kernel
-    def _recover_momentum(self):
-        for I in ti.grouped(self.water_phase):
-            if self._fluid(I):
-                rho = density(self.water_phase[I], self.rho_air)
-                momentum = ti.Vector.zero(ti.f64, 3)
-                moving = ti.cast(0.0, ti.f64)
-                for q in range(Q):
-                    momentum += ti.cast(direction(q), ti.f64) * ti.cast(
-                        self.f[I, q], ti.f64
-                    )
-                    if q != REST:
-                        moving += ti.cast(self.f[I, q], ti.f64)
-                u = ti.cast(
-                    (momentum + 0.5 * ti.cast(self.force_density[I], ti.f64)) / rho,
-                    ti.f32,
-                )
-                repaired, pressure = False, 0.0
-                if ti.static(self.config.gas_state_repair):
-                    speed = ti.abs(u).sum()
-                    jump = ti.abs(u - self.old_velocity[I]).sum()
-                    if (
-                        (self.water_phase[I] < 0.5 or speed > 1.0)
-                        and speed > 0.25
-                        and jump > 0.15
-                    ):
-                        total, count, peak, psum = (
-                            ti.Vector.zero(ti.f32, 3),
-                            0.0,
-                            0.0,
-                            0.0,
-                        )
-                        for q in range(Q):
-                            c = direction(q)
-                            if q != REST and self._connected(I, c):
-                                previous = self.old_velocity[I + c]
-                                peak = ti.max(peak, ti.abs(previous).sum())
-                                if ti.abs(previous).sum() <= 0.25:
-                                    total += previous
-                                    psum += self.old_pressure[I + c]
-                                    count += 1
-                        if (
-                            speed > ti.max(0.25, 2 * peak + 0.05)
-                            or speed > 1
-                            and jump > 0.5
-                        ):
-                            u = total / ti.max(count, 1.0)
-                            pressure = psum / ti.max(count, 1.0)
-                            self._set_equilibrium(I, self.water_phase[I], pressure, u)
-                            ti.atomic_add(self.repair_count[None], 1)
-                            repaired = True
-                if not repaired:
-                    gradient = self.phase_gradient_lattice[I]
-                    pressure = (
-                        moving
-                        + 0.5 * (1 - self.rho_air) * u.dot(gradient)
-                        + momentum_rest_velocity(rho, u)
-                    ) / (3 * (1 - W0))
-                self.velocity_lattice[I], self.pressure_lattice[I] = u, pressure
-            else:
-                self.velocity_lattice[I] = ti.Vector.zero(ti.f32, 3)
-                if self.solid_body_id[I] >= 0:
-                    self.velocity_lattice[I] = self._body_velocity_at(
-                        ti.cast(I, ti.f32) + 0.5, self.solid_body_id[I]
-                    )
-
-    @ti.kernel
-    def _seed_refill(self) -> ti.types.vector(2, ti.i32):
+    def _find_refill_changes(self) -> ti.types.vector(2, ti.i32):
         self.openings[None] = 0
         covered = 0
         self.refill_lower[None] = ti.Vector(self.shape)
         self.refill_upper[None] = ti.Vector([-1, -1, -1])
         for I in ti.grouped(self.water_phase):
             valid = self._fluid(I) and self.previous_body_id[I] == -1
-            u = self.velocity_lattice[I]
-            self.refill_state[I] = ti.Vector(
-                [self.water_phase[I], self.pressure_lattice[I], u.x, u.y, u.z]
-            )
-            self.refill_valid[I] = ti.cast(valid, ti.i8)
             if self._fluid(I) and not valid:
                 ti.atomic_add(self.openings[None], 1)
                 ti.atomic_min(self.refill_lower[None], I)
@@ -994,9 +613,28 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         return ti.Vector([self.openings[None], covered])
 
     @ti.kernel
+    def _seed_refill_region(self):
+        # Only newly exposed cells consume the donor cache. Include their
+        # complete one-link halo; untouched regions never enter propagation.
+        lo = ti.max(self.refill_lower[None] - 1, 0)
+        hi = ti.min(self.refill_upper[None] + 2, ti.Vector(self.shape))
+        for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
+            I = ti.Vector([i, j, k])
+            u = self.velocity_lattice[I]
+            self.refill_state[I] = ti.Vector(
+                [self.water_phase[I], self.pressure_lattice[I], u.x, u.y, u.z]
+            )
+            self.refill_valid[I] = ti.cast(
+                self._fluid(I) and self.previous_body_id[I] == -1, ti.i8
+            )
+
+    @ti.kernel
     def _propagate_refill(self):
         self.remaining[None] = 0
-        for I in ti.grouped(self.water_phase):
+        lo = ti.max(self.refill_lower[None] - 1, 0)
+        hi = ti.min(self.refill_upper[None] + 2, ti.Vector(self.shape))
+        for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
+            I = ti.Vector([i, j, k])
             valid, value = self.refill_valid[I], self.refill_state[I]
             if self._fluid(I) and valid == 0:
                 total, count = ti.Vector.zero(ti.f32, 5), 0.0
@@ -1011,6 +649,15 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 else:
                     ti.atomic_add(self.remaining[None], 1)
             self.refill_next[I], self.refill_next_valid[I] = value, valid
+
+    @ti.kernel
+    def _accept_refill_iteration(self):
+        lo = ti.max(self.refill_lower[None] - 1, 0)
+        hi = ti.min(self.refill_upper[None] + 2, ti.Vector(self.shape))
+        for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
+            I = ti.Vector([i, j, k])
+            self.refill_state[I] = self.refill_next[I]
+            self.refill_valid[I] = self.refill_next_valid[I]
 
     @ti.kernel
     def _commit_refill(self):
@@ -1030,13 +677,27 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                         ti.cast(I, ti.f32) + 0.5, self.solid_body_id[I]
                     )
 
-    @ti.kernel
     def _project_refill(self):
+        self._refill_forces()
+        self._write_refill_equilibrium()
+
+    @ti.kernel
+    def _refill_forces(self):
         lo, hi = self.refill_lower[None], self.refill_upper[None] + 1
         for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
             I = ti.Vector([i, j, k])
             if self._fluid(I) and self.previous_body_id[I] != -1:
                 self.force_density[I] = self._force_at(I, False)
+                self.home_acceleration[I] = self._home_acceleration_at(
+                    I, self.force_density[I]
+                )
+
+    @ti.kernel
+    def _write_refill_equilibrium(self):
+        lo, hi = self.refill_lower[None], self.refill_upper[None] + 1
+        for i, j, k in ti.ndrange((lo.x, hi.x), (lo.y, hi.y), (lo.z, hi.z)):
+            I = ti.Vector([i, j, k])
+            if self._fluid(I) and self.previous_body_id[I] != -1:
                 self._set_equilibrium(
                     I,
                     self.water_phase[I],
@@ -1044,83 +705,9 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                     self.velocity_lattice[I],
                 )
 
-    # Global water-inventory correction disabled on 2026-10-21.
-    # Keep the implementation here for a reversible ablation.
-    # @ti.kernel
-    # def _measure_phase_balance(self):
-    #     self.phase_balance_sum[None] = 0.0
-    #     self.phase_balance_capacity[None] = 0.0
-    #     for I in ti.grouped(self.water_phase):
-    #         if self._fluid(I):
-    #             phi = ti.cast(self.water_phase[I], ti.f64)
-    #             ti.atomic_add(self.phase_balance_sum[None], phi)
-    #             ti.atomic_add(self.phase_balance_capacity[None], phi * (1 - phi))
-    #
-    # @ti.kernel
-    # def _project_phase_volume(self, coefficient: ti.f64):
-    #     for I in ti.grouped(self.water_phase):
-    #         if self._fluid(I):
-    #             before = self.water_phase[I]
-    #             after = ti.cast(
-    #                 ti.min(
-    #                     1.0, ti.max(0.0, before + coefficient * before * (1 - before))
-    #                 ),
-    #                 ti.f32,
-    #             )
-    #             delta = after - before
-    #             if delta != 0:
-    #                 self.water_phase[I] = after
-    #                 u = self.velocity_lattice[I]
-    #                 delta_rho = (1 - self.rho_air) * delta
-    #                 # Change the transported amount while retaining local
-    #                 # velocity and dynamic pressure. Keep the existing
-    #                 # nonequilibrium populations rather than resetting them.
-    #                 for q in range(Q):
-    #                     self.h[I, q] += phase_equilibrium(q, delta, u)
-    #                     self.f[I, q] += momentum_equilibrium(q, 0.0, delta_rho, u)
-    #                 ti.atomic_add(
-    #                     self.phase_volume_projection_m3[None],
-    #                     ti.cast(delta, ti.f64) * self.cell_volume,
-    #                 )
-    #                 ti.atomic_add(
-    #                     self.phase_projection_momentum_n_s[None],
-    #                     ti.cast(delta_rho * u, ti.f64)
-    #                     * self.scales.mass_kg
-    #                     * self.scales.velocity_m_s,
-    #                 )
-    #
-    # def _conserve_phase_volume(self):
-    #     """Bounded interface redistribution for this closed water inventory.
-    #
-    #     A sharp moving mask plus local extrapolation does not conserve volume.
-    #     Redistribute its defect over diffuse interfaces, with weights phi(1-phi),
-    #     instead of leaving artificial air holes next to melting ice. The amount
-    #     and associated momentum adjustment are reported explicitly.
-    #     """
-    #     target = self.initial_phase_volume_m3 / self.cell_volume
-    #     # A uniform float32 phase cannot represent arbitrary total volumes:
-    #     # rounding all equal cells has a systematic, not statistical, error.
-    #     tolerance = max(1e-6, np.finfo(np.float32).eps * target)
-    #     for _ in range(4):
-    #         self._measure_phase_balance()
-    #         error = target - float(self.phase_balance_sum[None])
-    #         if abs(error) <= tolerance:
-    #             return
-    #         capacity = float(self.phase_balance_capacity[None])
-    #         if not math.isfinite(error) or capacity <= 1e-20:
-    #             raise RuntimeError(
-    #                 f"cannot conserve phase volume at step {self.steps + 1}"
-    #             )
-    #         self._project_phase_volume(max(-1.0, min(1.0, error / capacity)))
-    #     self._measure_phase_balance()
-    #     if abs(target - float(self.phase_balance_sum[None])) > tolerance:
-    #         raise RuntimeError(
-    #             f"phase volume projection did not converge at step {self.steps + 1}"
-    #         )
-    #
-
     def _refresh_geometry(self, phase_changed=True):
         self._rasterize()
+        self._repair_phase_layout()
         remaining, covered = (int(value) for value in self._seed_refill())
         has_openings = remaining > 0
         self.pending_cells = 0
@@ -1129,8 +716,7 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
             new = int(self.remaining[None])
             # Kernels cache self.field identities. Attribute swapping would
             # repeatedly read the first buffer and strand multi-layer cavities.
-            self.refill_state.copy_from(self.refill_next)
-            self.refill_valid.copy_from(self.refill_next_valid)
+            self._accept_refill_iteration()
             if new == remaining:
                 self.pending_cells = new
                 break
@@ -1153,32 +739,31 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
     def _reduce_mass(self):
         for b in range(self.body_count):
             self.reduced_mass[b] = 0.0
-            self.reduced_first[b] = ti.Vector.zero(ti.f64, 3)
-            self.reduced_second[b] = ti.Matrix.zero(ti.f64, 3, 3)
+            self.reduced_first[b] = ti.Vector.zero(ti.f32, 3)
+            self.reduced_second[b] = ti.Matrix.zero(ti.f32, 3, 3)
             self.reduced_lower[b] = ti.Vector([1e9, 1e9, 1e9])
             self.reduced_upper[b] = ti.Vector([-1e9, -1e9, -1e9])
         # One register reduction per material column, then one set of global
-        # atomics. This removes contention without new scratch buffers or
-        # changing the precision of mass, center of mass or inertia.
+        # atomics, all in FP32. Host pose/contact solves retain NumPy FP64.
         ti.loop_config(block_dim=64)
         for b, i, j in ti.ndrange(
             self.body_count, self.material_mass.shape[1], self.material_mass.shape[2]
         ):
-            total = ti.cast(0.0, ti.f64)
-            first = ti.Vector.zero(ti.f64, 3)
-            second = ti.Matrix.zero(ti.f64, 3, 3)
+            total = ti.cast(0.0, ti.f32)
+            first = ti.Vector.zero(ti.f32, 3)
+            second = ti.Matrix.zero(ti.f32, 3, 3)
             lower = ti.Vector([1e9, 1e9, 1e9])
             upper = ti.Vector([-1e9, -1e9, -1e9])
             for k in range(self.material_mass.shape[3]):
                 mass = self.material_mass[b, i, j, k] / self.scales.mass_kg
                 if mass > 0:
                     point = ti.Vector(
-                        [i + 0.5, j + 0.5, k + 0.5], dt=ti.f64
-                    ) - 0.5 * ti.cast(self.material_size[b], ti.f64)
+                        [i + 0.5, j + 0.5, k + 0.5], dt=ti.f32
+                    ) - 0.5 * ti.cast(self.material_size[b], ti.f32)
                     total += mass
                     first += mass * point
                     second += mass * (
-                        (point.dot(point) + 1 / 6) * ti.Matrix.identity(ti.f64, 3)
+                        (point.dot(point) + 1 / 6) * ti.Matrix.identity(ti.f32, 3)
                         - point.outer_product(point)
                     )
                     lower = ti.min(lower, ti.cast(point - 0.5, ti.f32))
@@ -1190,31 +775,38 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 ti.atomic_min(self.reduced_lower[b], lower)
                 ti.atomic_max(self.reduced_upper[b], upper)
 
+    @ti.func
+    def _scan_stability_at(self, I, phi, p):
+        speed = ti.abs(self.velocity_lattice[I]).sum()
+        ti.atomic_max(self.maximum_speed[None], speed)
+        invalid = (
+            ti.math.isnan(speed)
+            or ti.math.isinf(speed)
+            or speed > self.config.maximum_velocity_lattice
+            or ti.math.isnan(p)
+            or ti.math.isinf(p)
+            or ti.math.isnan(phi)
+            or ti.math.isinf(phi)
+        )
+        if invalid:
+            ti.atomic_min(
+                self.invalid_index[None], (I.x * self.ny + I.y) * self.nz + I.z
+            )
+
     @ti.kernel
     def _scan_stability(self):
         self.invalid_index[None] = self.nx * self.ny * self.nz
         self.maximum_speed[None] = 0.0
         for I in ti.grouped(self.water_phase):
             if self._fluid(I):
-                speed = ti.abs(self.velocity_lattice[I]).sum()
-                ti.atomic_max(self.maximum_speed[None], speed)
-                invalid = (
-                    ti.math.isnan(speed)
-                    or ti.math.isinf(speed)
-                    or speed > self.config.maximum_velocity_lattice
+                self._scan_stability_at(
+                    I, self.water_phase[I], self.pressure_lattice[I]
                 )
-                p = self.pressure_lattice[I]
-                invalid = invalid or ti.math.isnan(p) or ti.math.isinf(p)
-                phi = self.water_phase[I]
-                invalid = invalid or ti.math.isnan(phi) or ti.math.isinf(phi)
-                if invalid:
-                    ti.atomic_min(
-                        self.invalid_index[None], (I.x * self.ny + I.y) * self.nz + I.z
-                    )
         self.peak_speed[None] = ti.max(self.peak_speed[None], self.maximum_speed[None])
 
-    def check_stability(self):
-        self._scan_stability()
+    def check_stability(self, scanned=False):
+        if not scanned:
+            self._scan_stability()
         index = int(self.invalid_index[None])
         if index < math.prod(self.shape):
             I = (
@@ -1235,24 +827,19 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
                 self._gradients()
                 self._gradient_cache_valid = True
             self._collide_phase()
-            self._forces(True)
+            self._forces(True, moment_pressure=True)
             self._collide_momentum()
             self.hydrodynamic_force.fill(0)
             self.hydrodynamic_torque.fill(0)
-            self._prepare_boundaries()
-            if self.config.gas_state_repair:
-                self._stream(False)
-                self._recover_phase()
-                self._gradients()
-                self._recover_momentum()
-            else:
-                self._stream_recover(256)
-                self._gradients()
-                self._recover_pressure()
+            self._stream_home(classified=True)
+            # AA populations, HOME pressure and the stability reduction share
+            # a single grid traversal. Geometry has not changed yet.
+            self._recover_phase(recover_flow=True)
+            self._gradients(classified=True)
             # Check before changed geometry can hide a divergent fluid node.
             speed_bound = None
             if self.config.check_stability:
-                speed_bound = self.check_stability()
+                speed_bound = self.check_stability(scanned=True)
             self.rigid.advance()
             self._refresh_geometry()
             self._advance_advection(speed_bound)
@@ -1309,14 +896,16 @@ class IceFlow3D(MirrorGradient3D, Thermal3D):
         result = {
             "step": self.steps,
             "time_s": self.physical_time_s,
-            "water_volume_m3": float(volume.sum()),
+            "water_volume_m3": float(volume.sum(dtype=float)),
             "water_volume_change_ratio": (
-                float(volume.sum() / self.initial_water_volume_m3 - 1)
+                float(volume.sum(dtype=float) / self.initial_water_volume_m3 - 1)
                 if self.initial_water_volume_m3 > 0
                 else None
             ),
-            "water_energy_j": float(self.water_energy.to_numpy().sum()),
-            "ice_sensible_energy_j": float(self.material_energy.to_numpy().sum()),
+            "water_energy_j": float(self.water_energy.to_numpy().sum(dtype=float)),
+            "ice_sensible_energy_j": float(
+                self.material_energy.to_numpy().sum(dtype=float)
+            ),
             "maximum_fluid_speed_lattice": float(self.maximum_speed[None]),
             "peak_fluid_speed_lattice": float(self.peak_speed[None]),
             "phase_volume_change_ratio": float(

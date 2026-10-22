@@ -17,18 +17,20 @@ import taichi as ti
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from iceflow3d import IceBodyConfig, IceFlow3D, IceFlowConfig  # noqa: E402
-from iceflow3d.lattice import Q, direction, phase_equilibrium, weight  # noqa: E402
+from iceflow3d.lattice import Q, direction, weight  # noqa: E402
 
 
 @ti.data_oriented
 class PhaseProbe(IceFlow3D):
+    @ti.func
+    def _phase_neighbor(self, I, c):
+        shape = ti.Vector(self.shape)
+        return (I + c + shape) % shape
+
     @ti.kernel
     def seed(self):
         for I in ti.grouped(self.water_phase):
-            for q in range(Q):
-                self.h[I, q] = phase_equilibrium(
-                    q, self.water_phase[I], self.velocity_lattice[I]
-                )
+            self._set_phase_equilibrium(I, self.water_phase[I], self.velocity_lattice[I])
 
     @ti.kernel
     def periodic_gradient(self):
@@ -45,12 +47,6 @@ class PhaseProbe(IceFlow3D):
                 )
             self.phase_gradient_lattice[I] = gradient
 
-    @ti.kernel
-    def stream_periodic(self):
-        for I in ti.grouped(self.water_phase):
-            shape = ti.Vector([self.nx, self.ny, self.nz])
-            for q in range(Q):
-                self.h[(I + direction(q) + shape) % shape, q] = self.h_post[I, q]
 
 
 def main():
@@ -90,7 +86,6 @@ def main():
             for step in range(args.steps):
                 s.periodic_gradient()
                 s._collide_phase()
-                s.stream_periodic()
                 s._recover_phase()
             profile = s.water_phase.to_numpy().mean(axis=(1, 2), dtype=np.float64)
             distance = n / 4 - abs((x - speed * args.steps) % n - n / 2)

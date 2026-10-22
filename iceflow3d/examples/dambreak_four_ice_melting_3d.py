@@ -86,11 +86,7 @@ def build_parser():
     p.add_argument("--interface-width", type=float, default=5.0)
     p.add_argument("--cm-acoustic-relaxation-rate", type=float, default=0.6)
     p.add_argument(
-        "--momentum-collision-model", choices=("cm_mrt", "cm_hrr"), default="cm_mrt"
-    )
-    p.add_argument("--hrr-kinetic-blend", type=float, default=0.0)
-    p.add_argument(
-        "--hrr-cubic-correction", action=argparse.BooleanOptionalAction, default=True
+        "--momentum-collision-model", choices=("cm_mrt",), default="cm_mrt"
     )
     p.add_argument("--phase-warmup-steps", type=int, default=2000)
     p.add_argument("--thermal-update-interval", type=int, default=8)
@@ -227,8 +223,6 @@ def create_config(args=None):
         reference_velocity_m_s=args.reference_velocity_m_s,
         cm_acoustic_relaxation_rate=args.cm_acoustic_relaxation_rate,
         momentum_collision_model=args.momentum_collision_model,
-        hrr_kinetic_blend=args.hrr_kinetic_blend,
-        hrr_cubic_correction=args.hrr_cubic_correction,
         interface_width=args.interface_width,
         phase_warmup_steps=args.phase_warmup_steps,
         thermal=thermal,
@@ -302,7 +296,7 @@ def run_case(args):
         },
         "target_steps": targets,
         "samples": [],
-        "model": f"D3Q27 {config.momentum_collision_model}, conservative Allen-Cahn, 6-DOF eroding OBBs, material FV enthalpy; melt disappears",
+        "model": f"D3Q27 HOME {config.momentum_collision_model}, D3Q7 AA central-moment Allen-Cahn, 6-DOF eroding OBBs, material FV enthalpy; melt disappears",
     }
     (output / "metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"

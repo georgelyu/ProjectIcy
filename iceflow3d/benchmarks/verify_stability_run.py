@@ -182,7 +182,7 @@ def main():
     from iceflow3d.rigid import RigidBodies, rotation_matrix
 
     with np.load(args.run / checkpoint["path"], allow_pickle=False) as state:
-        for name in ("f", "f_post", "h", "h_post"):
+        for name in ("home", "home_post", "h"):
             assert np.isfinite(state["field/" + name]).all(), name
         rigid = RigidBodies.__new__(RigidBodies)
         rigid.s = SimpleNamespace(

@@ -1,0 +1,17 @@
+{
+  "default_changes": {
+    "hrr_kinetic_blend": {
+      "old": "Constant(value=0.0)",
+      "new": null
+    },
+    "hrr_cubic_correction": {
+      "old": "Constant(value=True)",
+      "new": null
+    }
+  },
+  "physical_defaults_unchanged": true,
+  "viscosity_files_unchanged": {
+    "lattice.py": true,
+    "viscosity.py": true
+  }
+}

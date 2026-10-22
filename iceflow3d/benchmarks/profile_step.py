@@ -49,24 +49,39 @@ from iceflow3d.examples.dambreak_four_ice_melting_3d import (  # noqa: E402
 
 METHODS = (
     "_gradients",
+    "_gradients_regular",
+    "_gradients_ice",
     "_refill_gradients",
+    "_classify_refill_gradients",
+    "_refill_gradients_regular",
+    "_refill_gradients_ice",
     "_collide_phase",
     "_forces",
+    "_classify_home",
+    "_forces_bulk",
+    "_forces_tank",
+    "_forces_boundary",
     "_collide_momentum",
-    "_prepare_boundaries",
-    "_stream",
-    "_stream_recover",
+    "_stream_home",
+    "_stream_home_bulk",
+    "_stream_home_shared",
+    "_stream_home_boundary",
+    "_repair_phase_layout",
     "_recover_pressure",
     "_recover_phase",
-    "_recover_momentum",
     "check_stability",
     "_scan_stability",
     "_refresh_geometry",
     "_rasterize",
     "_seed_refill",
+    "_find_refill_changes",
+    "_seed_refill_region",
     "_propagate_refill",
+    "_accept_refill_iteration",
     "_commit_refill",
     "_project_refill",
+    "_refill_forces",
+    "_write_refill_equilibrium",
     # Global phase-volume correction kernels are currently commented out.
     # "_conserve_phase_volume",
     # "_measure_phase_balance",
@@ -244,6 +259,7 @@ def condition_device(sim):
 
 def kernel_profile(sim, state, steps, repeats, *, condition=False):
     aggregate = defaultdict(lambda: [0, 0.0])
+    tasks = defaultdict(lambda: [0, 0.0])
     resources = {}
     elapsed = []
     for repeat in range(repeats):
@@ -257,6 +273,8 @@ def kernel_profile(sim, state, steps, repeats, *, condition=False):
         program.sync_kernel_profiler()
         program.update_kernel_profiler()
         for record in program.get_kernel_profiler_records():
+            tasks[record.name][0] += 1
+            tasks[record.name][1] += record.kernel_time
             name = re.split(r"_c\d+_\d+", record.name, maxsplit=1)[0]
             aggregate[name][0] += 1
             aggregate[name][1] += record.kernel_time
@@ -283,6 +301,14 @@ def kernel_profile(sim, state, steps, repeats, *, condition=False):
         "launches_per_step": sum(row[0] for row in aggregate.values())
         / (steps * repeats),
         "kernel_resources": list(resources.values()),
+        "kernel_tasks": [
+            dict(
+                name=k,
+                launches_per_step=v[0] / (steps * repeats),
+                gpu_ms_per_step=v[1] / (steps * repeats),
+            )
+            for k, v in sorted(tasks.items(), key=lambda item: -item[1][1])
+        ],
         "kernels": sorted(
             [
                 {
@@ -350,7 +376,7 @@ def main():
     parser.add_argument("--interface-width", type=float, default=5)
     parser.add_argument(
         "--momentum-collision-model",
-        choices=("cm_mrt", "cm_hrr"),
+        choices=("cm_mrt",),
         help="override the case/checkpoint model before compiling collision",
     )
     parser.add_argument("--phase-warmup-steps", type=int, default=2000)

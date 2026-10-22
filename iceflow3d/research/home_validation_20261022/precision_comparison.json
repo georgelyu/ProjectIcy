@@ -1,0 +1,66 @@
+{
+  "steps": 2000,
+  "resolution": 150,
+  "comparisons": {
+    "water_phase": {
+      "max_abs": 2.6226043701171875e-06,
+      "relative_l2": 1.3743958776987113e-07
+    },
+    "solid_body_id": {
+      "max_abs": 0.0,
+      "relative_l2": 0.0
+    },
+    "ice_fraction": {
+      "max_abs": 1.5974044799804688e-05,
+      "relative_l2": 3.854551537011331e-06
+    },
+    "velocity_m_s": {
+      "max_abs": 2.9880553483963013e-05,
+      "relative_l2": 3.6594435233428528e-06
+    },
+    "pressure_pa": {
+      "max_abs": 64.76891326904297,
+      "relative_l2": 0.0019785488743471508
+    },
+    "temperature_c": {
+      "max_abs": 0.00841522216796875,
+      "relative_l2": 2.5139278012220078e-05
+    },
+    "body_origin": {
+      "max_abs": 5.350102682655233e-06,
+      "relative_l2": 3.692160020820353e-08
+    },
+    "body_mass": {
+      "max_abs": 8.09329010280635e-05,
+      "relative_l2": 6.365706686032101e-08
+    },
+    "body_velocity": {
+      "max_abs": 1.277029404098129e-08,
+      "relative_l2": 5.232758161631959e-06
+    }
+  },
+  "gpu_fp64_fields": [],
+  "gpu_field_bytes": 73399296,
+  "fp32_result": "precision_fp32.json",
+  "fp64_reference": "precision_fp64_reference.json",
+  "passed": true,
+  "valid_fluid_comparisons": {
+    "pressure_pa": {
+      "max_abs": 0.0399169921875,
+      "relative_l2": 4.592845808917448e-05
+    },
+    "water_phase": {
+      "max_abs": 2.6226043701171875e-06,
+      "relative_l2": 1.3743958776987113e-07
+    },
+    "velocity_m_s": {
+      "max_abs": 2.9880553483963013e-05,
+      "relative_l2": 3.6549858659484254e-06
+    },
+    "temperature_c": {
+      "max_abs": 0.00841522216796875,
+      "relative_l2": 2.5222251008551018e-05
+    }
+  },
+  "reference_scope": "FP64 thermal state/fluxes and rigid reductions; flow and phase remain FP32 in both. HOME flow compared independently with FP64 eigenmodes."
+}

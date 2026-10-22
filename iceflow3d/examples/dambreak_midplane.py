@@ -192,7 +192,7 @@ def main():
                         flush=True,
                     )
                     last_print = time.perf_counter()
-            for name in ("f", "f_post", "h", "h_post"):
+            for name in ("home", "home_post", "h"):
                 assert np.isfinite(getattr(sim, name).to_numpy()).all(), name
             record["final_contact_residuals"] = list(sim.rigid.contact_residuals())
             assert max(record["final_contact_residuals"]) < 1e-7

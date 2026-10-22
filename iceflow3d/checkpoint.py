@@ -40,7 +40,7 @@ def save_checkpoint(simulation, path):
         if isinstance(value, np.ndarray)
     }
     metadata = {
-        "format_version": 1,
+        "format_version": 2,
         "configuration": simulation.config.to_dict(),
         "source_sha256": source_hashes(),
         "steps": simulation.steps,
@@ -73,8 +73,8 @@ def load_checkpoint(path, *, backend=None, allow_source_change=False):
 
     with np.load(path, allow_pickle=False) as archive:
         metadata = json.loads(str(archive["metadata"]))
-        if metadata["format_version"] != 1:
-            raise ValueError("unsupported checkpoint format")
+        if metadata["format_version"] != 2:
+            raise ValueError("unsupported checkpoint format: HOME requires a version-2 moment/AA checkpoint")
         if metadata["source_sha256"] != source_hashes() and not allow_source_change:
             raise ValueError(
                 "checkpoint source differs; explicit allow_source_change required"

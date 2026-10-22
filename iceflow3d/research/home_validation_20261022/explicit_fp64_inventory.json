@@ -1,0 +1,3826 @@
+{
+  "production_home_occurrences": 0,
+  "counts_by_file": {
+    "iceflow2d/simulator.py": 230,
+    "iceflow2d/test_gpu_state.py": 1,
+    "iceflow2d_v2/agglomeration.py": 9,
+    "iceflow2d_v2/coupling.py": 3,
+    "iceflow2d_v2/geometry.py": 42,
+    "iceflow2d_v2/phase_momentum.py": 28,
+    "iceflow2d_v2/polygon.py": 7,
+    "iceflow2d_v2/rigid.py": 8,
+    "iceflow2d_v2/state.py": 6,
+    "iceflow2d_v2/subgrid_viscous.py": 34,
+    "iceflow2d_v2/tests/test_geometry.py": 6,
+    "iceflow2d_v2/tests/test_lattice.py": 4,
+    "iceflow2d_v2/transport.py": 22,
+    "iceflow2d_v3/benchmarks/audit_water_volume_budget.py": 37,
+    "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py": 14,
+    "iceflow2d_v3/benchmarks/check_simple_melt_volume.py": 3,
+    "iceflow2d_v3/benchmarks/diagnose_current_single_dambreak.py": 2,
+    "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py": 6,
+    "iceflow2d_v3/benchmarks/diagnose_single_dambreak.py": 2,
+    "iceflow2d_v3/benchmarks/render_dambreak_step8544.py": 2,
+    "iceflow2d_v3/body_motion.py": 21,
+    "iceflow2d_v3/contact.py": 16,
+    "iceflow2d_v3/simulator.py": 98,
+    "iceflow2d_v3/test_capillary_coupling.py": 1,
+    "iceflow2d_v3/test_gpu_state.py": 1,
+    "iceflow2d_v3/thermal_d2q5.py": 19,
+    "iceflow3d/benchmarks/probe_reduction.py": 10
+  },
+  "occurrences": [
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 23,
+      "code": "self.drag = ti.Matrix.field(3, 3, ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 24,
+      "code": "self.moments = ti.Vector.field(7, ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 25,
+      "code": "self.mobility = ti.Matrix.field(3, 3, ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 26,
+      "code": "self.effective = ti.Matrix.field(3, 3, ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 27,
+      "code": "self.patch_velocity = ti.Vector.field(3, ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 28,
+      "code": "self.patch_change = ti.Vector.field(3, ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 29,
+      "code": "self.dissipation = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 32,
+      "code": "self.center = ti.Vector.field(2, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 33,
+      "code": "self.body_velocity = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 34,
+      "code": "self.initial_velocity = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 35,
+      "code": "self.body_momentum = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 36,
+      "code": "self.support_change = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 37,
+      "code": "self.body_metric = ti.Matrix.field(3, 3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 39,
+      "code": "self.dissipated_total = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 40,
+      "code": "self.impulse_total = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 41,
+      "code": "self.effective_sum = DeviceSum(cfg.nx*cfg.ny, 12, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 42,
+      "code": "self.energy_sum = DeviceSum(cfg.nx*cfg.ny, 1, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 125,
+      "code": "value = ti.Vector.zero(ti.f64, 12)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 60,
+      "code": "self.drag[i, j] = ti.Matrix.zero(ti.f64, 3, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 61,
+      "code": "self.moments[i, j] = ti.Vector.zero(ti.f64, 7)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 62,
+      "code": "self.effective[i, j] = ti.Matrix.zero(ti.f64, 3, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 63,
+      "code": "self.patch_change[i, j] = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 64,
+      "code": "self.patch_velocity[i, j] = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 136,
+      "code": "d = ti.Matrix.zero(ti.f64, 3, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 51,
+      "code": "p = ti.cast(self.rigid.momentum[None], ti.f64)-ti.cast(self.rigid.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 51,
+      "code": "p = ti.cast(self.rigid.momentum[None], ti.f64)-ti.cast(self.rigid.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 56,
+      "code": "if ti.static(self.cfg.fixed_body): v = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 142,
+      "code": "else: self.body_velocity[None] = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 74,
+      "code": "epsilon = ti.cast(32*2.220446049250313e-16, ti.f64)*ti.max(1.0, ti.abs(point).max())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 101,
+      "code": "q = ti.cast(self.state.q[i, j], ti.f64)-ti.cast(self.state.comp[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 101,
+      "code": "q = ti.cast(self.state.q[i, j], ti.f64)-ti.cast(self.state.comp[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 162,
+      "code": "q = ti.cast(self.state.q[i, j], ti.f64)-ti.cast(self.state.comp[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 162,
+      "code": "q = ti.cast(self.state.q[i, j], ti.f64)-ti.cast(self.state.comp[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/subgrid_viscous.py",
+      "line": 116,
+      "code": "effective = (ti.Matrix.identity(ti.f64, 3)+d@inverse).inverse()@d",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/state.py",
+      "line": 39,
+      "code": "+ti.cast(self.q[i, j][1], ti.f64)-ti.cast(self.comp[i, j][1], ti.f64))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/state.py",
+      "line": 39,
+      "code": "+ti.cast(self.q[i, j][1], ti.f64)-ti.cast(self.comp[i, j][1], ti.f64))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/state.py",
+      "line": 51,
+      "code": "exact = ti.Vector([water, air, water*tw, 0.0, 0.0, 0.0], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/state.py",
+      "line": 38,
+      "code": "return (ti.cast(self.q[i, j][0], ti.f64)-ti.cast(self.comp[i, j][0], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/state.py",
+      "line": 38,
+      "code": "return (ti.cast(self.q[i, j][0], ti.f64)-ti.cast(self.comp[i, j][0], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/state.py",
+      "line": 54,
+      "code": "self.comp[i, j] = ti.cast(ti.cast(high, ti.f64)-exact, ti.f32)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 17,
+      "code": "self.old_integrals = ti.Vector.field(4, ti.f64, (cfg.nb, cfg.nb))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 18,
+      "code": "self.old_mass = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 19,
+      "code": "self.old_inertia = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 20,
+      "code": "self.old_first = ti.Vector.field(2, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 21,
+      "code": "self.old_world = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 22,
+      "code": "self.twist = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 23,
+      "code": "self.target_world = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 24,
+      "code": "self.roundoff_total = ti.Vector.field(3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 25,
+      "code": "self.slip_sum = DeviceSum(cfg.nb*cfg.nb*12, 3, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 26,
+      "code": "self.exchange_sum = DeviceSum(cfg.nb*cfg.nb*12, 3, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 39,
+      "code": "dm = ti.cast(self.coupling.mass[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 48,
+      "code": "point = ti.cast(self.coupling.point[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 53,
+      "code": "twist = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 117,
+      "code": "point = ti.cast(self.coupling.point[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 34,
+      "code": "self.old_world[None] = (ti.cast(self.rigid.momentum[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 35,
+      "code": "-ti.cast(self.rigid.momentum_comp[None], ti.f64))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 42,
+      "code": "*ti.cast(self.coupling.normal[a, b, k], ti.f64))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 47,
+      "code": "impulse = ti.cast(self.coupling.mass[a, b, k], ti.f64)*self.relative_velocity(a, b, k)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 87,
+      "code": "total = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 88,
+      "code": "for k in range(12): total += ti.cast(self.coupling.mass[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 90,
+      "code": "dm = ti.cast(self.coupling.mass[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 91,
+      "code": "point = ti.cast(self.coupling.point[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 116,
+      "code": "impulse = ti.Vector([ti.cast(record[4], ti.f64), ti.cast(record[5], ti.f64)])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 116,
+      "code": "impulse = ti.Vector([ti.cast(record[4], ti.f64), ti.cast(record[5], ti.f64)])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 97,
+      "code": "impulse, angular = ti.Vector.zero(ti.f64, 2), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 97,
+      "code": "impulse, angular = ti.Vector.zero(ti.f64, 2), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 110,
+      "code": "self.coupling.torque_extra[a, b, k] = angular-cross(point, ti.cast(stored, ti.f64))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/phase_momentum.py",
+      "line": 134,
+      "code": "self.rigid.momentum_comp[None] = ti.cast(ti.cast(high, ti.f64)-target, ti.f32)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 209,
+      "code": "best, leader = ti.cast(-1.0, ti.f64), ti.Vector([i, j])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 234,
+      "code": "moments, mc = ti.Vector.zero(ti.f64, 6), ti.Vector.zero(ti.f64, 6)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 234,
+      "code": "moments, mc = ti.Vector.zero(ti.f64, 6), ti.Vector.zero(ti.f64, 6)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 235,
+      "code": "total, comp = ti.Vector.zero(ti.f64, 6), ti.Vector.zero(ti.f64, 6)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 235,
+      "code": "total, comp = ti.Vector.zero(ti.f64, 6), ti.Vector.zero(ti.f64, 6)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 244,
+      "code": "total, comp = add_compensated(total, comp, q, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 247,
+      "code": "moments, mc = add_compensated(moments, mc, increment, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 242,
+      "code": "q = ti.cast(self.state.q[ni, nj], ti.f64)-ti.cast(self.state.comp[ni, nj], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/agglomeration.py",
+      "line": 242,
+      "code": "q = ti.cast(self.state.q[ni, nj], ti.f64)-ti.cast(self.state.comp[ni, nj], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 30,
+      "code": "self.diag = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 31,
+      "code": "self.x = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 32,
+      "code": "self.r = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 33,
+      "code": "self.z = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 34,
+      "code": "self.d = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 35,
+      "code": "self.ad = ti.field(ti.f64, shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 43,
+      "code": "self.rr = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 44,
+      "code": "self.old_rr = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 45,
+      "code": "self.dad = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 46,
+      "code": "self.initial_rr = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 48,
+      "code": "self.compatibility = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 51,
+      "code": "self.component_sum = ti.field(ti.f64, (config.nx*config.ny+1,))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 54,
+      "code": "self.null_sum = DeviceSum(config.nx*config.ny, 2, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 55,
+      "code": "self.dot_sum = DeviceSum(config.nx*config.ny, 2, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 221,
+      "code": "value = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 157,
+      "code": "diagonal = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 249,
+      "code": "result = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 274,
+      "code": "value = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 291,
+      "code": "value = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 341,
+      "code": "value = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 155,
+      "code": "volume_source = ti.cast(self.state.source[i, j][0], ti.f64)+ti.cast(self.state.source[i, j][1], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/transport.py",
+      "line": 155,
+      "code": "volume_source = ti.cast(self.state.source[i, j][0], ti.f64)+ti.cast(self.state.source[i, j][1], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 22,
+      "code": "self.origin = ti.Vector.field(2, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 23,
+      "code": "self.origin_comp = ti.Vector.field(2, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 24,
+      "code": "self.angle = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 25,
+      "code": "self.angle_comp = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 26,
+      "code": "self.rotation = ti.Matrix.field(2, 2, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 33,
+      "code": "self.poly = ti.Matrix.field(12, 2, ti.f64, (self.nb, self.nb))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 35,
+      "code": "self.normal = ti.Vector.field(2, ti.f64, (self.nb, self.nb))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 36,
+      "code": "self.offset = ti.field(ti.f64, (self.nb, self.nb))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 37,
+      "code": "self.integrals = ti.Vector.field(4, ti.f64, (self.nb, self.nb))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 41,
+      "code": "self.occupancy = ti.field(ti.f64, (self.nx, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 42,
+      "code": "self.capacity = ti.field(ti.f64, (self.nx, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 43,
+      "code": "self.old_capacity = ti.field(ti.f64, (self.nx, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 44,
+      "code": "self.face_open = ti.Vector.field(2, ti.f64, (self.nx, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 45,
+      "code": "self.old_face_open = ti.Vector.field(2, ti.f64, (self.nx, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 46,
+      "code": "self.overlap = ti.field(ti.f64, (self.nb, self.nb, 9))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 47,
+      "code": "self.full_overlap = ti.field(ti.f64, (self.nb, self.nb, 9))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 49,
+      "code": "self.mass_matrix = ti.Matrix.field(3, 3, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 50,
+      "code": "self.mass = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 51,
+      "code": "self.first_moment = ti.Vector.field(2, ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 52,
+      "code": "self.inertia = ti.field(ti.f64, ())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 53,
+      "code": "self.surface_point = ti.Vector.field(2, ti.f64, (self.nb, self.nb, 12))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 54,
+      "code": "self.surface_local = ti.Vector.field(2, ti.f64, (self.nb, self.nb, 12))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 55,
+      "code": "self.surface_normal = ti.Vector.field(2, ti.f64, (self.nb, self.nb, 12))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 56,
+      "code": "self.surface_length = ti.field(ti.f64, (self.nb, self.nb, 12))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 58,
+      "code": "self.mass_sum = DeviceSum(self.nb*self.nb, 4, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 101,
+      "code": "value = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 192,
+      "code": "rates = ti.Vector.zero(ti.f64, 12)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 193,
+      "code": "total = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 194,
+      "code": "contact = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 228,
+      "code": "occupied = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 309,
+      "code": "opening = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 103,
+      "code": "value = ti.cast(self.solid[a, b], ti.f64)-ti.cast(self.solid_comp[a, b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 103,
+      "code": "value = ti.cast(self.solid[a, b], ti.f64)-ti.cast(self.solid_comp[a, b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 196,
+      "code": "dm = ti.cast(accepted_mass[a, b, k], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 320,
+      "code": "intervals = ti.Matrix.zero(ti.f64, 9, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 204,
+      "code": "best, edge = ti.cast(-1.0, ti.f64), 0",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 283,
+      "code": "covered_lo, covered_hi = ti.cast(1.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 283,
+      "code": "covered_lo, covered_hi = ti.cast(1.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 338,
+      "code": "covered, high = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 338,
+      "code": "covered, high = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 291,
+      "code": "lo, hi = ti.cast(0.0, ti.f64), ti.min(1.0, covered_lo)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/geometry.py",
+      "line": 323,
+      "code": "interval = ti.Vector([2.0, -1.0], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 114,
+      "code": "self.geo.origin[None], self.geo.origin_comp[None] = add_compensated(self.geo.origin[None], self.geo.origin_comp[None], delta, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 115,
+      "code": "self.geo.angle[None], self.geo.angle_comp[None] = add_compensated(self.geo.angle[None], self.geo.angle_comp[None], angle, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 49,
+      "code": "start = ti.cast(self.start[None], ti.f64)-ti.cast(self.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 49,
+      "code": "start = ti.cast(self.start[None], ti.f64)-ti.cast(self.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 87,
+      "code": "world = ti.cast(self.momentum[None], ti.f64)-ti.cast(self.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 87,
+      "code": "world = ti.cast(self.momentum[None], ti.f64)-ti.cast(self.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 102,
+      "code": "world = ti.cast(self.momentum[None], ti.f64)-ti.cast(self.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/rigid.py",
+      "line": 102,
+      "code": "world = ti.cast(self.momentum[None], ti.f64)-ti.cast(self.momentum_comp[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 8,
+      "code": "p = ti.Matrix.zero(ti.f64, 12, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 20,
+      "code": "out = ti.Matrix.zero(ti.f64, 12, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 50,
+      "code": "result = ti.Vector.zero(ti.f64, 4)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 65,
+      "code": "offset = ti.cast(1.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 85,
+      "code": "local = ti.Matrix.zero(ti.f64, 12, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 103,
+      "code": "lo, hi = ti.cast(0.0, ti.f64), ti.cast(1.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/polygon.py",
+      "line": 103,
+      "code": "lo, hi = ti.cast(0.0, ti.f64), ti.cast(1.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/coupling.py",
+      "line": 23,
+      "code": "self.torque_extra = ti.field(ti.f64, body)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/coupling.py",
+      "line": 186,
+      "code": "torque = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/coupling.py",
+      "line": 91,
+      "code": "epsilon = ti.cast(32*2.220446049250313e-16, ti.f64)*ti.max(1.0, ti.abs(point).max())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4137,
+      "code": "def _reduce_phase_change_geometry_volume(self) -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4354,
+      "code": "def _apply_water_projection(self, lagrange_multiplier: ti.f64) -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4409,
+      "code": "def _measure_water_projection_residual_weight(self, residual: ti.f64) -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4436,
+      "code": ") -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 79,
+      "code": "return ti.bit_cast(shuffled, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1793,
+      "code": "def _finish_aperture_measurement(self) -> ti.types.vector(2, ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4151,
+      "code": "def _clip_water_phase_for_projection(self) -> ti.types.vector(2, ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4294,
+      "code": ") -> ti.types.vector(2, ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 216,
+      "code": "self.body_solid_mass = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 217,
+      "code": "self.body_sensible_energy = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 218,
+      "code": "self._body_heat_delta = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 220,
+      "code": "self._body_melt_mass_step = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 221,
+      "code": "self._body_melt_sensible_step = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 223,
+      "code": "self.water_volume_m2 = ti.field(ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 224,
+      "code": "self.water_sensible_energy = ti.field(ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 225,
+      "code": "self._water_energy_flux_x = ti.field(ti.f64, shape=(self.nx + 1, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 226,
+      "code": "self._water_energy_flux_y = ti.field(ti.f64, shape=(self.nx, self.ny + 1))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 227,
+      "code": "self._water_volume_flux_x = ti.field(ti.f64, shape=(self.nx + 1, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 228,
+      "code": "self._water_volume_flux_y = ti.field(ti.f64, shape=(self.nx, self.ny + 1))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 234,
+      "code": "self._phase_target_energy = ti.field(ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 239,
+      "code": "ti.f64, shape=(self._aperture_partial_count, 6)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 241,
+      "code": "self._phase_volume_before = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 242,
+      "code": "self._phase_energy_before = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 243,
+      "code": "self._phase_base_capacity = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 244,
+      "code": "self._phase_full_capacity = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 245,
+      "code": "self._phase_specific_energy_min = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 246,
+      "code": "self._phase_specific_energy_max = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 247,
+      "code": "self._phase_reconstructed_energy = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 248,
+      "code": "self._phase_cooling_capacity = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 249,
+      "code": "self._phase_heating_capacity = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 258,
+      "code": "self.aperture_energy_correction_abs_j_m = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 259,
+      "code": "self._phase_volume_after = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 260,
+      "code": "self._phase_energy_after = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 280,
+      "code": "self.boundary_power = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 281,
+      "code": "self.boundary_heat_input = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 303,
+      "code": "self._unassigned_melt_mass = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 304,
+      "code": "self._unassigned_melt_energy = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 305,
+      "code": "self._melt_fallback_free_weight = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 306,
+      "code": "self._melt_fallback_wet_weight = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 307,
+      "code": "self._interval_body_melt_mass = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 308,
+      "code": "self._interval_water_melt_mass = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 314,
+      "code": "self._solid_body_mass_sum = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 315,
+      "code": "self._water_mass_sum = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 316,
+      "code": "self._body_sensible_sum = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 317,
+      "code": "self._water_sensible_sum = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 580,
+      "code": "def _initialize_body_state(self, cell_mass: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 596,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 598,
+      "code": "ti.static(self._water_density_kg_m3 * self._water_specific_heat), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 600,
+      "code": "melting = ti.cast(ti.static(self._melting_temperature_c), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 602,
+      "code": "ti.static(float(self.config.initial_water_temperature_c)), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 648,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 725,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 734,
+      "code": "base_scale = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 735,
+      "code": "spare_scale = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 880,
+      "code": "def _accumulate_body_conduction(self, time_step_s: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 916,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 917,
+      "code": "k_water = ti.cast(ti.static(self._water_conductivity), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1020,
+      "code": "dx = ti.cast(ti.static(self._cell_size_m), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1021,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1022,
+      "code": "velocity_scale = ti.cast(ti.static(self._velocity_scale), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1070,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1071,
+      "code": "k_water = ti.cast(ti.static(self._water_conductivity), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1174,
+      "code": "dx = ti.cast(ti.static(self._cell_size_m), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1175,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1176,
+      "code": "velocity_scale = ti.cast(ti.static(self._velocity_scale), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1218,
+      "code": "def _update_water_advection(self, time_step_s: ti.f64, wall_mask: ti.template()):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1237,
+      "code": "def _update_water_conduction(self, time_step_s: ti.f64, wall_mask: ti.template()):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1249,
+      "code": "def _accumulate_boundary_heat(self, time_step_s: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1255,
+      "code": "time_step_s: ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1273,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1376,
+      "code": "latent = ti.cast(ti.static(self._latent_heat_j_kg), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1486,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1512,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1597,
+      "code": "temperature = ti.cast(ti.static(self._melting_temperature_c), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1607,
+      "code": "temperature = ti.cast(ti.static(self.config.initial_air_temperature_c), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1647,
+      "code": "target = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1952,
+      "code": "self.body_mass_lattice = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1953,
+      "code": "self.body_inertia_lattice = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1954,
+      "code": "self.body_local_center_of_mass = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1963,
+      "code": "self.cumulative_melted_momentum_lattice = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1970,
+      "code": "2, ti.f64, shape=()",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1973,
+      "code": "2, ti.f64, shape=()",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1980,
+      "code": "self.cumulative_melted_angular_momentum_lattice = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1987,
+      "code": "ti.f64, shape=()",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1990,
+      "code": "ti.f64, shape=()",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2020,
+      "code": "self._body_reduced_mass = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2021,
+      "code": "self._body_reduced_first_moment = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2022,
+      "code": "self._body_reduced_inertia_origin = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2027,
+      "code": "self._thermal_fluid_momentum_before = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2028,
+      "code": "self._thermal_fluid_momentum_provisional = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2029,
+      "code": "self._thermal_fluid_momentum_after = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2030,
+      "code": "self._thermal_body_momentum_before = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2031,
+      "code": "self._thermal_fluid_angular_momentum_before = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2032,
+      "code": "self._thermal_fluid_angular_momentum_provisional = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2033,
+      "code": "self._thermal_fluid_angular_momentum_after = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2034,
+      "code": "self._thermal_body_angular_momentum_before = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2053,
+      "code": "self._melt_momentum_wet_weight = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2056,
+      "code": "self._melt_momentum_weight_first_moment = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2057,
+      "code": "self._melt_momentum_weight_second_moment = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2096,
+      "code": "self.hydrodynamic_impulse = ti.Vector.field(2, ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2097,
+      "code": "self.hydrodynamic_torque = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2108,
+      "code": "self.water_volume_current = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2109,
+      "code": "self.water_projection_derivative = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2154,
+      "code": "self.phase_change_initial_water_volume = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2547,
+      "code": "def _initialize_body(self, initial_mass: ti.f64, initial_inertia: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2547,
+      "code": "def _initialize_body(self, initial_mass: ti.f64, initial_inertia: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3021,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3074,
+      "code": "raw_inertia = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3107,
+      "code": "origin = ti.cast(self.body_reference_origin[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4138,
+      "code": "volume = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4293,
+      "code": "self, lagrange_multiplier: ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4354,
+      "code": "def _apply_water_projection(self, lagrange_multiplier: ti.f64) -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4409,
+      "code": "def _measure_water_projection_residual_weight(self, residual: ti.f64) -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4435,
+      "code": "self, residual: ti.f64, total_weight: ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4435,
+      "code": "self, residual: ti.f64, total_weight: ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4664,
+      "code": "return ti.cast(ti.static(self._initial_body_mass_lattice), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4731,
+      "code": "ti.static(float(self.config.ice_width * self.config.ice_height)), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4808,
+      "code": "impulse_sum = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4809,
+      "code": "torque_sum = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4900,
+      "code": "centroid = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 606,
+      "code": "volume = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 651,
+      "code": "thread_phase_volume_before = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 652,
+      "code": "thread_phase_energy_before = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 653,
+      "code": "thread_phase_specific_energy_min = ti.cast(1.0e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 654,
+      "code": "thread_phase_specific_energy_max = ti.cast(-1.0e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 655,
+      "code": "thread_phase_base_capacity = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 656,
+      "code": "thread_phase_full_capacity = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 744,
+      "code": "thread_phase_reconstructed_energy = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 745,
+      "code": "thread_phase_cooling_capacity = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 746,
+      "code": "thread_phase_heating_capacity = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 867,
+      "code": "thread_phase_volume_after = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 868,
+      "code": "thread_phase_energy_after = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 887,
+      "code": "outward_heat_rate = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 919,
+      "code": "flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 920,
+      "code": "boundary_inward = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1024,
+      "code": "energy_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1025,
+      "code": "volume_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1073,
+      "code": "flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1074,
+      "code": "boundary_inward = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1178,
+      "code": "energy_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1179,
+      "code": "volume_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1381,
+      "code": "melt_mass = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1382,
+      "code": "melt_sensible = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1529,
+      "code": "weight = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1603,
+      "code": "return ti.min(ti.cast(self._melting_temperature_c, ti.f64), temperature)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1640,
+      "code": "base_scale, spare_scale = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1640,
+      "code": "base_scale, spare_scale = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1654,
+      "code": "phase64 = ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1821,
+      "code": "dt=ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2806,
+      "code": "weight = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2857,
+      "code": "rotational_scale = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2865,
+      "code": "weight = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3027,
+      "code": "fraction = ti.cast(self.thermal.body_solid_fraction[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3118,
+      "code": "old_velocity = ti.cast(self.body_velocity[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3119,
+      "code": "omega = ti.cast(self.body_angular_velocity[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3131,
+      "code": "shifted_velocity_stored = ti.cast(shifted_velocity_stored_f32, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3133,
+      "code": "new_center_stored = ti.cast(new_center_stored_f32, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3134,
+      "code": "old_center_stored = ti.cast(self.body_center[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4228,
+      "code": "[self.water_volume_target[None], self.water_volume_current[None]], dt=ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4308,
+      "code": "threadwater_volume_current = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4309,
+      "code": "threadwater_projection_derivative = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4350,
+      "code": "dt=ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 750,
+      "code": "target = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 762,
+      "code": "energy = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1282,
+      "code": "requests = ti.Vector.zero(ti.f64, 20)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1284,
+      "code": "requested_heat = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1353,
+      "code": "scale = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1359,
+      "code": "transferred_heat = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1796,
+      "code": "volume, energy = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1796,
+      "code": "volume, energy = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1797,
+      "code": "minimum, maximum = ti.cast(1.0e30, ti.f64), ti.cast(-1.0e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1797,
+      "code": "minimum, maximum = ti.cast(1.0e30, ti.f64), ti.cast(-1.0e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1798,
+      "code": "base, capacity = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1798,
+      "code": "base, capacity = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2808,
+      "code": "weight = ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2867,
+      "code": "weight = ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3123,
+      "code": "shifted_velocity = ti.Vector([0.0, 0.0], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4420,
+      "code": "phase = ti.cast(self.water_phase[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4448,
+      "code": "old_phase64 = ti.cast(old_phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4757,
+      "code": "ti.cast(self.body_reference_origin[None], ti.f64) + offset, ti.f32",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4858,
+      "code": "impulse64 = ti.cast(impulse, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4859,
+      "code": "relative64 = ti.cast(boundary_point - self.body_center[None], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 612,
+      "code": "volume = area * ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 756,
+      "code": "phase64 = ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 764,
+      "code": "specific = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 897,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2749,
+      "code": "momentum = ti.Vector([0.0, 0.0], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2772,
+      "code": "momentum = ti.Vector([0.0, 0.0], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2892,
+      "code": "momentum = ti.Vector([0.0, 0.0], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4132,
+      "code": "ti.cast(self.water_phase[i, j], ti.f64),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4225,
+      "code": "self.water_volume_current[None], ti.cast(bounded_phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4313,
+      "code": "phase64 = ti.cast(self.water_phase[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4332,
+      "code": "mapped64 = ti.cast(mapped32, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4367,
+      "code": "old_phase64 = ti.cast(old_phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4404,
+      "code": "self.water_volume_current[None], ti.cast(new_phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 4490,
+      "code": "self.water_volume_current[None], ti.cast(new_phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 676,
+      "code": "thread_phase_base_capacity += area * ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 772,
+      "code": "weight = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1294,
+      "code": "self.world_body_solid_fraction[world_i, world_j], ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1438,
+      "code": "local_x = ti.cast(body_i, ti.f64) + 0.5 - ti.static(0.5 * self.body_nx)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1439,
+      "code": "local_y = ti.cast(body_j, ti.f64) + 0.5 - ti.static(0.5 * self.body_ny)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2751,
+      "code": "momentum += ti.cast(lattice_direction(q), ti.f64) * ti.cast(",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2752,
+      "code": "self.momentum_populations[i, j, q], ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2774,
+      "code": "momentum += ti.cast(lattice_direction(q), ti.f64) * ti.cast(",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2775,
+      "code": "self.momentum_populations[i, j, q], ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2786,
+      "code": "self._melt_momentum_wet_weight[None], ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2894,
+      "code": "momentum += ti.cast(lattice_direction(q), ti.f64) * ti.cast(",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2895,
+      "code": "self.momentum_populations[i, j, q], ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2923,
+      "code": "point_1 = ti.Vector([ti.cast(i1, ti.f64) + 0.5, ti.cast(j1, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2923,
+      "code": "point_1 = ti.Vector([ti.cast(i1, ti.f64) + 0.5, ti.cast(j1, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2924,
+      "code": "point_2 = ti.Vector([ti.cast(i2, ti.f64) + 0.5, ti.cast(j2, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2924,
+      "code": "point_2 = ti.Vector([ti.cast(i2, ti.f64) + 0.5, ti.cast(j2, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2756,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2756,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2810,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2810,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2869,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2869,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2899,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2899,
+      "code": "point = ti.Vector([ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5])",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3030,
+      "code": "ti.cast(i, ti.f64) + 0.5 - half_x,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 3031,
+      "code": "ti.cast(j, ti.f64) + 0.5 - half_y,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1046,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1200,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1306,
+      "code": "grid.x - base_i, ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1307,
+      "code": "), ti.cast(grid.y - base_j, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2780,
+      "code": "(ti.cast(i, ti.f64) + 0.5) * momentum.y",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 2781,
+      "code": "- (ti.cast(j, ti.f64) + 0.5) * momentum.x,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 788,
+      "code": "di * di + dj * dj, ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/simulator.py",
+      "line": 1330,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d/test_gpu_state.py",
+      "line": 16,
+      "code": "simulation: ti.template(), output: ti.types.ndarray(dtype=ti.f64, ndim=3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3558,
+      "code": "def _reduce_phase_change_geometry_volume(self) -> ti.f64:",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 179,
+      "code": "self.initial_body_temperature = ti.field(ti.f64, shape=self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 238,
+      "code": "self.body_solid_mass = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 239,
+      "code": "self.body_sensible_energy = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 240,
+      "code": "self._body_heat_delta = ti.field(ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 242,
+      "code": "self.water_volume_m2 = ti.field(ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 243,
+      "code": "self.water_sensible_energy = ti.field(ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 244,
+      "code": "self._water_energy_flux_x = ti.field(ti.f64, shape=(self.nx + 1, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 245,
+      "code": "self._water_energy_flux_y = ti.field(ti.f64, shape=(self.nx, self.ny + 1))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 246,
+      "code": "self._water_volume_flux_x = ti.field(ti.f64, shape=(self.nx + 1, self.ny))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 247,
+      "code": "self._water_volume_flux_y = ti.field(ti.f64, shape=(self.nx, self.ny + 1))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 249,
+      "code": "self._phase_target_energy = ti.field(ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 460,
+      "code": "def _initialize_body_state(self, cell_mass: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 480,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 482,
+      "code": "ti.static(self._water_density_kg_m3 * self._water_specific_heat), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 484,
+      "code": "melting = ti.cast(ti.static(self._melting_temperature_c), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 486,
+      "code": "ti.static(float(self.config.initial_water_temperature_c)), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 562,
+      "code": "def _accumulate_body_conduction(self, time_step_s: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 595,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 596,
+      "code": "k_water = ti.cast(ti.static(self._water_conductivity), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 694,
+      "code": "dx = ti.cast(ti.static(self._cell_size_m), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 695,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 696,
+      "code": "velocity_scale = ti.cast(ti.static(self._velocity_scale), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 744,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 745,
+      "code": "k_water = ti.cast(ti.static(self._water_conductivity), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 843,
+      "code": "dx = ti.cast(ti.static(self._cell_size_m), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 844,
+      "code": "area = ti.cast(ti.static(self._cell_area), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 845,
+      "code": "velocity_scale = ti.cast(ti.static(self._velocity_scale), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 887,
+      "code": "def _update_water_advection(self, time_step_s: ti.f64, wall_mask: ti.template()):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 906,
+      "code": "def _update_water_conduction(self, time_step_s: ti.f64, wall_mask: ti.template()):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 920,
+      "code": "time_step_s: ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 938,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1061,
+      "code": "latent = ti.cast(ti.static(self._latent_heat_j_kg), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1087,
+      "code": "temperature = ti.cast(ti.static(self._melting_temperature_c), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1097,
+      "code": "temperature = ti.cast(ti.static(self.config.initial_air_temperature_c), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1143,
+      "code": "volume = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1337,
+      "code": "self._initial_masses = ti.field(ti.f64, shape=self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1338,
+      "code": "self._initial_inertias = ti.field(ti.f64, shape=self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1431,
+      "code": "self.body_mass_lattice = BodyField(ti.f64, self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1432,
+      "code": "self.body_inertia_lattice = BodyField(ti.f64, self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1434,
+      "code": "ti.f64, self.body_count, components=2",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1447,
+      "code": "self._body_reduced_mass = BodyField(ti.f64, self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1449,
+      "code": "ti.f64, self.body_count, components=2",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1451,
+      "code": "self._body_reduced_inertia_origin = BodyField(ti.f64, self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1477,
+      "code": "self.hydrodynamic_impulse = BodyField(ti.f64, self.body_count, components=2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1478,
+      "code": "self.hydrodynamic_torque = BodyField(ti.f64, self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3559,
+      "code": "volume = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3684,
+      "code": "total = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3693,
+      "code": "total = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3782,
+      "code": "impulse_sum = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3783,
+      "code": "torque_sum = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 490,
+      "code": "volume = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 513,
+      "code": "specific = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 566,
+      "code": "outward_heat_rate = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 598,
+      "code": "flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 698,
+      "code": "energy_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 699,
+      "code": "volume_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 747,
+      "code": "flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 847,
+      "code": "energy_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 848,
+      "code": "volume_flux = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1093,
+      "code": "return ti.min(ti.cast(self._melting_temperature_c, ti.f64), temperature)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 2268,
+      "code": "inertia = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 947,
+      "code": "requests = ti.Vector.zero(ti.f64, 20 * self.body_count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 949,
+      "code": "requested_heat = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1040,
+      "code": "scale = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1046,
+      "code": "transferred_heat = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1150,
+      "code": "volume = self._cell_area * ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 2244,
+      "code": "fraction = ti.cast(self.thermal.body_solid_fraction[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 2286,
+      "code": "velocity = ti.cast(self.body_velocity[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3008,
+      "code": "outgoing_sum = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3104,
+      "code": "water_phase = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3156,
+      "code": "water_phase = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3718,
+      "code": "return ti.cast(ti.cast(self.body_reference_origin[b], ti.f64) + offset, ti.f32)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3836,
+      "code": "impulse64 = ti.cast(impulse, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3837,
+      "code": "relative64 = ti.cast(boundary_point - self.body_center[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 496,
+      "code": "volume = area * ti.cast(phase, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 521,
+      "code": "weight = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 576,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 2242,
+      "code": "ti.static(self.config.rho_water * self.config.dx**2), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3010,
+      "code": "outgoing_sum += ti.cast(self.phase_stream_buffer[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3107,
+      "code": "water_phase += ti.cast(self.phase_populations[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3158,
+      "code": "water_phase += ti.cast(self.phase_populations[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3806,
+      "code": "impulse_sum = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3807,
+      "code": "torque_sum = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3854,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3863,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3877,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 3012,
+      "code": "ti.cast(water_phase, ti.f64) - outgoing_sum, ti.f32",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 962,
+      "code": "self.body_world_fraction[b, world_i, world_j], ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 720,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 869,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 967,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 2247,
+      "code": "ti.cast(i - self.thermal.material_offset[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 2250,
+      "code": "ti.cast(j, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 538,
+      "code": "distance2 = ti.cast(di * di + dj * dj, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 982,
+      "code": "ti.cast(grid.x - base_i, ti.f64),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 983,
+      "code": "ti.cast(grid.y - base_j, ti.f64),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/simulator.py",
+      "line": 1015,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 43,
+      "code": "self.pair_limit = ti.field(ti.f64, shape=max(1, n * (n - 1) // 2))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 46,
+      "code": "self.wall_limit = ti.field(ti.f64, shape=(n, 4))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 102,
+      "code": "origin = ti.cast(self.s.body_reference_origin[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 153,
+      "code": "gap = ti.cast(-1e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 105,
+      "code": "origin = ti.cast(self.origin[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 108,
+      "code": "ti.cast(1e30, ti.f64),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 109,
+      "code": "ti.cast(1e30, ti.f64),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 110,
+      "code": "ti.cast(-1e30, ti.f64),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 113,
+      "code": "local = ti.cast(self.material_lower[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 480,
+      "code": "velocity = ti.cast(self.s.body_velocity[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 481,
+      "code": "omega = ti.cast(self.s.body_angular_velocity[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 482,
+      "code": "center = ti.cast(self.s.body_center[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 150,
+      "code": "pa = ti.cast(oa, ti.f64) + la.x * ax + la.y * ay",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 151,
+      "code": "pb = ti.cast(ob, ti.f64) + lb.x * bx + lb.y * by",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 191,
+      "code": "plane = ti.cast(ti.static(self.s.config.boundary_cells), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 292,
+      "code": "ti.cast(self.s.body_reference_origin[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 293,
+      "code": "+ factor * ti.cast(self.s.body_velocity[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 531,
+      "code": "ti.cast(self.origin[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 532,
+      "code": "- ti.cast(self.s.body_reference_origin[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 394,
+      "code": "self.s.contacts.normal[p] = ti.cast(normal, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/body_motion.py",
+      "line": 366,
+      "code": "ti.cast(self.origin[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 59,
+      "code": "self.water_populations = ti.Vector.field(5, ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 60,
+      "code": "self.body_populations = ti.Vector.field(5, ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 61,
+      "code": "self._water_post = ti.Vector.field(5, ti.f64, shape=world_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 62,
+      "code": "self._body_post = ti.Vector.field(5, ti.f64, shape=body_shape)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 124,
+      "code": "def collide(self, time_step_s: ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 163,
+      "code": "time_step_s: ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 107,
+      "code": "populations = ti.Vector.zero(ti.f64, 5)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 115,
+      "code": "populations = ti.Vector.zero(ti.f64, 5)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 128,
+      "code": "populations = ti.Vector.zero(ti.f64, 5)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 144,
+      "code": "populations = ti.Vector.zero(ti.f64, 5)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 169,
+      "code": "incoming = ti.Vector.zero(ti.f64, 5)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 210,
+      "code": "incoming = ti.Vector.zero(ti.f64, 5)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 211,
+      "code": "energy_delta = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 212,
+      "code": "aperture = ti.cast(self.thermal._body_fraction_at(i, j), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 172,
+      "code": "energy_delta = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 177,
+      "code": "transfer = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 218,
+      "code": "transfer = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 149,
+      "code": "* ti.cast(self.thermal._body_fraction_at(i, j), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/thermal_d2q5.py",
+      "line": 224,
+      "code": "self.thermal._body_fraction_at(ni, nj), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/test_gpu_state.py",
+      "line": 16,
+      "code": "simulation: ti.template(), output: ti.types.ndarray(dtype=ti.f64, ndim=3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/test_capillary_coupling.py",
+      "line": 15,
+      "code": "s: ti.template(), out: ti.types.ndarray(dtype=ti.f64, ndim=3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 31,
+      "code": "self.normal = ti.Vector.field(2, ti.f64, shape=self.count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 32,
+      "code": "self.point = ti.Vector.field(2, ti.f64, shape=self.count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 33,
+      "code": "self.depth = ti.field(ti.f64, shape=self.count)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 187,
+      "code": "va = ti.cast(self.s.body_velocity[a], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 188,
+      "code": "vb = ti.cast(self.s.body_velocity[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 189,
+      "code": "wa = ti.cast(self.s.body_angular_velocity[a], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 190,
+      "code": "wb = ti.cast(self.s.body_angular_velocity[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 61,
+      "code": "self.normal[p] = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 62,
+      "code": "self.point[p] = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 185,
+      "code": "ra = point - ti.cast(self.s.body_center[a], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 186,
+      "code": "rb = point - ti.cast(self.s.body_center[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 134,
+      "code": "point = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 161,
+      "code": "n = ti.Vector.zero(ti.f64, 2)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 166,
+      "code": "self.depth[p] = ti.cast(depths[selected], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 153,
+      "code": "[ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5]",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/contact.py",
+      "line": 153,
+      "code": "[ti.cast(i, ti.f64) + 0.5, ti.cast(j, ti.f64) + 0.5]",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/check_simple_melt_volume.py",
+      "line": 165,
+      "code": "moving_sum = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/check_simple_melt_volume.py",
+      "line": 167,
+      "code": "moving_sum += ti.cast(simulation.phase_populations[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/check_simple_melt_volume.py",
+      "line": 169,
+      "code": "ti.cast(new_phi, ti.f64) - moving_sum, ti.f32",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 44,
+      "code": "self.target = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 45,
+      "code": "self.before = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 46,
+      "code": "self.after = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 47,
+      "code": "self.capacity_minus = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 48,
+      "code": "self.capacity_plus = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 81,
+      "code": "values = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 86,
+      "code": "values[0] = ti.cast(phi, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 118,
+      "code": "values = ti.Vector.zero(ti.f64, 3)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 140,
+      "code": "total = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 101,
+      "code": "values[1] = ti.cast(phi, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 175,
+      "code": "adjusted = ti.cast(candidate[i, j], ti.f64) + residual",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 104,
+      "code": "values[2] = 1.0 - ti.cast(phi, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 147,
+      "code": "phi = ti.cast(candidate[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/benchmark_melt_volume_projection.py",
+      "line": 158,
+      "code": "total += ti.cast(new, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_single_dambreak.py",
+      "line": 180,
+      "code": "(-direction - ub) * (prepared[q] - reflected), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_single_dambreak.py",
+      "line": 187,
+      "code": "ti.cast(point - self.body_center[b], ti.f64), correction",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/render_dambreak_step8544.py",
+      "line": 43,
+      "code": "self.mirror_probe = ti.Vector.field(14, ti.f64, shape=8)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/render_dambreak_step8544.py",
+      "line": 51,
+      "code": "v = ti.Vector.zero(ti.f64, 14)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 175,
+      "code": "def measure_state(s: ti.template()) -> ti.types.vector(8, ti.f64):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 176,
+      "code": "amount = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 177,
+      "code": "cutoff_amount = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 178,
+      "code": "solid_count = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 179,
+      "code": "maximum_speed = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 180,
+      "code": "minimum_phase = ti.cast(1e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 181,
+      "code": "maximum_phase = ti.cast(-1e30, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 182,
+      "code": "invalid = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 56,
+      "code": "self.audit_sums = ti.field(ti.f64, shape=len(NAMES))",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 80,
+      "code": "collision = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 81,
+      "code": "moving_wall = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 82,
+      "code": "interior = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 114,
+      "code": "rounding = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 125,
+      "code": "added = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 126,
+      "code": "removed_signed = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 139,
+      "code": "opened = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 140,
+      "code": "covered = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 141,
+      "code": "added_water = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 142,
+      "code": "covered_water = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 143,
+      "code": "air = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 144,
+      "code": "interface = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 145,
+      "code": "water = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 214,
+      "code": "dt=ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 187,
+      "code": "phase = ti.cast(s.water_phase[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 189,
+      "code": "speed = ti.cast(ti.abs(velocity.x) + ti.abs(velocity.y), ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 85,
+      "code": "incoming = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 86,
+      "code": "outgoing = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 87,
+      "code": "wall = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 117,
+      "code": "population_sum = ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 129,
+      "code": "value = ti.cast(self.water_phase[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 150,
+      "code": "phi = ti.cast(self.water_phase[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 89,
+      "code": "post = ti.cast(self.phase_stream_buffer[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 90,
+      "code": "incoming += ti.cast(self.phase_populations[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 105,
+      "code": "collision += outgoing - ti.cast(self.water_phase[i, j], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 119,
+      "code": "population_sum += ti.cast(self.phase_populations[i, j, q], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 120,
+      "code": "rounding += ti.cast(self.water_phase[i, j], ti.f64) - population_sum",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/audit_water_volume_budget.py",
+      "line": 102,
+      "code": "ti.f64,",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py",
+      "line": 129,
+      "code": "len(PROBE_NAMES), ti.f64, shape=len(self.probe_points_host)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py",
+      "line": 278,
+      "code": "self.stencil_probe = ti.Vector.field(9, ti.f64, shape=8)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py",
+      "line": 137,
+      "code": "v = ti.Vector.zero(ti.f64, PROBE_SIZE)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py",
+      "line": 343,
+      "code": "v = ti.Vector.zero(ti.f64, 9)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py",
+      "line": 262,
+      "code": "impulse64 = ti.cast(impulse, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_dambreak_instability.py",
+      "line": 263,
+      "code": "arm = ti.cast(point - self.body_center[b], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_current_single_dambreak.py",
+      "line": 91,
+      "code": "(-direction - ub) * (prepared[q] - reflected), ti.f64",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v3/benchmarks/diagnose_current_single_dambreak.py",
+      "line": 98,
+      "code": "ti.cast(point - self.body_center[b], ti.f64), correction",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 25,
+      "code": "self.total = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 26,
+      "code": "self.capacity = ti.field(ti.f64, shape=())",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 27,
+      "code": "self.partial = ti.Vector.field(2, ti.f64, shape=lanes)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 78,
+      "code": "total, capacity = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 78,
+      "code": "total, capacity = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 40,
+      "code": "p = ti.cast(self.phi[i], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 49,
+      "code": "p = ti.cast(self.phi[i], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 56,
+      "code": "total, capacity = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 56,
+      "code": "total, capacity = ti.cast(0.0, ti.f64), ti.cast(0.0, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow3d/benchmarks/probe_reduction.py",
+      "line": 60,
+      "code": "p = ti.cast(self.phi[i], ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_geometry.py",
+      "line": 12,
+      "code": "gap = ti.cast(1e-10, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_geometry.py",
+      "line": 10,
+      "code": "def thin_face_intervals(out: ti.types.ndarray(dtype=ti.f64, ndim=2)):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_geometry.py",
+      "line": 14,
+      "code": "start, end = ti.Vector([.5+gap, -.5], dt=ti.f64), ti.Vector([.5+gap, .5], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_geometry.py",
+      "line": 14,
+      "code": "start, end = ti.Vector([.5+gap, -.5], dt=ti.f64), ti.Vector([.5+gap, .5], dt=ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_geometry.py",
+      "line": 16,
+      "code": "start.x, end.x = .5+ti.cast(1e-14, ti.f64), .5-ti.cast(1e-14, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_geometry.py",
+      "line": 16,
+      "code": "start.x, end.x = .5+ti.cast(1e-14, ti.f64), .5-ti.cast(1e-14, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_lattice.py",
+      "line": 10,
+      "code": "def accumulate_cancellation(data: ti.types.ndarray(dtype=ti.f64, ndim=2),",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_lattice.py",
+      "line": 11,
+      "code": "out: ti.types.ndarray(dtype=ti.f64, ndim=1)):",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_lattice.py",
+      "line": 16,
+      "code": "out[i] = ti.cast(value, ti.f64)-ti.cast(correction, ti.f64)",
+      "production_home": false
+    },
+    {
+      "path": "iceflow2d_v2/tests/test_lattice.py",
+      "line": 16,
+      "code": "out[i] = ti.cast(value, ti.f64)-ti.cast(correction, ti.f64)",
+      "production_home": false
+    }
+  ]
+}
