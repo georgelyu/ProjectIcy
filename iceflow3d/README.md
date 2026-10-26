@@ -89,6 +89,11 @@ python iceflow3d/benchmarks/profile_complete_step.py --case moving --mode wall -
 
 ## 运行
 
+新增独立算例：[干冰落入绝热水缸](dryice/README.md)。入口为
+`python -m iceflow3d.examples.dry_ice_in_hot_water_3d`，使用纯 CO₂ 开放气域、
+内部固定水缸与吸热升华。它的配置、边界和热源放在 `dryice/` 中；
+下列默认入口继续运行原 dambreak，不切换物性或边界。
+
 依赖 Python、NumPy 和 Taichi。当前机器使用 `/home/georgelyu/anaconda3/bin/python`。
 
 ```bash
